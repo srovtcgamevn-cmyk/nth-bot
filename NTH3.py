@@ -655,22 +655,35 @@ import asyncio
 # ====== Lệnh ngăn không nhầm sang ok ======
 
 
+# ====== Lệnh ngăn không nhầm sang ok ======
 def _looks_like_noise_o(msg: str) -> bool:
     """
-    Trả về True nếu tin nhắn chỉ là 'nhiễu' bắt đầu bằng o/O (ok, oh, ob, ...),
-    để không hiển thị cảnh báo CommandNotFound.
+    True nếu tin nhắn là những cụm thường chat nhầm như: ok, oh, ob, ooo...
+    để KHÔNG hiện cảnh báo CommandNotFound.
     """
     if not msg:
         return False
-    s = msg.strip()
-    if not s or s[0] not in ("o", "O"):
+
+    s = msg.strip().lower()
+    if not s:
         return False
-    i = 0
-    while i < len(s) and s[i] in ("o", "O"):
-        i += 1
-    s = s[i:].lstrip(" .,!?:;-/\\`'\"|_~")
-    first = (s.split()[0] if s else "").lower()
-    return first in IGNORE_O_TOKENS
+
+    # 1) Nếu từ đầu tiên đúng y chang 1 trong whitelist → bỏ qua
+    first = s.split()[0]
+    if first in IGNORE_O_TOKENS:
+        return True
+
+    # 2) Nếu toàn bộ là chữ 'o' (o, oo, ooo...) → bỏ qua
+    if set(first) == {"o"}:
+        return True
+
+    # 3) Nếu bắt đầu bằng 'o' + 1 trong whitelist (ví dụ 'o ok' hiếm gặp) → bỏ qua
+    for t in IGNORE_O_TOKENS:
+        if first.startswith("o" + t):
+            return True
+
+    return False
+
 
 # ====== Lệnh ngăn không nhầm sang ok ======
 
