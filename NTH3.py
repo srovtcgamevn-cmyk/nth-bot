@@ -2031,8 +2031,13 @@ if __name__ == "__main__":
         print("Vui lòng đặt biến môi trường TU_TIEN_BOT_TOKEN với token bot của bạn.")
     else:
         ensure_data()
+bot.run(TOKEN)
 
-# ====== Lệnh hệ thống: osetbot / obatdau Bắt Đầu
+
+
+
+
+
 # ====== Lệnh hệ thống: osetbot / obatdau Bắt Đầu ======
 # =========================
 # SETBOT & KHOÁ KÊNH (MỚI)
@@ -2276,9 +2281,10 @@ async def cmd_setbot(ctx: commands.Context):
     await ctx.send(note, view=view)
 # ====== Lệnh hệ thống: osetbot / obatdau Kết Thúc ======
 
-# ====== Lệnh hệ thống: osetbot / obatdau Kết Thúc
 
-bot.run(TOKEN)
+
+
+
 
 
 
