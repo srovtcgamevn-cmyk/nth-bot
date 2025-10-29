@@ -582,28 +582,10 @@ def make_embed(title, description="", fields=None, color=0x9B5CF6, thumb=None, i
     if footer: emb.set_footer(text=footer)
     return emb
 
+
+
 def format_num(n:int)->str:
     return f"{n:,}"
-
-def _looks_like_noise_o(msg: str) -> bool:
-    """
-    Trả về True nếu tin nhắn chỉ là 'nhiễu' bắt đầu bằng o/O (ok, oh, ob, ...),
-    để không hiển thị cảnh báo CommandNotFound.
-    """
-    if not msg:
-        return False
-    s = msg.strip()
-    if not s or s[0] not in ("o", "O"):
-        return False
-    i = 0
-    while i < len(s) and s[i] in ("o", "O"):
-        i += 1
-    s = s[i:].lstrip(" .,!?:;-/\\`'\"|_~")
-    first = (s.split()[0] if s else "").lower()
-    return first in IGNORE_O_TOKENS
-
-
-
 
 # ====== Lưu trữ & Tiện ích Kết Thúc ======
 
@@ -667,9 +649,36 @@ from discord.ext.commands import CommandNotFound, CommandOnCooldown, CheckFailur
 import aiohttp
 import asyncio
 
-
 # ====== Lệnh hệ thống: osetbot / obatdau Kết Thúc ======
 
+
+# ====== Lệnh ngăn không nhầm sang ok ======
+
+
+def _looks_like_noise_o(msg: str) -> bool:
+    """
+    Trả về True nếu tin nhắn chỉ là 'nhiễu' bắt đầu bằng o/O (ok, oh, ob, ...),
+    để không hiển thị cảnh báo CommandNotFound.
+    """
+    if not msg:
+        return False
+    s = msg.strip()
+    if not s or s[0] not in ("o", "O"):
+        return False
+    i = 0
+    while i < len(s) and s[i] in ("o", "O"):
+        i += 1
+    s = s[i:].lstrip(" .,!?:;-/\\`'\"|_~")
+    first = (s.split()[0] if s else "").lower()
+    return first in IGNORE_O_TOKENS
+
+# ====== Lệnh ngăn không nhầm sang ok ======
+
+
+
+
+
+# ====== CẢNH BÁO LỆNH BẮT ĐẦU ======
 
 
 @bot.event
@@ -680,6 +689,7 @@ async def on_command_error(ctx, error):
     # Các lỗi do check (ví dụ sai kênh) đã được global check xử lý → im lặng
     if isinstance(error, CheckFailure):
         return
+# ====== ngăn chặn ok ======
 
     # ❓ Chỉ báo "lệnh không tồn tại" nếu kênh này đã được setbot
     # ❓ Chỉ báo "lệnh không tồn tại" nếu kênh này đã được setbot
@@ -715,6 +725,7 @@ async def on_command_error(ctx, error):
                 return
         await ctx.reply("❓ Lệnh không tồn tại. Dùng `olenh` để xem danh sách.", mention_author=False)
         return
+# ====== ngăn chặn ok ======
 
     # Cooldown
     if isinstance(error, CommandOnCooldown):
@@ -1249,11 +1260,11 @@ async def cmd_okho(ctx):
 
     # Tổng rương
     total_r = (
-        user["rungs"]["D"]
-        + user["rungs"]["C"]
-        + user["rungs"]["B"]
-        + user["rungs"]["A"]
-        + user["rungs"]["S"]
+        int(user["rungs"]["D"])
+        + int(user["rungs"]["C"])
+        + int(user["rungs"]["B"])
+        + int(user["rungs"]["A"])
+        + int(user["rungs"]["S"])
     )
 
     rtext = (
@@ -1270,9 +1281,9 @@ async def cmd_okho(ctx):
         inline=False
     )
     emb.add_field(
-    name=f"{NP_EMOJI} Ngân phiếu hiện có: {format_num(user['ngan_phi'])}",
-    value="\u200b",   # zero-width space để không xuống dòng nội dung
-    inline=True
+        name=f"{NP_EMOJI} Ngân phiếu hiện có: {format_num(user['ngan_phi'])}",
+        value="\u200b",
+        inline=True
     )
     emb.add_field(name="Trang bị", value=content, inline=False)
 
@@ -1283,16 +1294,16 @@ async def cmd_okho(ctx):
     )
     emb.add_field(name="📊 Thống kê", value=stats_text, inline=False)
 
-    # Gửi embed kèm ảnh kho đồ
-    async with aiohttp.ClientSession() as sess:
-# bạn chỉ cần cho mình biết đoạn code load/save hiện tại(IMG_KHO_DO, "khodo.png")  # dùng ảnh kho đồ
+    # 👉 Tải ảnh kho & gửi
+    try:
+        file = await file_from_url_cached(IMG_KHO_DO, "khodo.png")
         emb.set_image(url="attachment://khodo.png")
         view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
         view.children[0].disabled = True
         view.children[1].disabled = (len(items_show) <= 10)
         msg = await ctx.send(embed=emb, file=file, view=view)
 
-        # Tự động xóa ảnh sau 3 giây để tránh spam
+        # Thu gọn ảnh sau 3 giây (tránh spam)
         try:
             await asyncio.sleep(3)
             emb.set_image(url=discord.Embed.Empty)
@@ -1302,6 +1313,13 @@ async def cmd_okho(ctx):
                 await msg.edit(embed=emb, view=view)
         except Exception:
             pass
+    except Exception:
+        # Nếu tải ảnh lỗi, vẫn gửi embed để không làm hỏng lệnh
+        view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
+        view.children[0].disabled = True
+        view.children[1].disabled = (len(items_show) <= 10)
+        await ctx.send(embed=emb, view=view)
+
 
 @bot.command(name="mac")
 @commands.cooldown(1, 5, commands.BucketType.user)
