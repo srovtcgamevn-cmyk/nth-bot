@@ -1,0 +1,12 @@
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pip install -r requirements.txt"
+  },
+  "deploy": {
+    "startCommand": "python NTH3.py"
+  },
+  "variables": {
+    "PYTHON_VERSION": "3.12.7"
+  }
+}
