@@ -1236,7 +1236,7 @@ async def cmd_okho(ctx):
 
     # Gửi embed kèm ảnh kho đồ
     async with aiohttp.ClientSession() as sess:
-        bạn chỉ cần cho mình biết đoạn code load/save hiện tại(IMG_KHO_DO, "khodo.png")  # dùng ảnh kho đồ
+# bạn chỉ cần cho mình biết đoạn code load/save hiện tại(IMG_KHO_DO, "khodo.png")  # dùng ảnh kho đồ
         emb.set_image(url="attachment://khodo.png")
         view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
         view.children[0].disabled = True
