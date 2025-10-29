@@ -172,7 +172,7 @@ IMG_RUONG_MO = "https://i.ibb.co/21NS0t10/ruongdamo.png"
 IMG_NGAN_PHIEU = "https://i.ibb.co/DDrgRRF1/nganphieu.png"
 # Bổ sung theo yêu cầu
 IMG_KHO_DO = "https://i.postimg.cc/W3189R0f/thungdo-min.png"    # dùng trong okho
-IMG_NHAN_VAT = "https://i.postimg.cc/Z0trzXyz/nhanvat-min.png"  # dùng trong onhanvat
+IMG_NHAN_VAT = "https://sv2.anhsieuviet.com/2025/10/29/nhanvat-min.png"  # dùng trong onhanvat
 
 # Ảnh riêng cho từng loại trang bị (dùng trong oxem)
 ITEM_IMAGE = {
@@ -1236,7 +1236,7 @@ async def cmd_okho(ctx):
 
     # Gửi embed kèm ảnh kho đồ
     async with aiohttp.ClientSession() as sess:
-        file = await file_from_url_cached(IMG_KHO_DO, "khodo.png")  # dùng ảnh kho đồ
+        bạn chỉ cần cho mình biết đoạn code load/save hiện tại(IMG_KHO_DO, "khodo.png")  # dùng ảnh kho đồ
         emb.set_image(url="attachment://khodo.png")
         view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
         view.children[0].disabled = True
@@ -1353,7 +1353,7 @@ async def cmd_oxem(ctx, item_id: str = None):
 
     # Ảnh riêng theo loại trang bị
     img_url = ITEM_IMAGE.get(it["type"], IMG_BANDO_DEFAULT)
-    file = await file_from_url_cached(img_url, "item.png")
+    bạn chỉ cần cho mình biết đoạn code load/save hiện tại(img_url, "item.png")
     emb.set_image(url="attachment://item.png")
     msg = await ctx.send(embed=emb)
 
@@ -1376,7 +1376,7 @@ async def cmd_onhanvat(ctx, member: discord.Member=None):
     emb.add_field(name=f"{NP_EMOJI} Ngân Phiếu", value=format_num(user["ngan_phi"]), inline=True)
     emb.add_field(name="Trang bị đang mặc", value="\n".join(equip_lines) if equip_lines else "Không có", inline=False)
     # Ảnh nhân vật riêng
-    file = await file_from_url_cached("https://i.ibb.co/hFqpycRT/nhanvat-min.png", "nhanvat.png")
+    data("https://sv2.anhsieuviet.com/2025/10/29/nhanvat-min.png", "nhanvat.png")
     emb.set_image(url="attachment://nhanvat.png")
     msg = await ctx.send(embed=emb, file=file)
 
