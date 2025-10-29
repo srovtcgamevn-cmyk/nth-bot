@@ -40,7 +40,7 @@ DATA_FILE = os.path.join(DATA_DIR, "data.json")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 
 # đảm bảo thư mục tồn tại
-os.makedirs(BACKUP_DIR, exist_ok=True
+os.makedirs(BACKUP_DIR, exist_ok=True)
 
 
 DATA_FILE = "data.json"
