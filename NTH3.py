@@ -107,6 +107,13 @@ INTENTS.members = True
 DATA_FILE = "data.json"
 COOLDOWN_OL = 10  # giây
 STARTING_NP = 1000
+# ——— BỎ QUA CẢNH BÁO CHO MỘT SỐ TỪ KHÓA MỞ ĐẦU BẰNG "o"/"O" ———
+IGNORE_O_TOKENS = {
+    "ok", "oh", "ob","oke", "okay", "ooo", "oi"
+    
+}
+
+
 
 
 # Emoji phẩm chất
@@ -577,6 +584,27 @@ def make_embed(title, description="", fields=None, color=0x9B5CF6, thumb=None, i
 
 def format_num(n:int)->str:
     return f"{n:,}"
+
+def _looks_like_noise_o(msg: str) -> bool:
+    """
+    Trả về True nếu tin nhắn chỉ là 'nhiễu' bắt đầu bằng o/O (ok, oh, ob, ...),
+    để không hiển thị cảnh báo CommandNotFound.
+    """
+    if not msg:
+        return False
+    s = msg.strip()
+    if not s or s[0] not in ("o", "O"):
+        return False
+    i = 0
+    while i < len(s) and s[i] in ("o", "O"):
+        i += 1
+    s = s[i:].lstrip(" .,!?:;-/\\`'\"|_~")
+    first = (s.split()[0] if s else "").lower()
+    return first in IGNORE_O_TOKENS
+
+
+
+
 # ====== Lưu trữ & Tiện ích Kết Thúc ======
 
 # ====== Khởi tạo Bot & Kiểm soát kênh Bắt Đầu ======
@@ -654,7 +682,28 @@ async def on_command_error(ctx, error):
         return
 
     # ❓ Chỉ báo "lệnh không tồn tại" nếu kênh này đã được setbot
+    # ❓ Chỉ báo "lệnh không tồn tại" nếu kênh này đã được setbot
     if isinstance(error, CommandNotFound):
+        # 3.1) Nếu là "noise" như ok/oh/ob... thì im lặng
+        try:
+            if _looks_like_noise_o(getattr(ctx.message, "content", "")):
+                return
+        except Exception:
+            pass
+
+        # 3.2) Chỉ cảnh báo ở kênh ĐÃ setbot
+        if ctx.guild:
+            try:
+                data = load_data()
+                allowed = get_guild_channels(data, ctx.guild.id)  # set() các channel id đã setbot
+            except Exception:
+                allowed = set()
+            # Chưa setbot hoặc không phải kênh đã set → im lặng
+            if not allowed or (ctx.channel.id not in allowed):
+                return
+
+        await ctx.reply("❓ Lệnh không tồn tại. Dùng `olenh` để xem danh sách.", mention_author=False)
+        return
         if ctx.guild:  # chỉ xét trong server
             try:
                 data = load_data()
