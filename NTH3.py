@@ -1376,9 +1376,10 @@ async def cmd_onhanvat(ctx, member: discord.Member=None):
     emb.add_field(name=f"{NP_EMOJI} Ngân Phiếu", value=format_num(user["ngan_phi"]), inline=True)
     emb.add_field(name="Trang bị đang mặc", value="\n".join(equip_lines) if equip_lines else "Không có", inline=False)
     # Ảnh nhân vật riêng
-    file = await file_from_url_cached(IMG_NHAN_VAT, "nhanvat.png")
-    emb.set_image(url="attachment://nhanvat.png")
-    msg = await ctx.send(embed=emb)
+   file = await file_from_url_cached("https://i.ibb.co/hFqpycRT/nhanvat-min.png", "nhanvat.png")
+   emb.set_image(url="attachment://nhanvat.png")
+   msg = await ctx.send(embed=emb, file=file)
+
 
     # (ảnh đã được chuẩn bị ở trên; nếu muốn gắn lại thì cần gọi _attach_image_later thủ công)
 # ====== Lệnh nhân vật: onhanvat Kết Thúc ======
