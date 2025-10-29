@@ -1,0 +1,16 @@
+services:
+  - type: worker
+    name: nth-bot
+    env: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: |
+      bash start.sh
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
