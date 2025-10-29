@@ -1353,7 +1353,7 @@ async def cmd_oxem(ctx, item_id: str = None):
 
     # Ảnh riêng theo loại trang bị
     img_url = ITEM_IMAGE.get(it["type"], IMG_BANDO_DEFAULT)
-    bạn chỉ cần cho mình biết đoạn code load/save hiện tại(img_url, "item.png")
+   #  bạn chỉ cần cho mình biết đoạn code load/save hiện tại(img_url, "item.png")
     emb.set_image(url="attachment://item.png")
     msg = await ctx.send(embed=emb)
 
