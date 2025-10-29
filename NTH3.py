@@ -608,6 +608,37 @@ async def on_ready():
     except Exception:
         pass
 
+@bot.check
+async def global_channel_check(ctx):
+    # Legacy check (vô hiệu hóa để dùng bộ check mới bên dưới)
+    return True
+
+    # Cho phép các lệnh whitelisted và lệnh trong DM
+    if ctx.command and ctx.command.name in whitelisted:
+        return True
+    if not ctx.guild:
+        return True
+
+    # Kiểm tra kênh đã được set cho guild hiện tại
+    data = load_data()
+    ch_id = get_guild_channel(data, ctx.guild.id)
+
+    # Sai kênh hoặc chưa set → cảnh báo và chặn
+    if not ch_id or ctx.channel.id != int(ch_id):
+        msg = "Yêu cầu Admin Discord sử dụng lệnh `osetbot` để kích hoạt BOT tại kênh này."
+        try:
+            await ctx.reply(msg, mention_author=False)
+        except Exception:
+            await ctx.send(msg)
+        return False
+
+    # Đúng kênh → cho phép
+    return True
+
+from discord.ext.commands import CommandNotFound, CommandOnCooldown, CheckFailure, CommandInvokeError, BadArgument, MissingRequiredArgument
+import aiohttp
+import asyncio
+
 
 # ====== Lệnh hệ thống: osetbot / obatdau Kết Thúc ======
 
@@ -1985,157 +2016,12 @@ async def cmd_opingg(ctx):
 
 
 
-
-
-
-
-# ====================== PATCH: osetbot + Cổng kênh an toàn ======================
-import discord
-from discord.ext import commands
-
-# (1) Danh sách lệnh gameplay cần buộc chạy đúng kênh (không động vào lệnh khác)
-GAMEPLAY_REQUIRE = {
-    "ol", "omo", "okho", "onhanvat", "oxem", "omac", "othao", "odt",
-    # nếu bạn có thêm lệnh gameplay khác, nối thêm vào đây
-}
-
-# (2) Lệnh quản trị/tiện ích cho phép chạy ở bất kỳ kênh nào
-ADMIN_WHITELIST_CMDS = {
-    "setbot", "osetbot", "help", "ping", "oping", "opingg"
-}
-
-# (3) Helper: lấy/tạo node cấu hình guild
-def _ensure_guild_cfg(data: dict, guild_id: int) -> dict:
-    cfg = data.setdefault("server_cfg", {})
-    g = cfg.setdefault(str(guild_id), {
-        "main_channel": None,
-        "guest_channels": []
-    })
-    # đảm bảo kiểu đúng
-    if "guest_channels" not in g or not isinstance(g["guest_channels"], list):
-        g["guest_channels"] = []
-    return g
-
-def set_guild_channel(data: dict, guild_id: int, main_id: int | None = None,
-                      add_guest_id: int | None = None):
-    g = _ensure_guild_cfg(data, guild_id)
-    if main_id is not None:
-        g["main_channel"] = int(main_id)
-        # nếu main có trùng trong guest thì loại bỏ
-        if g["main_channel"] in g["guest_channels"]:
-            g["guest_channels"] = [x for x in g["guest_channels"] if x != g["main_channel"]]
-    if add_guest_id is not None:
-        gid = int(add_guest_id)
-        if gid != g["main_channel"] and gid not in g["guest_channels"]:
-            g["guest_channels"].append(gid)
-
-def get_guild_channels(data: dict, guild_id: int) -> tuple[int | None, set[int]]:
-    g = _ensure_guild_cfg(data, guild_id)
-    main_id = g.get("main_channel")
-    guests = set(int(x) for x in g.get("guest_channels", []))
-    return (int(main_id) if main_id else None, guests)
-
-# (4) View UI cho lệnh osetbot
-class SetBotView(discord.ui.View):
-    def __init__(self, data: dict, guild_id: int, channel_id: int, *, timeout: float | None = 300):
-        super().__init__(timeout=timeout)
-        self.data = data
-        self.guild_id = guild_id
-        self.channel_id = channel_id
-
-    async def _check_admin(self, interaction: discord.Interaction) -> bool:
-        # chỉ cho admin server thao tác
-        is_admin = bool(getattr(getattr(interaction.user, "guild_permissions", None), "administrator", False))
-        if not is_admin:
-            await interaction.response.send_message("❌ Chỉ Admin mới dùng được nút này.", ephemeral=True)
-        return is_admin
-
-    @discord.ui.button(label="✅ Set DUY NHẤT kênh này", style=discord.ButtonStyle.success, emoji="🛡️")
-    async def btn_set_main(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check_admin(interaction):
-            return
-        set_guild_channel(self.data, self.guild_id, main_id=self.channel_id)
-        save_data(self.data)
-        await interaction.response.send_message(
-            f"✅ Đã **đặt DUY NHẤT** kênh <#{self.channel_id}> cho BOT.", ephemeral=True
-        )
-
-    @discord.ui.button(label="➕ Thêm kênh phụ (kênh này)", style=discord.ButtonStyle.primary)
-    async def btn_add_guest(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check_admin(interaction):
-            return
-        set_guild_channel(self.data, self.guild_id, add_guest_id=self.channel_id)
-        save_data(self.data)
-        await interaction.response.send_message(
-            f"➕ Đã **thêm kênh phụ**: <#{self.channel_id}>.", ephemeral=True
-        )
-
-    @discord.ui.button(label="📋 Xem kênh đã set", style=discord.ButtonStyle.secondary)
-    async def btn_show(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._check_admin(interaction):
-            return
-        main_id, guests = get_guild_channels(self.data, self.guild_id)
-        main_txt = f"<#{main_id}>" if main_id else "— Chưa đặt —"
-        guests_txt = ", ".join(f"<#{c}>" for c in guests) if guests else "— Không có —"
-        await interaction.response.send_message(
-            f"📌 **Kênh DUY NHẤT:** {main_txt}\n📎 **Kênh phụ:** {guests_txt}",
-            ephemeral=True
-        )
-
-# (6) Cổng chặn toàn cục: chỉ chặn **GAMEPLAY_REQUIRE** ngoài kênh đã set.
-@bot.check
-async def _global_channel_gate(ctx: commands.Context) -> bool:
-    # DM / không có guild → cho qua
-    if ctx.guild is None:
-        return True
-
-    # Nếu là lệnh quản trị/tiện ích → luôn cho qua
-    cmd_name = (ctx.command.qualified_name if ctx.command else "") or ""
-    if cmd_name in ADMIN_WHITELIST_CMDS:
-        return True
-
-    # Không nằm trong nhóm gameplay → cho qua
-    if cmd_name not in GAMEPLAY_REQUIRE:
-        return True
-
-    # admin server luôn được qua (đỡ kẹt lúc phải cấu hình)
-    if bool(getattr(getattr(ctx.author, "guild_permissions", None), "administrator", False)):
-        return True
-
-    data = load_data()
-    main_id, guests = get_guild_channels(data, ctx.guild.id)
-
-    # nếu chưa set gì → gửi nhắc cấu hình 1 lần, rồi cho qua để bạn test
-    if main_id is None and not guests:
-        try:
-            view = SetBotView(data, ctx.guild.id, ctx.channel.id)
-            await ctx.send("⚠️ BOT chưa được cấu hình kênh. **Yêu cầu Admin dùng `osetbot`** để kích hoạt tại kênh này.",
-                           view=view)
-        except Exception:
-            pass
-        return False  # chặn hẳn để tránh spam gameplay khi chưa set
-
-    allowed = set()
-    if main_id:
-        allowed.add(main_id)
-    allowed |= guests
-
-    return ctx.channel.id in allowed
-# ====================== END PATCH =================================================
-
-
-
-
-
-
-
-
-
 # ====== Lệnh hệ thống: osetbot / obatdau Bắt Đầu ======
 # =========================
 # SETBOT & KHOÁ KÊNH (MỚI)
 # =========================
 from discord import ui, ButtonStyle, Interaction
+
 
 # Giữ nguyên 2 decorator gốc nếu bạn đã có
 def is_admin():
