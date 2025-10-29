@@ -2119,9 +2119,25 @@ ADMIN_WHITELIST = {
 }
 
 # Các lệnh gameplay yêu cầu đúng kênh (bạn tùy biến theo dự án):
+# Các lệnh gameplay chỉ cho phép chạy ở kênh đã osetbot
 GAMEPLAY_REQUIRE = {
-    "ol", "okho", "onhanvat", "omo", "oban", "omac", "othao", "oxem", "odt", "mo"
+    # thám hiểm
+    "ol", "l",
+    # kho / xem / mặc / tháo
+    "okho", "kho",
+    "oxem", "xem",
+    "omac", "mac",
+    "othao", "thao",
+    # mở rương
+    "omo", "mo",
+    # bán đồ
+    "oban", "ban",
+    # nhân vật
+    "onhanvat", "nhanvat",
+    # đổ thạch
+    "odt", "dt",
 }
+
 
 # ====== Bộ lọc kênh toàn cục (bản chính xác hơn) ======
 @bot.check
