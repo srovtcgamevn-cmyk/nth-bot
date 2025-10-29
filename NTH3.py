@@ -688,64 +688,62 @@ async def on_command_error(ctx, error):
     if isinstance(error, CommandInvokeError):
         orig = getattr(error, "original", None)
         try:
-            import aiohttp  # ensure name exists
+            import aiohttp  # local import for error type checks
         except Exception:
             aiohttp = None
-        if aiohttp and isinstance(orig, (aiohttp.ClientResponseError, aiohttp.ClientPayloadError)):
+        if (aiohttp and isinstance(orig, (aiohttp.ClientResponseError, aiohttp.ClientPayloadError))) or isinstance(orig, asyncio.TimeoutError):
             return
-        import asyncio
-        if isinstance(orig, asyncio.TimeoutError):
-            return
+
 
     raise error
 
 
-    if isinstance(error, CommandNotFound):
-        await ctx.reply("❓ Lệnh không tồn tại. Dùng `olenh` để xem danh sách.", mention_author=False)
-        return
-
-    if isinstance(error, CommandOnCooldown):
-        await ctx.reply(f"⏳ Vui lòng chờ thêm {int(error.retry_after)} giây.", mention_author=False)
-        return
-
+# DUPLICATE (unreachable) disabled:     if isinstance(error, CommandNotFound):
+# DISABLED DUPLICATE:         await ctx.reply("❓ Lệnh không tồn tại. Dùng `olenh` để xem danh sách.", mention_author=False)
+# DISABLED DUPLICATE:         return
+# DISABLED DUPLICATE: 
+# DUPLICATE (unreachable) disabled:     if isinstance(error, CommandOnCooldown):
+# DISABLED DUPLICATE:         await ctx.reply(f"⏳ Vui lòng chờ thêm {int(error.retry_after)} giây.", mention_author=False)
+# DISABLED DUPLICATE:         return
+# DISABLED DUPLICATE: 
     # Thiếu tham số
-    if isinstance(error, MissingRequiredArgument):
-        name = getattr(ctx.command, "name", "")
-        if name in {"mac","thao","xem"}:
-            await ctx.reply(f"📝 Lệnh `{name}` cần ID. Ví dụ: `{name} 123`.", mention_author=False)
-            return
-        if name in {"dt"}:
-            await ctx.reply("📝 Dùng: `odt <số_ngân_phiếu>` — ví dụ: `odt 1000`.", mention_author=False)
-            return
-        await ctx.reply("📝 Thiếu tham số. Dùng `olenh` để xem cú pháp.", mention_author=False)
-        return
-
+# DUPLICATE (unreachable) disabled:     if isinstance(error, MissingRequiredArgument):
+# DISABLED DUPLICATE:         name = getattr(ctx.command, "name", "")
+# DISABLED DUPLICATE:         if name in {"mac","thao","xem"}:
+# DISABLED DUPLICATE:             await ctx.reply(f"📝 Lệnh `{name}` cần ID. Ví dụ: `{name} 123`.", mention_author=False)
+# DISABLED DUPLICATE:             return
+# DISABLED DUPLICATE:         if name in {"dt"}:
+# DISABLED DUPLICATE:             await ctx.reply("📝 Dùng: `odt <số_ngân_phiếu>` — ví dụ: `odt 1000`.", mention_author=False)
+# DISABLED DUPLICATE:             return
+# DISABLED DUPLICATE:         await ctx.reply("📝 Thiếu tham số. Dùng `olenh` để xem cú pháp.", mention_author=False)
+# DISABLED DUPLICATE:         return
+# DISABLED DUPLICATE: 
     # Sai kiểu tham số (ví dụ nhập 'all' cho số nguyên...)
-    if isinstance(error, BadArgument):
-        name = getattr(ctx.command, "name", "")
-        if name in {"dt"}:
-            await ctx.reply("⚠️ Số tiền cược không hợp lệ. Ví dụ: `odt 500`.", mention_author=False)
-            return
-        if name in {"addtien","addruong"}:
-            await ctx.reply("⚠️ Số lượng không hợp lệ. Ví dụ: `oaddtien @user 1000`.", mention_author=False)
-            return
-        await ctx.reply("⚠️ Tham số không hợp lệ. Kiểm tra lại cú pháp.", mention_author=False)
-        return
-
+# DUPLICATE (unreachable) disabled:     if isinstance(error, BadArgument):
+# DISABLED DUPLICATE:         name = getattr(ctx.command, "name", "")
+# DISABLED DUPLICATE:         if name in {"dt"}:
+# DISABLED DUPLICATE:             await ctx.reply("⚠️ Số tiền cược không hợp lệ. Ví dụ: `odt 500`.", mention_author=False)
+# DISABLED DUPLICATE:             return
+# DISABLED DUPLICATE:         if name in {"addtien","addruong"}:
+# DISABLED DUPLICATE:             await ctx.reply("⚠️ Số lượng không hợp lệ. Ví dụ: `oaddtien @user 1000`.", mention_author=False)
+# DISABLED DUPLICATE:             return
+# DISABLED DUPLICATE:         await ctx.reply("⚠️ Tham số không hợp lệ. Kiểm tra lại cú pháp.", mention_author=False)
+# DISABLED DUPLICATE:         return
+# DISABLED DUPLICATE: 
     # Lỗi do gọi API/ảnh (ví dụ 503 từ host ảnh)
-    if isinstance(error, CommandInvokeError):
-        orig = getattr(error, 'original', None)
-        if isinstance(orig, (aiohttp.ClientResponseError, aiohttp.ClientPayloadError, asyncio.TimeoutError)):
-            await ctx.reply("⚠️ Gần đây đang xuất hiện thổ phỉ, không an toàn. Hãy mở rương lại sau vài giây", mention_author=False)
-            return
-
+# DISABLED DUPLICATE:     if isinstance(error, CommandInvokeError):
+# DISABLED DUPLICATE:         orig = getattr(error, 'original', None)
+# DISABLED DUPLICATE:         if isinstance(orig, (aiohttp.ClientResponseError, aiohttp.ClientPayloadError, asyncio.TimeoutError)):
+# DISABLED DUPLICATE:             await ctx.reply("⚠️ Gần đây đang xuất hiện thổ phỉ, không an toàn. Hãy mở rương lại sau vài giây", mention_author=False)
+# DISABLED DUPLICATE:             return
+# DISABLED DUPLICATE: 
     # Các lỗi khác: để nổi lên để còn debug
-    raise error
-
+# DISABLED DUPLICATE:     raise error
+# DISABLED DUPLICATE: 
 # ====== Khởi tạo Bot & Kiểm soát kênh Kết Thúc ======
-
-
-
+# DISABLED DUPLICATE: 
+# DISABLED DUPLICATE: 
+# DISABLED DUPLICATE: 
 # ===== ẢNH & CẤU HÌNH HIỂN THỊ ẢNH (Helper) BẮT ĐẦU =====
 def _get_cfg(data: dict) -> dict:
     cfg = data.setdefault("config", {})
@@ -847,7 +845,6 @@ async def cmd_ol(ctx):
 
     # Thu gọn: xóa ảnh sau 3 giây để giảm spam
     try:
-        import asyncio
         await asyncio.sleep(3)
         if emb.image:
             emb.set_image(url=discord.Embed.Empty)
@@ -1242,7 +1239,6 @@ async def cmd_okho(ctx):
 
         # Tự động xóa ảnh sau 3 giây để tránh spam
         try:
-            import asyncio
             await asyncio.sleep(3)
             emb.set_image(url=discord.Embed.Empty)
             try:
@@ -1383,7 +1379,6 @@ async def cmd_onhanvat(ctx, member: discord.Member=None):
 
 # ====== ĐỔ THẠCH (odt) + JACKPOT (bản hiển thị tối ưu) — BẮT ĐẦU ======
 import time, random, asyncio, discord
-from discord.ext import commands
 
 # --- EMOJI (giữ như bản bạn gửi) ---
 EMOJI_DOTHACH      = "<a:dothach:1431793311978491914>"
@@ -2023,14 +2018,183 @@ async def cmd_opingg(ctx):
 
 
 
+
+
+
+
+# ====================== PATCH: osetbot + Cổng kênh an toàn ======================
+import discord
+from discord.ext import commands
+
+# (1) Danh sách lệnh gameplay cần buộc chạy đúng kênh (không động vào lệnh khác)
+GAMEPLAY_REQUIRE = {
+    "ol", "omo", "okho", "onhanvat", "oxem", "omac", "othao", "odt",
+    # nếu bạn có thêm lệnh gameplay khác, nối thêm vào đây
+}
+
+# (2) Lệnh quản trị/tiện ích cho phép chạy ở bất kỳ kênh nào
+ADMIN_WHITELIST_CMDS = {
+    "setbot", "osetbot", "help", "ping", "oping", "opingg"
+}
+
+# (3) Helper: lấy/tạo node cấu hình guild
+def _ensure_guild_cfg(data: dict, guild_id: int) -> dict:
+    cfg = data.setdefault("server_cfg", {})
+    g = cfg.setdefault(str(guild_id), {
+        "main_channel": None,
+        "guest_channels": []
+    })
+    # đảm bảo kiểu đúng
+    if "guest_channels" not in g or not isinstance(g["guest_channels"], list):
+        g["guest_channels"] = []
+    return g
+
+def set_guild_channel(data: dict, guild_id: int, main_id: int | None = None,
+                      add_guest_id: int | None = None):
+    g = _ensure_guild_cfg(data, guild_id)
+    if main_id is not None:
+        g["main_channel"] = int(main_id)
+        # nếu main có trùng trong guest thì loại bỏ
+        if g["main_channel"] in g["guest_channels"]:
+            g["guest_channels"] = [x for x in g["guest_channels"] if x != g["main_channel"]]
+    if add_guest_id is not None:
+        gid = int(add_guest_id)
+        if gid != g["main_channel"] and gid not in g["guest_channels"]:
+            g["guest_channels"].append(gid)
+
+def get_guild_channels(data: dict, guild_id: int) -> tuple[int | None, set[int]]:
+    g = _ensure_guild_cfg(data, guild_id)
+    main_id = g.get("main_channel")
+    guests = set(int(x) for x in g.get("guest_channels", []))
+    return (int(main_id) if main_id else None, guests)
+
+# (4) View UI cho lệnh osetbot
+class SetBotView(discord.ui.View):
+    def __init__(self, data: dict, guild_id: int, channel_id: int, *, timeout: float | None = 300):
+        super().__init__(timeout=timeout)
+        self.data = data
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+
+    async def _check_admin(self, interaction: discord.Interaction) -> bool:
+        # chỉ cho admin server thao tác
+        is_admin = bool(getattr(getattr(interaction.user, "guild_permissions", None), "administrator", False))
+        if not is_admin:
+            await interaction.response.send_message("❌ Chỉ Admin mới dùng được nút này.", ephemeral=True)
+        return is_admin
+
+    @discord.ui.button(label="✅ Set DUY NHẤT kênh này", style=discord.ButtonStyle.success, emoji="🛡️")
+    async def btn_set_main(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_admin(interaction):
+            return
+        set_guild_channel(self.data, self.guild_id, main_id=self.channel_id)
+        save_data(self.data)
+        await interaction.response.send_message(
+            f"✅ Đã **đặt DUY NHẤT** kênh <#{self.channel_id}> cho BOT.", ephemeral=True
+        )
+
+    @discord.ui.button(label="➕ Thêm kênh phụ (kênh này)", style=discord.ButtonStyle.primary)
+    async def btn_add_guest(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_admin(interaction):
+            return
+        set_guild_channel(self.data, self.guild_id, add_guest_id=self.channel_id)
+        save_data(self.data)
+        await interaction.response.send_message(
+            f"➕ Đã **thêm kênh phụ**: <#{self.channel_id}>.", ephemeral=True
+        )
+
+    @discord.ui.button(label="📋 Xem kênh đã set", style=discord.ButtonStyle.secondary)
+    async def btn_show(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_admin(interaction):
+            return
+        main_id, guests = get_guild_channels(self.data, self.guild_id)
+        main_txt = f"<#{main_id}>" if main_id else "— Chưa đặt —"
+        guests_txt = ", ".join(f"<#{c}>" for c in guests) if guests else "— Không có —"
+        await interaction.response.send_message(
+            f"📌 **Kênh DUY NHẤT:** {main_txt}\n📎 **Kênh phụ:** {guests_txt}",
+            ephemeral=True
+        )
+
+# (5) Lệnh setbot / osetbot (không đụng gì lệnh cũ của bạn)
+@commands.has_permissions(administrator=True)
+@bot.command(name="setbot", aliases=["osetbot"])
+async def cmd_setbot(ctx: commands.Context):
+    data = load_data()
+    # đảm bảo node cấu hình tồn tại
+    _ensure_guild_cfg(data, ctx.guild.id)
+    save_data(data)
+
+    view = SetBotView(data, ctx.guild.id, ctx.channel.id)
+    note = (
+        "⚠️ **BOT** sử dụng tiến tố `o` hoặc `O`.\n"
+        "Hãy **chỉ định 1 kênh riêng (hoặc kênh phụ)** để tránh trùng với BOT khác.\n"
+        "Nhấn các nút bên dưới để cấu hình nhanh."
+    )
+    await ctx.send(note, view=view)
+
+# (6) Cổng chặn toàn cục: chỉ chặn **GAMEPLAY_REQUIRE** ngoài kênh đã set.
+@bot.check
+async def _global_channel_gate(ctx: commands.Context) -> bool:
+    # DM / không có guild → cho qua
+    if ctx.guild is None:
+        return True
+
+    # Nếu là lệnh quản trị/tiện ích → luôn cho qua
+    cmd_name = (ctx.command.qualified_name if ctx.command else "") or ""
+    if cmd_name in ADMIN_WHITELIST_CMDS:
+        return True
+
+    # Không nằm trong nhóm gameplay → cho qua
+    if cmd_name not in GAMEPLAY_REQUIRE:
+        return True
+
+    # admin server luôn được qua (đỡ kẹt lúc phải cấu hình)
+    if bool(getattr(getattr(ctx.author, "guild_permissions", None), "administrator", False)):
+        return True
+
+    data = load_data()
+    main_id, guests = get_guild_channels(data, ctx.guild.id)
+
+    # nếu chưa set gì → gửi nhắc cấu hình 1 lần, rồi cho qua để bạn test
+    if main_id is None and not guests:
+        try:
+            view = SetBotView(data, ctx.guild.id, ctx.channel.id)
+            await ctx.send("⚠️ BOT chưa được cấu hình kênh. **Yêu cầu Admin dùng `osetbot`** để kích hoạt tại kênh này.",
+                           view=view)
+        except Exception:
+            pass
+        return False  # chặn hẳn để tránh spam gameplay khi chưa set
+
+    allowed = set()
+    if main_id:
+        allowed.add(main_id)
+    allowed |= guests
+
+    return ctx.channel.id in allowed
+# ====================== END PATCH =================================================
+
+
+
+
+
+
+
+
+
 # ====== Lệnh hệ thống: osetbot / obatdau Bắt Đầu ======
 # =========================
 # SETBOT & KHOÁ KÊNH (MỚI)
 # =========================
-
-import discord
-from discord.ext import commands
 from discord import ui, ButtonStyle, Interaction
+
+@bot.command(name="setbot", aliases=["osetbot"])
+@is_admin()
+async def cmd_setbot(ctx):
+    data = load_data()
+    set_guild_channel(data, ctx.guild.id, ctx.channel.id)
+    save_data(data)
+
+
 
 # Giữ nguyên 2 decorator gốc nếu bạn đã có
 def is_admin():
@@ -2270,6 +2434,8 @@ async def cmd_setbot(ctx: commands.Context):
 
 
 
+
+
 if __name__ == "__main__":
     TOKEN = os.environ.get("TU_TIEN_BOT_TOKEN","")
     if not TOKEN:
@@ -2287,7 +2453,6 @@ IMAGE_TIMEOUT_SEC = 2.5
 
 async def _attach_image_later(ctx, message, embed, url, filename):
     """Tải ảnh với timeout rồi edit message để gắn ảnh. Lỗi/timeout -> bỏ qua yên lặng."""
-    import asyncio
     try:
         file = await asyncio.wait_for(file_from_url_cached(url, filename), timeout=IMAGE_TIMEOUT_SEC)
         if file:
