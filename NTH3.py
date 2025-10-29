@@ -2028,15 +2028,6 @@ async def cmd_opingg(ctx):
 # SETBOT & KHOÁ KÊNH (MỚI)
 # =========================
 
-@bot.command(name="setbot", aliases=["osetbot"])
-@is_admin()
-async def cmd_setbot(ctx):
-    data = load_data()
-    set_guild_channel(data, ctx.guild.id, ctx.channel.id)
-    save_data(data)
-    await ctx.send("✅ Đã kích hoạt BOT tại kênh này. Từ giờ, người chơi chỉ sử dụng lệnh tại đây để tránh spam.")
-
-
 import discord
 from discord.ext import commands
 from discord import ui, ButtonStyle, Interaction
