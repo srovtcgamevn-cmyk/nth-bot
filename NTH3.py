@@ -1663,7 +1663,7 @@ def _fmt_size(n):
         n /= 1024
     return f"{n:.1f} TB"
 
-@bot.command(name="oplsdata")
+@bot.command(name="plsdata")
 @owner_only()
 async def cmd_oplsdata(ctx):
     base = "/app/data"
@@ -1704,7 +1704,7 @@ async def cmd_oplsdata(ctx):
 
     await ctx.reply("\n".join(lines), mention_author=False)
 
-@bot.command(name="osaoluutest")
+@bot.command(name="saoluutest")
 @owner_only()
 async def cmd_osaoluutest(ctx):
     """Tạo 1 file dummy để test ghi vào /app/data/backups (không đụng data.json)."""
