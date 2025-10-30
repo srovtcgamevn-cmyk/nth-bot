@@ -1077,6 +1077,8 @@ async def cmd_olenhquantri(ctx):
     await ctx.reply("\n".join(lines), mention_author=False)
 
 
+# =============================================================
+
 @bot.command(name="testdata")
 @owner_only()
 @commands.cooldown(1, 5, commands.BucketType.user)
@@ -1108,81 +1110,78 @@ async def cmd_otestdata(ctx):
     await ctx.reply(msg, mention_author=False)
 
 
-@bot.command(name="khoiphucdata")
+@bot.command(name="okhoiphucfile")
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
-async def cmd_khoiphucdata(ctx, *, raw_json: str = None):
+async def cmd_okhoiphucfile(ctx):
     """
-    IMPORT DỮ LIỆU TỪ PC VÀO BOT TRÊN RAILWAY (VOLUME)
+    KHÔI PHỤC DỮ LIỆU TỪ FILE (DATA.JSON)
+    -------------------------------------
+    Dùng khi dữ liệu quá lớn, không thể dán JSON trực tiếp qua Discord.
 
     Cách dùng:
-    - Copy toàn bộ nội dung file data.json cũ của bạn
-      (file đang có dữ liệu người chơi đầy đủ lúc chạy local PC)
-    - Dán vào sau lệnh:
-        khoiphucdata { ...nguyên nội dung json... }
-
-    Bot sẽ:
-    1. Backup data hiện tại trong volume (trước khi ghi đè).
-    2. Ghi đè data.json trong volume = dữ liệu bạn gửi.
-    3. Báo lại kết quả.
-
-    Chỉ owner dùng được.
+    1️⃣ Gõ: okhoiphucfile
+    2️⃣ Gửi kèm (attach) file data.json trong cùng tin nhắn hoặc reply lại tin bot này bằng file đó.
+    3️⃣ Bot sẽ tải file đó, backup volume hiện tại, rồi ghi đè /data/data.json.
     """
 
-    if raw_json is None or raw_json.strip() == "":
+    # Nếu không có file đính kèm
+    if not ctx.message.attachments:
         await ctx.reply(
-            "❗ Thiếu dữ liệu JSON.\n"
-            "Cách dùng:\n"
-            "`khoiphucdata { ...toàn bộ nội dung file data.json cũ... }`",
+            "📂 Vui lòng gửi file `data.json` trong cùng tin nhắn hoặc reply lại với file đó để khôi phục dữ liệu.",
             mention_author=False
         )
         return
 
-    # Bước 1: parse JSON người dùng dán vào
+    attach = ctx.message.attachments[0]
+    filename = attach.filename.lower()
+
+    # Kiểm tra tên file
+    if not filename.endswith(".json"):
+        await ctx.reply("❗ File phải có định dạng .json", mention_author=False)
+        return
+
+    # Đường dẫn volume thực tế
+    json_path = os.path.join(BASE_DATA_DIR, "data.json")
+
+    # Bước 1: tải file về bộ nhớ tạm
     try:
-        new_data = json.loads(raw_json)
+        file_bytes = await attach.read()
+        json_text = file_bytes.decode("utf-8")
+        new_data = json.loads(json_text)
         if not isinstance(new_data, dict):
-            raise ValueError("JSON không phải dạng object gốc.")
+            raise ValueError("Cấu trúc JSON không hợp lệ.")
     except Exception as e:
-        await ctx.reply(
-            f"❌ Không đọc được JSON bạn gửi. Lỗi: {e}",
-            mention_author=False
-        )
+        await ctx.reply(f"❌ Không đọc được file JSON. Lỗi: {e}", mention_author=False)
         return
 
-    # Bước 2: load data hiện tại để backup an toàn
-    current_data = load_data()
+    # Bước 2: Backup dữ liệu hiện tại
     try:
-        snapshot_data_v16(current_data, tag="before-import", subkey="manual")
-    except Exception:
-        # backup fail thì vẫn tiếp tục, nhưng mình cứ báo
-        pass
+        current_data = load_data()
+        snapshot_data_v16(current_data, tag="before-import-file", subkey="manual")
+    except Exception as e:
+        await ctx.reply(f"⚠️ Không thể backup dữ liệu hiện tại: {e}", mention_author=False)
 
-    # Bước 3: ghi đè data.json trong volume bằng new_data
+    # Bước 3: Ghi đè data.json trong volume
     try:
         save_data(new_data)
     except Exception as e:
-        await ctx.reply(
-            f"❌ Ghi đè dữ liệu thất bại: {e}",
-            mention_author=False
-        )
+        await ctx.reply(f"❌ Ghi dữ liệu thất bại: {e}", mention_author=False)
         return
 
-    # Bước 4: xác nhận lại xem đã ghi chưa
-    check_after = load_data()
-    users_after = check_after.get("users", {})
-    count_after = len(users_after)
+    # Bước 4: Xác nhận
+    after_data = load_data()
+    count_users = len(after_data.get("users", {}))
 
-    # Gửi phản hồi
     await ctx.reply(
-        "✅ ĐÃ NHẬP DỮ LIỆU MỚI TỪ JSON.\n"
-        f"- Số user sau import: **{count_after}**\n"
-        f"- Dữ liệu đã được lưu vào volume (BASE_DATA_DIR = {BASE_DATA_DIR}).\n"
-        "👉 Bạn nên chạy `otestdata` để tự kiểm tra lại.",
+        f"✅ ĐÃ KHÔI PHỤC DỮ LIỆU TỪ FILE `{filename}` THÀNH CÔNG!\n"
+        f"- Tổng số người chơi: **{count_users}**\n"
+        f"- Dữ liệu đã được ghi vào volume tại `{json_path}`.\n"
+        f"👉 Hãy chạy `otestdata` để kiểm tra lại.",
         mention_author=False
     )
 
-
+# =============================================================
 
 
 
