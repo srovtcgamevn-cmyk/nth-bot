@@ -1113,7 +1113,7 @@ async def cmd_otestdata(ctx):
 @bot.command(name="khoiphucfile")
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
-async def cmd_okhoiphucfile(ctx):
+async def cmd_khoiphucfile(ctx):
     """
     KHÔI PHỤC DỮ LIỆU TỪ FILE (DATA.JSON)
     -------------------------------------
