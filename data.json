@@ -55,10 +55,10 @@
     "365913977466912768": {
       "ngan_phi": 1000000,
       "rungs": {
-        "D": 40,
-        "C": 32,
+        "D": 1,
+        "C": 34,
         "B": 22,
-        "A": 49,
+        "A": 50,
         "S": 37
       },
       "items": [
@@ -164,29 +164,29 @@
         "slot_aogiap": "700"
       },
       "cooldowns": {
-        "ol": 1761718230.8590477
+        "ol": 1761730189.0910292
       },
       "stats": {
-        "opened": 5076,
-        "ol_count": 5256,
-        "ngan_phi_earned_total": 1273548,
-        "sold_count": 1998,
-        "sold_value_total": 2102654
+        "opened": 5118,
+        "ol_count": 5262,
+        "ngan_phi_earned_total": 1273664,
+        "sold_count": 2018,
+        "sold_value_total": 2103895
       },
       "claimed_missions": [],
       "achievements": [],
       "minigames": {
         "odt": {
-          "win_streak": 1,
-          "loss_streak": 0
+          "win_streak": 0,
+          "loss_streak": 1
         }
       }
     },
     "794955074799140876": {
-      "ngan_phi": 2509237,
+      "ngan_phi": 2244237,
       "rungs": {
-        "D": 50,
-        "C": 28,
+        "D": 57,
+        "C": 31,
         "B": 18,
         "A": 7,
         "S": 1
@@ -270,11 +270,11 @@
         "slot_aogiap": "344"
       },
       "cooldowns": {
-        "ol": 1761715855.6877837
+        "ol": 1761725835.3302865
       },
       "stats": {
         "opened": 1688,
-        "ol_count": 1792,
+        "ol_count": 1802,
         "ngan_phi_earned_total": 586246,
         "sold_count": 645,
         "sold_value_total": 655597
@@ -460,7 +460,7 @@
         "D": 1,
         "C": 1,
         "B": 0,
-        "A": 0,
+        "A": 1,
         "S": 0
       },
       "items": [],
@@ -469,11 +469,11 @@
         "slot_aogiap": null
       },
       "cooldowns": {
-        "ol": 1761530206.0517232
+        "ol": 1761725635.1124532
       },
       "stats": {
         "opened": 0,
-        "ol_count": 2,
+        "ol_count": 3,
         "ngan_phi_earned_total": 0,
         "sold_count": 0,
         "sold_value_total": 0
@@ -609,9 +609,9 @@
     "1020294112173363210": {
       "ngan_phi": 0,
       "rungs": {
-        "D": 4,
+        "D": 7,
         "C": 7,
-        "B": 3,
+        "B": 4,
         "A": 0,
         "S": 0
       },
@@ -638,11 +638,11 @@
         "slot_aogiap": "679"
       },
       "cooldowns": {
-        "ol": 1761672678.0442839
+        "ol": 1761775108.4066024
       },
       "stats": {
         "opened": 881,
-        "ol_count": 895,
+        "ol_count": 899,
         "ngan_phi_earned_total": 286119,
         "sold_count": 341,
         "sold_value_total": 397111
@@ -659,8 +659,8 @@
     "612258326113419264": {
       "ngan_phi": 0,
       "rungs": {
-        "D": 7,
-        "C": 3,
+        "D": 9,
+        "C": 4,
         "B": 0,
         "A": 0,
         "S": 0
@@ -728,11 +728,11 @@
         "slot_aogiap": "828"
       },
       "cooldowns": {
-        "ol": 1761696039.2215774
+        "ol": 1761775112.2206922
       },
       "stats": {
         "opened": 914,
-        "ol_count": 924,
+        "ol_count": 927,
         "ngan_phi_earned_total": 390920,
         "sold_count": 364,
         "sold_value_total": 421176
@@ -789,13 +789,13 @@
       }
     },
     "473319689343467529": {
-      "ngan_phi": 3302832,
+      "ngan_phi": 3521085,
       "rungs": {
-        "D": 27,
-        "C": 11,
-        "B": 6,
-        "A": 1,
-        "S": 3
+        "D": 0,
+        "C": 2,
+        "B": 0,
+        "A": 0,
+        "S": 0
       },
       "items": [
         {
@@ -820,14 +820,14 @@
         "slot_aogiap": "178"
       },
       "cooldowns": {
-        "ol": 1761718223.8143954
+        "ol": 1761725483.3533351
       },
       "stats": {
-        "opened": 1062,
-        "ol_count": 1110,
-        "ngan_phi_earned_total": 330868,
-        "sold_count": 424,
-        "sold_value_total": 673523
+        "opened": 1111,
+        "ol_count": 1113,
+        "ngan_phi_earned_total": 391219,
+        "sold_count": 444,
+        "sold_value_total": 681425
       },
       "claimed_missions": [],
       "achievements": [],
@@ -1057,13 +1057,13 @@
       }
     },
     "821066331826421840": {
-      "ngan_phi": 99253270,
+      "ngan_phi": 99261834,
       "rungs": {
-        "D": 12,
-        "C": 8,
-        "B": 2,
-        "A": 1,
-        "S": 1
+        "D": 20,
+        "C": 14,
+        "B": 3,
+        "A": 5,
+        "S": 0
       },
       "items": [
         {
@@ -1344,12 +1344,12 @@
         "slot_aogiap": "174"
       },
       "cooldowns": {
-        "ol": 1761717941.011596
+        "ol": 1761780376.6855326
       },
       "stats": {
-        "opened": 213,
-        "ol_count": 75,
-        "ngan_phi_earned_total": 57058,
+        "opened": 215,
+        "ol_count": 95,
+        "ngan_phi_earned_total": 65622,
         "sold_count": 56,
         "sold_value_total": 258332
       },
@@ -1357,8 +1357,8 @@
       "achievements": [],
       "minigames": {
         "odt": {
-          "win_streak": 0,
-          "loss_streak": 2
+          "win_streak": 1,
+          "loss_streak": 0
         }
       }
     },
@@ -2925,7 +2925,7 @@
       "ngan_phi": 16706,
       "rungs": {
         "D": 17,
-        "C": 11,
+        "C": 14,
         "B": 5,
         "A": 1,
         "S": 0
@@ -3345,11 +3345,11 @@
         "slot_aogiap": "564"
       },
       "cooldowns": {
-        "ol": 1761668861.2949414
+        "ol": 1761775083.701119
       },
       "stats": {
         "opened": 518,
-        "ol_count": 552,
+        "ol_count": 555,
         "ngan_phi_earned_total": 119770,
         "sold_count": 170,
         "sold_value_total": 27172
@@ -3757,13 +3757,13 @@
       }
     },
     "830706989163479080": {
-      "ngan_phi": 16446820,
+      "ngan_phi": 16655166,
       "rungs": {
-        "D": 110,
-        "C": 43,
-        "B": 26,
-        "A": 9,
-        "S": 4
+        "D": 1,
+        "C": 0,
+        "B": 0,
+        "A": 0,
+        "S": 0
       },
       "items": [
         {
@@ -4229,6 +4229,566 @@
           "rarity": "D",
           "value": 50,
           "equipped": false
+        },
+        {
+          "id": "123",
+          "name": "Áo Hắc Vô Cực",
+          "type": "Áo Giáp",
+          "rarity": "A",
+          "value": 17233,
+          "equipped": false
+        },
+        {
+          "id": "951",
+          "name": "Trượng Linh Ngưng",
+          "type": "Trượng",
+          "rarity": "A",
+          "value": 14322,
+          "equipped": false
+        },
+        {
+          "id": "824",
+          "name": "Đàn Pháp Nguyệt",
+          "type": "Đàn",
+          "rarity": "A",
+          "value": 15308,
+          "equipped": false
+        },
+        {
+          "id": "265",
+          "name": "Trượng Linh Ngưng",
+          "type": "Trượng",
+          "rarity": "A",
+          "value": 14285,
+          "equipped": false
+        },
+        {
+          "id": "976",
+          "name": "Kiếm Trúc Nguyệt",
+          "type": "Kiếm",
+          "rarity": "A",
+          "value": 17108,
+          "equipped": false
+        },
+        {
+          "id": "515",
+          "name": "Đàn Pháp Nguyệt",
+          "type": "Đàn",
+          "rarity": "A",
+          "value": 12966,
+          "equipped": false
+        },
+        {
+          "id": "551",
+          "name": "Kiếm Hàn Vân",
+          "type": "Kiếm",
+          "rarity": "B",
+          "value": 3184,
+          "equipped": false
+        },
+        {
+          "id": "320",
+          "name": "Găng Ma Pháp",
+          "type": "Găng Tay",
+          "rarity": "B",
+          "value": 4979,
+          "equipped": false
+        },
+        {
+          "id": "319",
+          "name": "Lụa Huyễn Liễu",
+          "type": "Dải Lụa",
+          "rarity": "B",
+          "value": 2538,
+          "equipped": false
+        },
+        {
+          "id": "410",
+          "name": "Thương Tiêu Hồn",
+          "type": "Thương",
+          "rarity": "B",
+          "value": 1938,
+          "equipped": false
+        },
+        {
+          "id": "066",
+          "name": "Kiếm Hàn Vân",
+          "type": "Kiếm",
+          "rarity": "B",
+          "value": 3166,
+          "equipped": false
+        },
+        {
+          "id": "371",
+          "name": "Kiếm Hàn Vân",
+          "type": "Kiếm",
+          "rarity": "B",
+          "value": 3310,
+          "equipped": false
+        },
+        {
+          "id": "653",
+          "name": "Lụa Thanh",
+          "type": "Dải Lụa",
+          "rarity": "C",
+          "value": 185,
+          "equipped": false
+        },
+        {
+          "id": "558",
+          "name": "Kiếm Lam Tinh",
+          "type": "Kiếm",
+          "rarity": "C",
+          "value": 337,
+          "equipped": false
+        },
+        {
+          "id": "596",
+          "name": "Lụa Thanh",
+          "type": "Dải Lụa",
+          "rarity": "C",
+          "value": 445,
+          "equipped": false
+        },
+        {
+          "id": "056",
+          "name": "Thương Bão Tố",
+          "type": "Thương",
+          "rarity": "C",
+          "value": 218,
+          "equipped": false
+        },
+        {
+          "id": "588",
+          "name": "Lụa Thanh",
+          "type": "Dải Lụa",
+          "rarity": "C",
+          "value": 488,
+          "equipped": false
+        },
+        {
+          "id": "991",
+          "name": "Lụa Thanh",
+          "type": "Dải Lụa",
+          "rarity": "C",
+          "value": 356,
+          "equipped": false
+        },
+        {
+          "id": "256",
+          "name": "Đàn Thanh",
+          "type": "Đàn",
+          "rarity": "C",
+          "value": 307,
+          "equipped": false
+        },
+        {
+          "id": "608",
+          "name": "Áo Linh Phi",
+          "type": "Áo Giáp",
+          "rarity": "C",
+          "value": 292,
+          "equipped": false
+        },
+        {
+          "id": "151",
+          "name": "Thương Bão Tố",
+          "type": "Thương",
+          "rarity": "C",
+          "value": 430,
+          "equipped": false
+        },
+        {
+          "id": "930",
+          "name": "Áo Linh Phi",
+          "type": "Áo Giáp",
+          "rarity": "C",
+          "value": 409,
+          "equipped": false
+        },
+        {
+          "id": "460",
+          "name": "Đàn Thanh",
+          "type": "Đàn",
+          "rarity": "C",
+          "value": 469,
+          "equipped": false
+        },
+        {
+          "id": "000",
+          "name": "Lụa Thanh",
+          "type": "Dải Lụa",
+          "rarity": "C",
+          "value": 344,
+          "equipped": false
+        },
+        {
+          "id": "387",
+          "name": "Găng Bão",
+          "type": "Găng Tay",
+          "rarity": "C",
+          "value": 177,
+          "equipped": false
+        },
+        {
+          "id": "375",
+          "name": "Trượng Ma",
+          "type": "Trượng",
+          "rarity": "C",
+          "value": 293,
+          "equipped": false
+        },
+        {
+          "id": "961",
+          "name": "Găng Bão",
+          "type": "Găng Tay",
+          "rarity": "C",
+          "value": 198,
+          "equipped": false
+        },
+        {
+          "id": "477",
+          "name": "Áo Da",
+          "type": "Áo Giáp",
+          "rarity": "D",
+          "value": 48,
+          "equipped": false
+        },
+        {
+          "id": "695",
+          "name": "Áo Da",
+          "type": "Áo Giáp",
+          "rarity": "D",
+          "value": 21,
+          "equipped": false
+        },
+        {
+          "id": "114",
+          "name": "Găng Vải",
+          "type": "Găng Tay",
+          "rarity": "D",
+          "value": 59,
+          "equipped": false
+        },
+        {
+          "id": "143",
+          "name": "Áo Da",
+          "type": "Áo Giáp",
+          "rarity": "D",
+          "value": 52,
+          "equipped": false
+        },
+        {
+          "id": "999",
+          "name": "Đàn Tre",
+          "type": "Đàn",
+          "rarity": "D",
+          "value": 20,
+          "equipped": false
+        },
+        {
+          "id": "007",
+          "name": "Lụa Tầm Thôn",
+          "type": "Dải Lụa",
+          "rarity": "D",
+          "value": 49,
+          "equipped": false
+        },
+        {
+          "id": "013",
+          "name": "Đàn Tre",
+          "type": "Đàn",
+          "rarity": "D",
+          "value": 95,
+          "equipped": false
+        },
+        {
+          "id": "876",
+          "name": "Kiếm Sắt",
+          "type": "Kiếm",
+          "rarity": "D",
+          "value": 46,
+          "equipped": false
+        },
+        {
+          "id": "177",
+          "name": "Kiếm Sắt",
+          "type": "Kiếm",
+          "rarity": "D",
+          "value": 30,
+          "equipped": false
+        },
+        {
+          "id": "192",
+          "name": "Kiếm Sắt",
+          "type": "Kiếm",
+          "rarity": "D",
+          "value": 45,
+          "equipped": false
+        },
+        {
+          "id": "259",
+          "name": "Trượng Gỗ",
+          "type": "Trượng",
+          "rarity": "D",
+          "value": 99,
+          "equipped": false
+        },
+        {
+          "id": "595",
+          "name": "Áo Da",
+          "type": "Áo Giáp",
+          "rarity": "D",
+          "value": 38,
+          "equipped": false
+        },
+        {
+          "id": "720",
+          "name": "Áo Da",
+          "type": "Áo Giáp",
+          "rarity": "D",
+          "value": 24,
+          "equipped": false
+        },
+        {
+          "id": "303",
+          "name": "Thương Sơ",
+          "type": "Thương",
+          "rarity": "D",
+          "value": 84,
+          "equipped": false
+        },
+        {
+          "id": "134",
+          "name": "Đàn Tre",
+          "type": "Đàn",
+          "rarity": "D",
+          "value": 79,
+          "equipped": false
+        },
+        {
+          "id": "168",
+          "name": "Đàn Tre",
+          "type": "Đàn",
+          "rarity": "D",
+          "value": 76,
+          "equipped": false
+        },
+        {
+          "id": "971",
+          "name": "Lụa Tầm Thôn",
+          "type": "Dải Lụa",
+          "rarity": "D",
+          "value": 31,
+          "equipped": false
+        },
+        {
+          "id": "061",
+          "name": "Đàn Tre",
+          "type": "Đàn",
+          "rarity": "D",
+          "value": 99,
+          "equipped": false
+        },
+        {
+          "id": "190",
+          "name": "Đàn Tre",
+          "type": "Đàn",
+          "rarity": "D",
+          "value": 40,
+          "equipped": false
+        },
+        {
+          "id": "253",
+          "name": "Lụa Tầm Thôn",
+          "type": "Dải Lụa",
+          "rarity": "D",
+          "value": 21,
+          "equipped": false
+        },
+        {
+          "id": "594",
+          "name": "Kiếm Sắt",
+          "type": "Kiếm",
+          "rarity": "D",
+          "value": 43,
+          "equipped": false
+        },
+        {
+          "id": "435",
+          "name": "Găng Vải",
+          "type": "Găng Tay",
+          "rarity": "D",
+          "value": 32,
+          "equipped": false
+        },
+        {
+          "id": "005",
+          "name": "Lụa Tầm Thôn",
+          "type": "Dải Lụa",
+          "rarity": "D",
+          "value": 86,
+          "equipped": false
+        },
+        {
+          "id": "774",
+          "name": "Trượng Gỗ",
+          "type": "Trượng",
+          "rarity": "D",
+          "value": 87,
+          "equipped": false
+        },
+        {
+          "id": "365",
+          "name": "Găng Vải",
+          "type": "Găng Tay",
+          "rarity": "D",
+          "value": 51,
+          "equipped": false
+        },
+        {
+          "id": "231",
+          "name": "Lụa Tầm Thôn",
+          "type": "Dải Lụa",
+          "rarity": "D",
+          "value": 57,
+          "equipped": false
+        },
+        {
+          "id": "217",
+          "name": "Lụa Tầm Thôn",
+          "type": "Dải Lụa",
+          "rarity": "D",
+          "value": 27,
+          "equipped": false
+        },
+        {
+          "id": "980",
+          "name": "Áo Da",
+          "type": "Áo Giáp",
+          "rarity": "D",
+          "value": 27,
+          "equipped": false
+        },
+        {
+          "id": "232",
+          "name": "Kiếm Sắt",
+          "type": "Kiếm",
+          "rarity": "D",
+          "value": 83,
+          "equipped": false
+        },
+        {
+          "id": "402",
+          "name": "Thương Sơ",
+          "type": "Thương",
+          "rarity": "D",
+          "value": 92,
+          "equipped": false
+        },
+        {
+          "id": "113",
+          "name": "Thương Sơ",
+          "type": "Thương",
+          "rarity": "D",
+          "value": 85,
+          "equipped": false
+        },
+        {
+          "id": "761",
+          "name": "Kiếm Sắt",
+          "type": "Kiếm",
+          "rarity": "D",
+          "value": 24,
+          "equipped": false
+        },
+        {
+          "id": "830",
+          "name": "Trượng Gỗ",
+          "type": "Trượng",
+          "rarity": "D",
+          "value": 74,
+          "equipped": false
+        },
+        {
+          "id": "601",
+          "name": "Thương Sơ",
+          "type": "Thương",
+          "rarity": "D",
+          "value": 53,
+          "equipped": false
+        },
+        {
+          "id": "828",
+          "name": "Kiếm Sắt",
+          "type": "Kiếm",
+          "rarity": "D",
+          "value": 42,
+          "equipped": false
+        },
+        {
+          "id": "118",
+          "name": "Trượng Gỗ",
+          "type": "Trượng",
+          "rarity": "D",
+          "value": 36,
+          "equipped": false
+        },
+        {
+          "id": "658",
+          "name": "Kiếm Sắt",
+          "type": "Kiếm",
+          "rarity": "D",
+          "value": 89,
+          "equipped": false
+        },
+        {
+          "id": "294",
+          "name": "Đàn Tre",
+          "type": "Đàn",
+          "rarity": "D",
+          "value": 54,
+          "equipped": false
+        },
+        {
+          "id": "009",
+          "name": "Trượng Gỗ",
+          "type": "Trượng",
+          "rarity": "D",
+          "value": 68,
+          "equipped": false
+        },
+        {
+          "id": "555",
+          "name": "Áo Da",
+          "type": "Áo Giáp",
+          "rarity": "D",
+          "value": 36,
+          "equipped": false
+        },
+        {
+          "id": "591",
+          "name": "Lụa Tầm Thôn",
+          "type": "Dải Lụa",
+          "rarity": "D",
+          "value": 86,
+          "equipped": false
+        },
+        {
+          "id": "324",
+          "name": "Áo Da",
+          "type": "Áo Giáp",
+          "rarity": "D",
+          "value": 21,
+          "equipped": false
+        },
+        {
+          "id": "723",
+          "name": "Trượng Gỗ",
+          "type": "Trượng",
+          "rarity": "D",
+          "value": 95,
+          "equipped": false
         }
       ],
       "equipped": {
@@ -4236,12 +4796,12 @@
         "slot_aogiap": "167"
       },
       "cooldowns": {
-        "ol": 1761714598.629203
+        "ol": 1761725682.0061736
       },
       "stats": {
-        "opened": 1337,
-        "ol_count": 1529,
-        "ngan_phi_earned_total": 470136,
+        "opened": 1533,
+        "ol_count": 1534,
+        "ngan_phi_earned_total": 598482,
         "sold_count": 460,
         "sold_value_total": 698667
       },
@@ -4249,7 +4809,7 @@
       "achievements": [],
       "minigames": {
         "odt": {
-          "win_streak": 2,
+          "win_streak": 1,
           "loss_streak": 0
         }
       }
@@ -6175,7 +6735,7 @@
     "1189734086361759815": {
       "ngan_phi": 1000,
       "rungs": {
-        "D": 2,
+        "D": 4,
         "C": 0,
         "B": 1,
         "A": 0,
@@ -6187,11 +6747,11 @@
         "slot_aogiap": null
       },
       "cooldowns": {
-        "ol": 1761633391.9304059
+        "ol": 1761725547.8289473
       },
       "stats": {
         "opened": 0,
-        "ol_count": 3,
+        "ol_count": 5,
         "ngan_phi_earned_total": 0,
         "sold_count": 0,
         "sold_value_total": 0
@@ -6442,12 +7002,12 @@
       }
     },
     "1064612186196017215": {
-      "ngan_phi": 10876,
+      "ngan_phi": 300,
       "rungs": {
-        "D": 21,
-        "C": 12,
-        "B": 5,
-        "A": 1,
+        "D": 6,
+        "C": 3,
+        "B": 1,
+        "A": 0,
         "S": 0
       },
       "items": [],
@@ -6456,21 +7016,21 @@
         "slot_aogiap": null
       },
       "cooldowns": {
-        "ol": 1761699029.6169896
+        "ol": 1761725806.8342729
       },
       "stats": {
-        "opened": 230,
-        "ol_count": 269,
-        "ngan_phi_earned_total": 21693,
-        "sold_count": 82,
-        "sold_value_total": 113486
+        "opened": 273,
+        "ol_count": 283,
+        "ngan_phi_earned_total": 24817,
+        "sold_count": 103,
+        "sold_value_total": 120636
       },
       "claimed_missions": [],
       "achievements": [],
       "minigames": {
         "odt": {
           "win_streak": 0,
-          "loss_streak": 2
+          "loss_streak": 5
         }
       }
     },
@@ -11450,6 +12010,33 @@
           "loss_streak": 0
         }
       }
+    },
+    "1419262146189070418": {
+      "ngan_phi": 1000,
+      "rungs": {
+        "D": 1,
+        "C": 1,
+        "B": 1,
+        "A": 0,
+        "S": 0
+      },
+      "items": [],
+      "equipped": {
+        "slot_vukhi": null,
+        "slot_aogiap": null
+      },
+      "cooldowns": {
+        "ol": 1761730179.456827
+      },
+      "stats": {
+        "opened": 0,
+        "ol_count": 3,
+        "ngan_phi_earned_total": 0,
+        "sold_count": 0,
+        "sold_value_total": 0
+      },
+      "claimed_missions": [],
+      "achievements": []
     }
   },
   "guild_settings": {
@@ -11606,19 +12193,25 @@
   },
   "jackpot_pool": 0,
   "jackpot": {
-    "pool": 37037535,
+    "pool": 39055892,
     "hidden_threshold": 10240173,
-    "window_start": 1761718054.6015344,
+    "window_start": 1761780334.8661265,
     "hot_log": [
-      1761718113.7698894,
-      1761718120.8888023,
-      1761718130.0206685
+      1761780355.3163872
     ]
   },
   "server_cfg": {
     "1413785749215510680": {
       "bot_channels": [
-        1430977598271262850
+        1433207596898193479
+      ]
+    },
+    "1432869667789344808": {
+      "bot_channels": [
+        1433020499377655808,
+        1433021292893704232,
+        1433021353065451673,
+        1433021125998149754
       ]
     }
   }
