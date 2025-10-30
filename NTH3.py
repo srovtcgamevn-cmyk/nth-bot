@@ -34,18 +34,6 @@ INTENTS = discord.Intents.default()
 INTENTS.message_content = True
 INTENTS.members = True
 
-
-# ====== CẤU HÌNH LƯU DỮ LIỆU TRÊN RAILWAY ======
-DATA_DIR = "/app/data"
-DATA_FILE = os.path.join(DATA_DIR, "data.json")
-BACKUP_DIR = os.path.join(DATA_DIR, "backups")
-
-# đảm bảo thư mục tồn tại
-os.makedirs(BACKUP_DIR, exist_ok=True)
-
-
-
-
 DATA_FILE = "data.json"
 COOLDOWN_OL = 10
 STARTING_NP = 1000
