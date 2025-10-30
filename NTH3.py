@@ -124,6 +124,75 @@ def total_backup_stats_v16():
         "latest": latest[1] if latest else None
     }
 
+
+
+
+# ===== SAO LƯU TỰ ĐỘNG =====
+# ===== SAO LƯU TỰ ĐỘNG =====
+# ===== SAO LƯU TỰ ĐỘNG =====
+# ===== SAO LƯU TỰ ĐỘNG =====
+
+
+
+# Giới hạn số lượng backup thủ công (manual) cần giữ lại
+MAX_MANUAL_BACKUPS = 10
+
+def _cleanup_old_backups_limit():
+    """
+    Giữ lại tối đa MAX_MANUAL_BACKUPS bản backup loại 'manual',
+    xóa các bản manual cũ hơn để tránh đầy volume.
+
+    Chỉ dọn thư mục BACKUP_DIRS['manual'].
+    Không đụng pre-save / before-restore / startup / resetuser / export.
+    """
+    manual_dir = BACKUP_DIRS.get("manual")
+    if not manual_dir:
+        return
+
+    try:
+        # Lấy tất cả file .json trong thư mục manual
+        pattern = os.path.join(manual_dir, "data.json.v*.json")
+        files = glob(pattern)
+
+        # Nếu số file <= giới hạn thì thôi
+        if len(files) <= MAX_MANUAL_BACKUPS:
+            return
+
+        # Sort giảm dần theo tên file để file mới nhất đứng đầu
+        # (tên file có timestamp YYYYMMDD-HHMMSS nên sort tên ~ sort thời gian)
+        files_sorted_new_first = sorted(files, reverse=True)
+
+        # Giữ lại N bản mới nhất
+        keep = set(files_sorted_new_first[:MAX_MANUAL_BACKUPS])
+
+        # Những file còn lại (cũ hơn) sẽ bị xóa
+        to_delete = [f for f in files_sorted_new_first if f not in keep]
+
+        deleted = 0
+        for f in to_delete:
+            try:
+                os.remove(f)
+                # Xóa luôn file checksum nếu có
+                sha_path = f + ".sha256"
+                if os.path.exists(sha_path):
+                    os.remove(sha_path)
+                deleted += 1
+            except Exception:
+                pass
+
+        print(f"[AUTO-BACKUP-CLEANUP] Đã xóa {deleted} bản manual cũ, giữ lại {MAX_MANUAL_BACKUPS} bản mới nhất.")
+
+    except Exception as e:
+        print(f"[AUTO-BACKUP-CLEANUP] Lỗi dọn backup manual: {e}")
+
+# ===== SAO LƯU TỰ ĐỘNG =====
+# ===== SAO LƯU TỰ ĐỘNG =====
+# ===== SAO LƯU TỰ ĐỘNG =====
+# ===== SAO LƯU TỰ ĐỘNG =====
+
+
+
+
 # ===== DỮ LIỆU & TIỆN ÍCH CHUNG =====
 SESSION: aiohttp.ClientSession | None = None
 IMG_CACHE: dict[str, bytes] = {}
@@ -737,12 +806,37 @@ bot = commands.Bot(
 
 @bot.event
 async def on_ready():
-    print(f"Bot ready: {bot.user} (id: {bot.user.id})")
+    """
+    Gọi khi bot login xong và event loop Discord đã chạy.
+    - Log bot ready
+    - Chụp snapshot 'startup' (như cũ)
+    - Khởi động vòng auto_backup_task nếu chưa chạy
+    """
+    global _auto_backup_started
+
+    print(f"✅ Bot ready: {bot.user} (id: {bot.user.id})")
+
+    # Snapshot khởi động (giữ nguyên logic cũ của bạn)
     try:
         data = load_data()
         snapshot_data_v16(data, tag="startup", subkey="startup")
     except Exception:
         pass
+
+    # Khởi động vòng auto backup 1 lần duy nhất
+    if not _auto_backup_started:
+        try:
+            auto_backup_task.start()
+            _auto_backup_started = True
+            print("[AUTO-BACKUP] Đã khởi động auto_backup_task.")
+            print(
+                f"[AUTO-BACKUP] Cấu hình ban đầu: "
+                f"backup mỗi {AUTO_BACKUP_INTERVAL_MINUTES} phút, "
+                f"báo mỗi {AUTO_REPORT_INTERVAL_MINUTES} phút."
+            )
+        except RuntimeError:
+            # Nếu Discord reconnect và task đã start rồi -> bỏ qua
+            pass
 # ===================================
 # 🧩 BOT & CẤU HÌNH CHUNG — KẾT THÚC
 # ===================================
@@ -1076,6 +1170,7 @@ async def cmd_olenhquantri(ctx):
         "`batanh [on|off]` — Bật/tắt hiển thị ảnh",
         "`okhoiphucfile` — Khôi phục dữ liệu từ file `data.json` (khi dữ liệu lớn)",
         "`otestdata` — Kiểm tra dữ liệu đang lưu trong volume Railway",
+        "`othoigiansaoluu` — Thay đổi thời gian sao lưu tự động và thông báo",
 
     ]
     await ctx.reply("\n".join(lines), mention_author=False)
@@ -1185,7 +1280,7 @@ async def cmd_khoiphucfile(ctx):
         mention_author=False
     )
 
-# =============================================================
+# ==================SAO LƯU==================================
 
 
 
@@ -1195,18 +1290,103 @@ async def cmd_khoiphucfile(ctx):
 @owner_only()
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_osaoluu(ctx):
+    """
+    Tạo backup thủ công (manual) và tự động dọn backup manual cũ,
+    chỉ giữ lại MAX_MANUAL_BACKUPS bản mới nhất.
+    """
     data = load_data()
     try:
         path = snapshot_data_v16(data, tag="manual", subkey="manual")
+
+        # Sau khi tạo backup mới, dọn bớt backup manual cũ nếu quá giới hạn
+        try:
+            _cleanup_old_backups_limit()
+        except Exception as cle:
+            print(f"[AUTO-BACKUP-CLEANUP] Lỗi khi dọn sau osaoluu: {cle}")
+
         await ctx.reply(
-            f"✅ Đã tạo bản sao lưu: `{os.path.basename(path)}`",
+            f"✅ Đã tạo bản sao lưu: `{os.path.basename(path)}`\n"
+            f"🔁 Hệ thống giữ tối đa {MAX_MANUAL_BACKUPS} bản manual mới nhất.",
             mention_author=False
         )
+
     except Exception as e:
         await ctx.reply(
             f"⚠️ Sao lưu thất bại: {e}",
             mention_author=False
         )
+
+
+# ===================SAO LƯU========================
+
+
+
+# =================LỆNH THAY ĐỔI THỜI GIAN SAO LƯU TỰ ĐỘNG======================
+
+
+@bot.command(name="thoigiansaoluu", aliases=["backupconfig"])
+@owner_only()
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_thoigiansaoluu(ctx, backup_minutes: int = None, report_minutes: int = None):
+    """
+    Cấu hình hệ thống auto backup:
+    - backup_minutes: mỗi bao nhiêu phút thì tạo 1 bản backup mới.
+    - report_minutes: mỗi bao nhiêu phút thì cho phép gửi 1 thông báo vào kênh.
+
+    Ví dụ:
+    `thoigiansaoluu 10 60`
+    -> Sao lưu mỗi 10 phút
+    -> Chỉ báo lên kênh mỗi 60 phút (ít spam thông báo)
+
+    Nếu bạn gọi không đủ tham số, bot sẽ chỉ hiển thị cấu hình hiện tại.
+    """
+
+    global AUTO_BACKUP_INTERVAL_MINUTES
+    global AUTO_REPORT_INTERVAL_MINUTES
+
+    # Nếu không truyền tham số -> chỉ show cấu hình hiện tại
+    if backup_minutes is None or report_minutes is None:
+        await ctx.reply(
+            "📊 Cấu hình Auto Backup hiện tại:\n"
+            f"- Chu kỳ backup: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
+            f"- Chu kỳ báo cáo: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần\n"
+            "👉 Dùng: `thoigiansaoluu <phút_backup> <phút_báo>`\n"
+            "Ví dụ: `thoigiansaoluu 10 60`",
+            mention_author=False
+        )
+        return
+
+    # Validate
+    if backup_minutes < 1:
+        await ctx.reply("❗ Chu kỳ backup phải >= 1 phút.", mention_author=False)
+        return
+    if report_minutes < 1:
+        await ctx.reply("❗ Chu kỳ báo cáo phải >= 1 phút.", mention_author=False)
+        return
+
+    # Cập nhật giá trị
+    AUTO_BACKUP_INTERVAL_MINUTES = backup_minutes
+    AUTO_REPORT_INTERVAL_MINUTES = report_minutes
+
+    # reset bộ đếm phút để áp dụng ngay
+    if hasattr(auto_backup_task, "_minutes_since_backup"):
+        auto_backup_task._minutes_since_backup = 0
+
+    await ctx.reply(
+        "✅ ĐÃ CẬP NHẬT CẤU HÌNH AUTO BACKUP!\n"
+        f"- Sao lưu mỗi **{AUTO_BACKUP_INTERVAL_MINUTES} phút/lần**\n"
+        f"- Gửi thông báo tối đa mỗi **{AUTO_REPORT_INTERVAL_MINUTES} phút/lần**\n"
+        "📦 Lưu ý: Bot sẽ áp dụng cấu hình mới ngay lập tức.",
+        mention_author=False
+    )
+
+# =================LỆNH THAY ĐỔI THỜI GIAN SAO LƯU TỰ ĐỘNG======================
+
+
+
+
+
+
 
 @bot.command(name="listbackup")
 @owner_only()
@@ -1351,49 +1531,116 @@ async def cmd_oxtien(ctx, member: discord.Member):
         mention_author=False
     )
 
-@bot.command(name="phuchoi")
+
+#===========PHỤC HỒI==========================
+
+
+
+@bot.command(name="ophuchoi", aliases=["phuchoi"])
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def cmd_phuchoi(ctx, filename: str = None):
-    data = load_data()
-    try:
-        snapshot_data_v16(data, tag="before-restore", subkey="before_restore")
-    except Exception:
-        pass
+    """
+    Khôi phục dữ liệu từ 1 file backup .json trong thư mục backups/.
+    BẮT BUỘC phải chỉ định tên file .json.
+    Ví dụ:
+        ophuchoi data.json.v16.auto.20251030-153611.json
 
-    # backup dir gốc
-    BACKUP_DIR_ROOT = os.path.join(BASE_DATA_DIR, "backups")
+    Quy tắc an toàn:
+    - Không có filename  => từ chối (không tự chọn bản gần nhất nữa).
+    - filename phải kết thúc bằng '.json'.
+    - Bot sẽ tìm file đó trong các thư mục con: manual, before-restore, startup, pre-save, resetuser, export.
+    - Trước khi ghi đè, bot snapshot trạng thái hiện tại vào before-restore.
+    """
 
-    path = None
-    if filename:
-        cand = os.path.join(BACKUP_DIR_ROOT, filename)
-        if os.path.isfile(cand):
-            path = cand
-    else:
-        recents = list_recent_backups_v16(limit=1)
-        if recents:
-            _, _, path = recents[0]
-
-    if (not path) or (not os.path.isfile(path)):
+    # 0. Bắt buộc phải đưa tên file .json
+    if not filename:
         await ctx.reply(
-            "Không tìm thấy file backup phù hợp.",
+            "⚠️ Bạn phải chỉ định file backup .json để khôi phục.\n"
+            "Ví dụ:\n"
+            "`ophuchoi data.json.v16.auto.20251030-153611.json`",
             mention_author=False
         )
         return
 
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            restored = json.load(f)
-        save_data(restored)
+    if not filename.endswith(".json"):
         await ctx.reply(
-            f"✅ Đã khôi phục dữ liệu từ: `{os.path.basename(path)}`",
+            "⚠️ Tên file không hợp lệ. Phải kết thúc bằng `.json`.\n"
+            "Ví dụ đúng:\n"
+            "`ophuchoi data.json.v16.auto.20251030-153611.json`",
             mention_author=False
         )
+        return
+
+    # 1. Chụp lại data hiện tại trước khi restore (để có đường quay lại)
+    try:
+        current_data = load_data()
+        snapshot_data_v16(current_data, tag="before-restore", subkey="before_restore")
+    except Exception:
+        pass
+
+    # 2. Tìm file backup khớp tên trong tất cả thư mục backup
+    search_subdirs = [
+        "manual",
+        "before-restore",
+        "before_restore",   # đề phòng khác tên thư mục
+        "startup",
+        "pre-save",
+        "pre_save",
+        "resetuser",
+        "export",
+    ]
+
+    found_path = None
+    for sub in search_subdirs:
+        cand = os.path.join(BASE_DATA_DIR, "backups", sub, filename)
+        if os.path.isfile(cand):
+            found_path = cand
+            break
+
+    # fallback: thử thẳng trong backups/ (phòng TH file cũ nằm trực tiếp chứ không trong thư mục con)
+    if not found_path:
+        cand = os.path.join(BASE_DATA_DIR, "backups", filename)
+        if os.path.isfile(cand):
+            found_path = cand
+
+    # 3. Nếu sau tất cả vẫn không tìm thấy
+    if not found_path or (not os.path.isfile(found_path)):
+        await ctx.reply(
+            "❌ Không tìm thấy file backup phù hợp với tên bạn đưa.\n"
+            "Hãy dùng `olistbackup` để xem danh sách tên file, rồi dán lại y nguyên.",
+            mention_author=False
+        )
+        return
+
+    # 4. Đọc file backup và ghi đè data.json
+    try:
+        with open(found_path, "r", encoding="utf-8") as f:
+            restored = json.load(f)
+
+        save_data(restored)
+
+        await ctx.reply(
+            (
+                "✅ ĐÃ KHÔI PHỤC DỮ LIỆU THÀNH CÔNG!\n"
+                f"📦 File: `{os.path.basename(found_path)}`\n"
+                "💾 Gợi ý: chạy `otestdata` để kiểm tra lại."
+            ),
+            mention_author=False
+        )
+
     except Exception as e:
         await ctx.reply(
-            f"Khôi phục thất bại: {e}",
+            f"❌ Khôi phục thất bại: {e}",
             mention_author=False
         )
+
+#===========PHỤC HỒI==========================
+
+
+
+#===========resetdata========================
+
 
 @bot.command(name="resetdata")
 @owner_only()
@@ -2467,6 +2714,113 @@ async def cmd_opingg(ctx):
     await msg.edit(
         content=f"🏓 Gateway: {gateway_ms} ms • Send/edit: {send_ms} ms"
     )
+
+
+
+
+
+# ===============================================
+# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
+# ===============================================
+from discord.ext import tasks
+import time
+
+# 🧭 Kênh Discord để gửi thông báo
+AUTO_BACKUP_CHANNEL_ID = 1433207596898193479  
+
+# ⏱ Thời gian mặc định (có thể thay đổi lúc chạy bằng lệnh othoigiansaoluu)
+AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
+AUTO_REPORT_INTERVAL_MINUTES = 60    # báo lên kênh tối đa 1 lần mỗi Y phút
+
+# Bộ nhớ runtime
+_last_report_ts = 0  # timestamp giây lần cuối đã báo
+_auto_backup_started = False  # để đảm bảo chỉ start loop 1 lần
+
+@tasks.loop(minutes=1)
+async def auto_backup_task():
+    """
+    Vòng lặp chạy mỗi 1 phút.
+    - Tự đếm phút để biết khi nào cần backup.
+    - Backup xong thì quyết định có báo vào kênh hay không.
+    """
+    global _last_report_ts
+    global AUTO_BACKUP_INTERVAL_MINUTES
+    global AUTO_REPORT_INTERVAL_MINUTES
+
+    # setup biến đếm phút từ lần backup gần nhất
+    if not hasattr(auto_backup_task, "_minutes_since_backup"):
+        auto_backup_task._minutes_since_backup = 0
+
+    auto_backup_task._minutes_since_backup += 1
+
+    # chưa đủ thời gian -> thôi
+    if auto_backup_task._minutes_since_backup < AUTO_BACKUP_INTERVAL_MINUTES:
+        return
+
+    # reset đếm vì sắp backup
+    auto_backup_task._minutes_since_backup = 0
+
+    # Thực hiện backup
+    try:
+        data_now = load_data()
+        filename = snapshot_data_v16(data_now, tag="auto", subkey="manual")
+
+        # Dọn backup cũ (giữ lại 10 bản manual mới nhất)
+        try:
+            _cleanup_old_backups_limit()
+        except Exception as e:
+            print(f"[AUTO-BACKUP] ⚠️ Lỗi dọn backup cũ: {e}")
+
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = (
+            f"✅ **Tự động sao lưu dữ liệu thành công!**\n"
+            f"📦 File: `{os.path.basename(filename)}`\n"
+            f"🕐 Thời gian backup: {current_time}\n"
+            f"⏱️ Chu kỳ backup hiện tại: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
+            f"📣 Chu kỳ báo cáo hiện tại: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần"
+        )
+
+        print(f"[AUTO-BACKUP] {msg}")
+
+        # Có nên báo vào kênh không?
+        now_ts = time.time()
+        elapsed_since_report_min = (now_ts - _last_report_ts) / 60.0
+
+        if elapsed_since_report_min >= AUTO_REPORT_INTERVAL_MINUTES:
+            try:
+                channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
+                if channel:
+                    await channel.send(msg)
+                else:
+                    print("[AUTO-BACKUP] ⚠️ Không tìm thấy kênh Discord để gửi thông báo.")
+            except Exception as e:
+                print(f"[AUTO-BACKUP] ⚠️ Lỗi gửi thông báo Discord: {e}")
+
+            _last_report_ts = now_ts  # đánh dấu lần báo gần nhất
+
+    except Exception as e:
+        print(f"[AUTO-BACKUP] ❌ Lỗi khi tạo backup tự động: {e}")
+
+
+@auto_backup_task.before_loop
+async def before_auto_backup():
+    # đợi bot kết nối xong discord
+    await bot.wait_until_ready()
+    # khởi tạo lại bộ đếm phút
+    auto_backup_task._minutes_since_backup = 0
+    # lần đầu start thì cho phép báo ngay
+    global _last_report_ts
+    _last_report_ts = 0
+    print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
+
+
+
+
+
+
+
+
+
 
 
 # ================================
