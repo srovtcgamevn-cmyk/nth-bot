@@ -351,6 +351,9 @@ def remove_guild_channel(data, guild_id: int, channel_id: int) -> bool:
     cfg["bot_channels"] = cur
     return True
 
+# ===== CẤU HÌNH KÊNH (osetbot – nhiều kênh) =====
+
+
 # ===== Emoji — BẮT ĐẦU =====
 # (Khu vực Emoji dùng chung toàn dự án)
 RARITY_EMOJI = {
@@ -890,11 +893,66 @@ async def cmd_olenh(ctx: commands.Context):
     embed.set_footer(text="BOT GAME NGH OFFLINE | NTH3.volume")
     await ctx.reply(embed=embed, mention_author=False)
 
+
+
+
+
+
+
+
+
+
+
+
+
+# =========================================
+# CẤU HÌNH KÊNH BOT / THEO DÕI SERVER
+# Lệnh: osetbot / setbot
+# Yêu cầu: admin server
+# =========================================
+
+from discord.ext import commands
+from discord import ui, ButtonStyle, Interaction
+import time
+
+def _update_guild_info_block(data, guild_obj: discord.Guild):
+    """
+    Cập nhật thông tin server (guild) vào data["guilds"] để
+    lệnh thống kê (othongtinmaychu) có thể đọc tên server,
+    số thành viên, và danh sách kênh bot hợp lệ.
+    """
+    gid = str(guild_obj.id)
+
+    # đảm bảo nhánh tồn tại
+    data.setdefault("guilds", {})
+    if gid not in data["guilds"]:
+        data["guilds"][gid] = {}
+
+    # tên server
+    data["guilds"][gid]["name"] = guild_obj.name
+
+    # số thành viên (nếu bot có quyền xem)
+    mcount = getattr(guild_obj, "member_count", None)
+    if mcount is not None:
+        data["guilds"][gid]["member_count"] = int(mcount)
+
+    # lần cuối chỉnh cấu hình bot cho server này (epoch giây)
+    data["guilds"][gid]["last_setbot"] = int(time.time())
+
+    # lưu luôn danh sách kênh bot được phép hiện tại để chủ bot xem thống kê
+    allowed_channels_now = list(get_guild_channels(data, guild_obj.id))
+    data["guilds"][gid]["allowed_channels"] = [int(x) for x in allowed_channels_now]
+
+
 class SetBotView(ui.View):
     def __init__(self, timeout: float | None = 180):
         super().__init__(timeout=timeout)
 
     async def _is_admin_or_deny(self, interaction: Interaction) -> bool:
+        """
+        Chỉ cho phép người có quyền admin thao tác các nút.
+        Nếu không đủ quyền -> trả lời ephemeral và thoát.
+        """
         perms = getattr(getattr(interaction.user, "guild_permissions", None), "administrator", False)
         if not perms:
             try:
@@ -909,82 +967,197 @@ class SetBotView(ui.View):
 
     @ui.button(label="① Set DUY NHẤT kênh này", style=ButtonStyle.success, emoji="✅")
     async def btn_set_only(self, interaction: Interaction, button: ui.Button):
+        """
+        Chỉ cho phép BOT chạy duy nhất ở kênh này.
+        Xoá whitelist cũ, giữ đúng kênh hiện tại.
+        """
         if not await self._is_admin_or_deny(interaction):
             return
+
         data = load_data()
+
+        # Ghi cấu hình allowed_channels: CHỈ kênh hiện tại
         set_guild_channels_only(data, interaction.guild.id, interaction.channel.id)
+
+        # Cập nhật info server để thống kê global
+        _update_guild_info_block(data, interaction.guild)
+
         save_data(data)
-        await interaction.response.send_message(
-            f"✅ Đã **chỉ định duy nhất** kênh {interaction.channel.mention} cho BOT.",
-            ephemeral=True
-        )
+
+        try:
+            await interaction.response.send_message(
+                f"✅ ĐÃ CHỈ ĐỊNH DUY NHẤT kênh {interaction.channel.mention} cho BOT.\n"
+                f"🔒 Các lệnh gameplay chỉ chạy ở kênh này.",
+                ephemeral=True
+            )
+        except Exception:
+            pass
 
     @ui.button(label="② Gỡ kênh này", style=ButtonStyle.danger, emoji="🗑️")
     async def btn_unset_here(self, interaction: Interaction, button: ui.Button):
+        """
+        Gỡ kênh hiện tại ra khỏi whitelist.
+        Nếu whitelist rỗng => BOT coi như chạy ở mọi kênh.
+        """
         if not await self._is_admin_or_deny(interaction):
             return
+
         data = load_data()
-        ok = remove_guild_channel(data, interaction.guild.id, interaction.channel.id)
+
+        removed_ok = remove_guild_channel(data, interaction.guild.id, interaction.channel.id)
+
+        # cập nhật info server
+        _update_guild_info_block(data, interaction.guild)
+
         save_data(data)
-        if ok:
-            await interaction.response.send_message(
-                f"🗑️ Đã gỡ {interaction.channel.mention} khỏi danh sách kênh BOT.",
-                ephemeral=True
+
+        if removed_ok:
+            msg_txt = (
+                f"🗑️ ĐÃ GỠ {interaction.channel.mention} khỏi danh sách kênh BOT.\n"
+                f"ℹ️ Nếu không còn kênh whitelist, BOT sẽ chạy ở MỌI kênh."
             )
         else:
-            await interaction.response.send_message(
-                f"ℹ️ Kênh {interaction.channel.mention} hiện **không nằm** trong danh sách.",
-                ephemeral=True
+            msg_txt = (
+                f"ℹ️ Kênh {interaction.channel.mention} hiện không nằm trong whitelist."
             )
+
+        try:
+            await interaction.response.send_message(msg_txt, ephemeral=True)
+        except Exception:
+            pass
 
     @ui.button(label="③ Thêm kênh phụ (kênh này)", style=ButtonStyle.primary, emoji="➕")
     async def btn_add_here(self, interaction: Interaction, button: ui.Button):
+        """
+        Thêm kênh hiện tại vào whitelist (cho phép BOT chạy ở nhiều kênh).
+        Giới hạn tối đa số kênh phụ ví dụ 5.
+        """
         if not await self._is_admin_or_deny(interaction):
             return
+
         data = load_data()
-        ok = add_guild_channel(data, interaction.guild.id, interaction.channel.id, max_channels=5)
+
+        added_ok = add_guild_channel(
+            data,
+            interaction.guild.id,
+            interaction.channel.id,
+            max_channels=5  # giữ giới hạn như thiết kế của bạn
+        )
+
+        # cập nhật info server
+        _update_guild_info_block(data, interaction.guild)
+
         save_data(data)
-        if ok:
-            await interaction.response.send_message(
-                f"➕ Đã **thêm** {interaction.channel.mention} vào danh sách kênh BOT.",
-                ephemeral=True
+
+        if added_ok:
+            msg_txt = (
+                f"➕ ĐÃ THÊM {interaction.channel.mention} "
+                f"vào danh sách kênh BOT hợp lệ cho server này."
             )
         else:
-            await interaction.response.send_message(
-                "⚠️ Số lượng kênh đã đạt giới hạn. Hãy gỡ bớt trước khi thêm.",
-                ephemeral=True
+            msg_txt = (
+                "⚠️ Số lượng kênh đã đạt giới hạn. "
+                "Hãy gỡ bớt trước khi thêm kênh mới."
             )
+
+        try:
+            await interaction.response.send_message(msg_txt, ephemeral=True)
+        except Exception:
+            pass
 
     @ui.button(label="④ Xem kênh đã set", style=ButtonStyle.secondary, emoji="📋")
     async def btn_list(self, interaction: Interaction, button: ui.Button):
+        """
+        Hiển thị danh sách whitelist kênh BOT hiện tại trong server này.
+        Đồng thời cập nhật info server vào data["guilds"].
+        """
         if not await self._is_admin_or_deny(interaction):
             return
-        data = load_data()
-        allowed = list(get_guild_channels(data, interaction.guild.id))
-        if not allowed:
-            await interaction.response.send_message(
-                "📋 Chưa có kênh nào được chỉ định. Hãy dùng các nút ① hoặc ③.",
-                ephemeral=True
-            )
-            return
-        mentions = []
-        for cid in allowed:
-            ch = interaction.guild.get_channel(int(cid))
-            mentions.append(ch.mention if ch else f"`#{cid}`")
-        await interaction.response.send_message(
-            "📋 **Danh sách kênh BOT:** " + " • ".join(mentions),
-            ephemeral=True
-        )
 
-@bot.command(name="setbot", aliases=["osetbot"])
+        data = load_data()
+
+        allowed_now = list(get_guild_channels(data, interaction.guild.id))
+
+        # cập nhật info server (bao gồm allowed_channels)
+        _update_guild_info_block(data, interaction.guild)
+
+        save_data(data)
+
+        if not allowed_now:
+            txt = (
+                "📋 Chưa có kênh nào bị khoá riêng.\n"
+                "👉 BOT hiện có thể chạy ở MỌI kênh trong server."
+            )
+        else:
+            mentions = []
+            for cid in allowed_now:
+                ch = interaction.guild.get_channel(int(cid))
+                mentions.append(ch.mention if ch else f"`#{cid}`")
+            txt = "📋 **Danh sách kênh BOT được phép:**\n" + " • ".join(mentions)
+
+        try:
+            await interaction.response.send_message(txt, ephemeral=True)
+        except Exception:
+            pass
+
+#===============SETBOT=======================
+#===============SETBOT=======================
+#===============SETBOT=======================
+#===============SETBOT=======================
+#===============SETBOT=======================
+
+
+@bot.command(name="osetbot", aliases=["setbot"])
 @commands.has_guild_permissions(administrator=True)
-async def cmd_setbot(ctx: commands.Context):
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_osetbot(ctx: commands.Context):
+    """
+    Gửi menu cấu hình BOT cho server hiện tại (4 nút).
+    Admin server dùng để:
+    - Khoá BOT vào đúng 1 kênh
+    - Thêm kênh phụ
+    - Gỡ kênh khỏi whitelist
+    - Xem danh sách kênh đã set
+
+    Ngoài ra, mỗi lần thao tác nút sẽ ghi thông tin server
+    vào data["guilds"] để chủ bot coi thống kê tổng qua lệnh othongtinmaychu.
+    """
+
+    if not ctx.guild:
+        await ctx.reply(
+            "Lệnh này chỉ dùng trong server, không dùng trong DM.",
+            mention_author=False
+        )
+        return
+
     note = (
         "⚠️ BOT dùng tiền tố `o` hoặc `O`.\n"
-        "Chỉ định 1 kênh riêng (hoặc kênh phụ) để tránh trùng BOT khác.\n"
-        "Nhấn các nút bên dưới để cấu hình nhanh."
+        "Chọn cách thiết lập kênh BOT cho server này:\n\n"
+        "① Set DUY NHẤT kênh hiện tại\n"
+        "② Gỡ kênh hiện tại khỏi danh sách\n"
+        "③ Thêm kênh hiện tại làm kênh phụ\n"
+        "④ Xem danh sách kênh được phép\n\n"
+        "📌 BOT sẽ ghi nhận tên server + danh sách kênh để thống kê."
     )
-    await ctx.send(note, view=SetBotView())
+
+    try:
+        await ctx.send(note, view=SetBotView())
+    except discord.HTTPException:
+        await ctx.send(
+            "Không thể gửi menu tương tác. Kiểm tra quyền gửi message / button.",
+            mention_author=False
+        )
+
+
+#===============SETBOT=======================
+#===============SETBOT=======================
+#===============SETBOT=======================
+#===============SETBOT=======================
+#===============SETBOT=======================
+
+
+
+
 
 def _looks_like_noise_o(msg: str) -> bool:
     if not msg:
@@ -1001,6 +1174,13 @@ def _looks_like_noise_o(msg: str) -> bool:
         if first.startswith("o"+t):
             return True
     return False
+
+
+
+
+
+
+
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error):
@@ -1174,6 +1354,214 @@ async def cmd_olenhquantri(ctx):
 
     ]
     await ctx.reply("\n".join(lines), mention_author=False)
+
+
+
+
+
+# ====================thông tin máy chủ===============================
+
+
+
+@bot.command(name="othongtinmaychu", aliases=["thongtinmaychu"])
+@owner_only()
+@commands.cooldown(1, 10, commands.BucketType.user)
+async def cmd_othongtinmaychu(ctx):
+    """
+    Báo cáo tổng quan tình trạng hệ thống BOT TU TIÊN.
+    Chỉ dành cho Chủ Bot.
+    """
+
+    # ===== 1. Tải data =====
+    try:
+        data = load_data()
+    except Exception as e:
+        await ctx.reply(f"❌ Không thể đọc dữ liệu: {e}", mention_author=False)
+        return
+
+    users_dict = data.get("users", {})
+    guilds_dict = data.get("guilds", {})
+
+    # ===== 2. Thống kê người chơi =====
+    total_users = len(users_dict)
+
+    import time
+    now_ts = time.time()
+    active_24h = 0
+    for u in users_dict.values():
+        last_active_ts = u.get("last_active", 0)
+        try:
+            last_active_ts = float(last_active_ts)
+        except Exception:
+            last_active_ts = 0
+        if last_active_ts and (now_ts - last_active_ts) <= 86400:
+            active_24h += 1
+
+    # ===== 3. Kinh tế (Ngân Phiếu) =====
+    total_money = 0
+    for u in users_dict.values():
+        try:
+            total_money += int(u.get("money", 0))
+        except Exception:
+            pass
+
+    avg_money = (total_money / total_users) if total_users else 0
+
+    # ===== 4. Top 5 người giàu nhất (có thử lấy tên Discord nếu thiếu name) =====
+    richest = sorted(
+        users_dict.items(),
+        key=lambda kv: kv[1].get("money", 0),
+        reverse=True
+    )[:5]
+
+    richest_lines = []
+    for uid, u in richest:
+        # Ưu tiên tên lưu trong data
+        display_name = u.get("name")
+
+        # Nếu không có, thử lấy tên từ Discord
+        if not display_name:
+            try:
+                user_obj = bot.get_user(int(uid))
+                if user_obj:
+                    display_name = user_obj.display_name or user_obj.name
+                else:
+                    user_obj = await bot.fetch_user(int(uid))
+                    display_name = user_obj.display_name or user_obj.name
+            except Exception:
+                display_name = f"ID:{uid}"
+
+        money = u.get("money", 0)
+        richest_lines.append(f"• {display_name} — 💰 {money:,} Ngân Phiếu")
+
+    richest_text = "\n".join(richest_lines) if richest_lines else "_Không có dữ liệu._"
+
+    # ===== 5. Top server Discord hoạt động =====
+    # Cách 1: đếm số user theo guild_id
+    guild_count = {}
+    for uid, u in users_dict.items():
+        gid = str(u.get("guild_id", ""))  # nếu người chơi có ghi server
+        if not gid:
+            continue
+        guild_count[gid] = guild_count.get(gid, 0) + 1
+
+    # Sắp xếp theo số người chơi
+    top_guilds = sorted(
+        guild_count.items(),
+        key=lambda kv: kv[1],
+        reverse=True
+    )[:10]
+
+    guild_lines = []
+    for gid, count in top_guilds:
+        ginfo = guilds_dict.get(str(gid), {})
+        gname = ginfo.get("name", f"Server {gid}")
+        guild_lines.append(f"• {gname} — 👥 {count} người")
+
+    # Fallback:
+    # Nếu chưa có ai có guild_id (guild_lines rỗng)
+    # nhưng mình đã lưu được server qua osetbot,
+    # thì vẫn show danh sách server đã ghi nhận.
+    if not guild_lines and guilds_dict:
+        # lấy tối đa 10 server đã ghi nhận
+        for gid, ginfo in list(guilds_dict.items())[:10]:
+            gname = ginfo.get("name", f"Server {gid}")
+            # nếu đã biết member_count, show ra
+            mem_ct = ginfo.get("member_count")
+            if mem_ct is not None:
+                guild_lines.append(f"• {gname} — 🏠 {mem_ct} thành viên")
+            else:
+                guild_lines.append(f"• {gname}")
+
+    guilds_text = "\n".join(guild_lines) if guild_lines else "_Không có dữ liệu server._"
+
+    # ===== 6. Dung lượng data.json =====
+    try:
+        data_path = os.path.join(BASE_DATA_DIR, "data.json")
+        size_kb = os.path.getsize(data_path) / 1024
+        size_info = f"{size_kb:.2f} KB"
+    except Exception:
+        size_info = "Không xác định"
+
+    # ===== 7. Đếm số backup hiện có trong /backups/manual =====
+    manual_dir = os.path.join(BASE_DATA_DIR, "backups", "manual")
+    backup_files = []
+    try:
+        if os.path.isdir(manual_dir):
+            for fn in os.listdir(manual_dir):
+                if fn.endswith(".json"):
+                    backup_files.append(fn)
+        backup_count = len(backup_files)
+    except Exception:
+        backup_count = 0
+
+    # ===== 8. Thời gian hiện tại =====
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # ===== 9. Tạo embed trả về =====
+    embed = discord.Embed(
+        title="📊 THỐNG KÊ DỮ LIỆU SERVER",
+        description=f"Cập nhật lúc: `{now_str}`",
+        color=0x2ECC71
+    )
+
+    # Người chơi
+    embed.add_field(
+        name="👥 Người chơi",
+        value=(
+            f"• Tổng: **{total_users:,}** người\n"
+            f"• Hoạt động 24h: **{active_24h:,}** người"
+        ),
+        inline=False
+    )
+
+    # Kinh tế
+    embed.add_field(
+        name="💰 Kinh tế Ngân Phiếu",
+        value=(
+            f"• Tổng: {total_money:,}\n"
+            f"• TB / người: {avg_money:,.0f}"
+        ),
+        inline=False
+    )
+
+    # Dung lượng
+    embed.add_field(
+        name="💾 Dung lượng data.json",
+        value=size_info,
+        inline=False
+    )
+
+    # Backup
+    embed.add_field(
+        name="📦 Sao lưu hiện có",
+        value=(
+            f"• Số file trong /backups/manual: **{backup_count}**\n"
+            f"• Giới hạn tự động giữ: 10 file mới nhất"
+        ),
+        inline=False
+    )
+
+    # Top giàu
+    embed.add_field(
+        name="🏆 Top 5 người giàu nhất",
+        value=richest_text,
+        inline=False
+    )
+
+    # Top server
+    embed.add_field(
+        name="🏘 Top 10 máy chủ Discord hoạt động",
+        value=guilds_text,
+        inline=False
+    )
+
+    await ctx.reply(embed=embed, mention_author=False)
+
+
+
+
+
 
 
 # =============================================================
@@ -2812,8 +3200,9 @@ async def before_auto_backup():
     global _last_report_ts
     _last_report_ts = 0
     print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
-
-
+# ===============================================
+# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
+# ===============================================
 
 
 
