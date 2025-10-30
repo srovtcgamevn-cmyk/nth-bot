@@ -34,6 +34,7 @@ INTENTS = discord.Intents.default()
 INTENTS.message_content = True
 INTENTS.members = True
 
+
 # ====== CẤU HÌNH LƯU DỮ LIỆU TRÊN RAILWAY ======
 DATA_DIR = "/app/data"
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
@@ -41,6 +42,8 @@ BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 
 # đảm bảo thư mục tồn tại
 os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
 
 
 DATA_FILE = "data.json"
@@ -1642,85 +1645,6 @@ async def cmd_opingg(ctx):
     send_ms = int((t1 - t0) * 1000)
     await msg.edit(content=f"🏓 Gateway: {gateway_ms} ms • Send/edit: {send_ms} ms")
 
-
-# ===== Tiện ích kiểm tra volume (Owner only) =====
-import os, time
-from discord.ext import commands
-
-BOT_OWNERS = {821066331826421840}  # Thay ID của bạn nếu khác
-
-def owner_only():
-    async def predicate(ctx):
-        return (ctx.author.id in BOT_OWNERS) or (
-            getattr(getattr(ctx.bot, "application", None), "owner", None)
-            and ctx.author.id == ctx.bot.application.owner.id
-        )
-    return commands.check(predicate)
-
-def _fmt_size(n):
-    for u in ["B","KB","MB","GB"]:
-        if n < 1024: return f"{n:.1f} {u}"
-        n /= 1024
-    return f"{n:.1f} TB"
-
-@bot.command(name="plsdata")
-@owner_only()
-async def cmd_oplsdata(ctx):
-    base = "/app/data"
-    bkp  = os.path.join(base, "backups")
-    lines = [f"📂 Liệt kê volume: `{base}`"]
-    try:
-        items = sorted(os.listdir(base))
-        if not items:
-            lines.append("— (trống)")
-        else:
-            for name in items:
-                p = os.path.join(base, name)
-                if os.path.isdir(p):
-                    lines.append(f"📁 {name}/")
-                else:
-                    size = _fmt_size(os.path.getsize(p))
-                    lines.append(f"📄 {name} — {size}")
-    except Exception as e:
-        lines.append(f"⚠️ Lỗi đọc `{base}`: {e}")
-
-    lines.append("")
-    lines.append(f"📂 Liệt kê backups: `{bkp}`")
-    try:
-        os.makedirs(bkp, exist_ok=True)
-        items = sorted(os.listdir(bkp))
-        if not items:
-            lines.append("— (chưa có file backup)")
-        else:
-            # chỉ hiện 20 file mới nhất
-            items = sorted(items, key=lambda n: os.path.getmtime(os.path.join(bkp,n)), reverse=True)[:20]
-            for name in items:
-                p = os.path.join(bkp, name)
-                ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(p)))
-                size = _fmt_size(os.path.getsize(p))
-                lines.append(f"🧩 {name} — {size} — {ts}")
-    except Exception as e:
-        lines.append(f"⚠️ Lỗi đọc `{bkp}`: {e}")
-
-    await ctx.reply("\n".join(lines), mention_author=False)
-
-@bot.command(name="saoluutest")
-@owner_only()
-async def cmd_osaoluutest(ctx):
-    """Tạo 1 file dummy để test ghi vào /app/data/backups (không đụng data.json)."""
-    base = "/app/data"
-    bkp  = os.path.join(base, "backups")
-    os.makedirs(bkp, exist_ok=True)
-    test_path = os.path.join(bkp, f"dummy.{int(time.time())}.txt")
-    with open(test_path, "w", encoding="utf-8") as f:
-        f.write("hello from bot, test write to volume")
-    await ctx.reply(f"✅ Đã tạo file test: `{os.path.basename(test_path)}` trong `/app/data/backups/`.", mention_author=False)
-
-# ===== Tiện ích kiểm tra volume (Owner only) =====
-
-
-
-
 async def _main():
     ensure_data()
     # no cogs needed in module mode
@@ -1735,6 +1659,3 @@ if __name__ == "__main__":
         asyncio.run(_main())
 # ================================
 # 🚀 KHỞI TẠO & CHẠY BOT — KẾT THÚC
-
-
-
