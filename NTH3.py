@@ -571,7 +571,7 @@ def images_enabled_global() -> bool:
 # 🧩 BOT & CẤU HÌNH CHUNG — BẮT ĐẦU
 # ===================================
 bot = commands.Bot(
-    command_prefix=commands.when_mentioned_or("o","O")
+    command_prefix=commands.when_mentioned_or("o","O"),
 
 # ============================================
 # NTH3.3_live — BT-1727-KIM
