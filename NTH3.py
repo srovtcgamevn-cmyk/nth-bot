@@ -1,26 +1,12 @@
-# -*- coding: utf-8 -*-
-# =============================================================
 #  BOT TU TIÊN — NTH3.volume (Module, no-self) (BT-1727-KIM)
-#  Phiên bản: v18_9_storage (2025-10-30)
+#  Phiên bản: v18_10_statslog (2025-10-30)
 #
-#  Xuất phát từ NTH3.2 của bạn, GIỮ NGUYÊN TOÀN BỘ TÍNH NĂNG:
-#   - Gameplay: ol/omo/oban/okho/omac/othao/oxem/onhanvat/odt (+ jackpot)
-#   - Quản trị server: osetbot (4 nút), chặn spam kênh
-#   - Quản trị owner: osaoluu/listbackup/xemsaoluu/ophuchoi/resetdata/resetuser/oaddtien/oaddruong/obatanh
-#   - Anti spam "ok", "oh", "ob", "oke", "ooo", "oi"
-#   - Cooldown ol 10s, các lệnh khác 5s
-#   - Backup v16
-#
-#  Thay đổi DUY NHẤT:
-#   - Toàn bộ data.json + backups chuyển vào thư mục BASE_DATA_DIR lấy từ biến môi trường DATA_DIR (ví dụ /data trên Railway Volume).
-#   - Ghi file an toàn bằng file tạm rồi os.replace (atomic).
-#   - Tự tạo thư mục nếu thiếu.
-#
-#  Cách dùng Railway:
-#    1. Mount volume vào /data
-#    2. Thêm biến môi trường DATA_DIR=/data
-#    3. Thêm biến môi trường TU_TIEN_BOT_TOKEN=<token bot Discord>
-# =============================================================
+#  Thay đổi so với v18_9_storage:
+#   - Ghi log hoạt động người chơi (name, guild_id, last_active)
+#   - Thêm chỉ số stats: ol_count, odt_count, tổng NP tiêu / nhận từ odt
+#   - Thêm tổng hợp thống kê toàn hệ thống cho lệnh `othongtinmaychu`
+#   - Hiển thị Top giàu, Top ol, Top odt, tổng ol/odt toàn server
+
 
 # =========================
 # 🔧 HỆ THAM CHIẾU CHUNG — BẮT ĐẦU
@@ -263,33 +249,108 @@ def save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp_path, DATA_FILE)
 
-def ensure_user(user_id:str):
+#=================GHI LẠI DATA =================
+
+def ensure_user(user_id: str):
     """
-    Đảm bảo user tồn tại trong data["users"], nếu chưa có thì tạo với giá trị mặc định.
+    Đảm bảo user tồn tại trong data["users"].
+    KHÔNG phụ thuộc ctx ở đây (để không phải sửa toàn file),
+    việc ghi name / guild_id / last_active sẽ được cập nhật riêng
+    bên trong từng lệnh gameplay khi có ctx.
+
+    Trả về: data (toàn bộ), và luôn đảm bảo khung stats mới.
     """
     data = load_data()
-    if user_id not in data["users"]:
-        data["users"][user_id] = {
+    users = data.setdefault("users", {})
+
+    if user_id not in users:
+        users[user_id] = {
             "ngan_phi": STARTING_NP,
             "rungs": {"D":0,"C":0,"B":0,"A":0,"S":0},
             "items": [],
-            "equipped": {"slot_vukhi": None, "slot_aogiap": None},
+            "equipped": {
+                "slot_vukhi": None,
+                "slot_aogiap": None
+            },
             "cooldowns": {"ol":0},
             "stats": {
-                "opened":0,
-                "ol_count":0,
-                "ngan_phi_earned_total":0,
-                "sold_count":0,
-                "sold_value_total":0
+                "opened": 0,
+                "ol_count": 0,
+                "odt_count": 0,
+                "ngan_phi_earned_total": 0,
+                "odt_np_spent_total": 0,
+                "odt_np_earned_total": 0,
+                "sold_count": 0,
+                "sold_value_total": 0
             },
             "claimed_missions": [],
             "achievements": [],
             "minigames": {
                 "odt": {"win_streak": 0, "loss_streak": 0}
-            }
+            },
+            # thông tin phục vụ thống kê toàn hệ thống
+            "name": "",
+            "guild_id": 0,
+            "last_active": 0
         }
         save_data(data)
+    else:
+        # đảm bảo các key mới tồn tại kể cả user cũ
+        u = users[user_id]
+        u.setdefault("rungs", {"D":0,"C":0,"B":0,"A":0,"S":0})
+        u.setdefault("items", [])
+        u.setdefault("equipped", {})
+        u["equipped"].setdefault("slot_vukhi", None)
+        u["equipped"].setdefault("slot_aogiap", None)
+        u.setdefault("cooldowns", {}).setdefault("ol", 0)
+        st = u.setdefault("stats", {})
+        st.setdefault("opened", 0)
+        st.setdefault("ol_count", 0)
+        st.setdefault("odt_count", 0)
+        st.setdefault("ngan_phi_earned_total", 0)
+        st.setdefault("odt_np_spent_total", 0)
+        st.setdefault("odt_np_earned_total", 0)
+        st.setdefault("sold_count", 0)
+        st.setdefault("sold_value_total", 0)
+        u.setdefault("claimed_missions", [])
+        u.setdefault("achievements", [])
+        mg = u.setdefault("minigames", {})
+        mg.setdefault("odt", {"win_streak": 0, "loss_streak": 0})
+        u.setdefault("name", "")
+        u.setdefault("guild_id", 0)
+        u.setdefault("last_active", 0)
+        save_data(data)
+
     return data
+
+
+def touch_user_activity(ctx, user_dict: dict):
+    """
+    Cập nhật thông tin hoạt động mới nhất cho user:
+    - name: tên hiển thị hiện tại
+    - guild_id: server hiện tại (nếu có)
+    - last_active: timestamp
+    """
+    try:
+        user_dict["name"] = ctx.author.display_name
+    except Exception:
+        pass
+    try:
+        if ctx.guild:
+            user_dict["guild_id"] = ctx.guild.id
+    except Exception:
+        pass
+    try:
+        user_dict["last_active"] = int(time.time())
+    except Exception:
+        pass
+
+
+
+
+
+#=================GHI LẠI DATA =================
+
 
 def format_num(n:int)->str:
     return f"{n:,}"
@@ -1363,7 +1424,7 @@ async def cmd_othongtinmaychu(ctx):
     Chỉ dành cho Chủ Bot.
     """
 
-    # ===== 1. Tải data =====
+    # ===== 1. Load data =====
     try:
         data = load_data()
     except Exception as e:
@@ -1373,11 +1434,11 @@ async def cmd_othongtinmaychu(ctx):
     users_dict = data.get("users", {})
     guilds_dict = data.get("guilds", {})
 
-    # ===== 2. Thống kê người chơi =====
-    total_users = len(users_dict)
-
     import time
     now_ts = time.time()
+
+    # ===== 2. Thống kê người chơi =====
+    total_users = len(users_dict)
     active_24h = 0
     for u in users_dict.values():
         last_active_ts = u.get("last_active", 0)
@@ -1392,26 +1453,23 @@ async def cmd_othongtinmaychu(ctx):
     total_money = 0
     for u in users_dict.values():
         try:
-            total_money += int(u.get("money", 0))
+            total_money += int(u.get("ngan_phi", 0))
         except Exception:
             pass
-
     avg_money = (total_money / total_users) if total_users else 0
 
-    # ===== 4. Top 5 người giàu nhất (có thử lấy tên Discord nếu thiếu name) =====
+    # ===== 4. Top 5 người giàu nhất =====
     richest = sorted(
         users_dict.items(),
-        key=lambda kv: kv[1].get("money", 0),
+        key=lambda kv: int(kv[1].get("ngan_phi", 0)),
         reverse=True
     )[:5]
 
     richest_lines = []
     for uid, u in richest:
-        # Ưu tiên tên lưu trong data
-        display_name = u.get("name")
-
-        # Nếu không có, thử lấy tên từ Discord
+        display_name = u.get("name", "")
         if not display_name:
+            # fallback hỏi Discord nếu chưa log tên
             try:
                 user_obj = bot.get_user(int(uid))
                 if user_obj:
@@ -1421,43 +1479,84 @@ async def cmd_othongtinmaychu(ctx):
                     display_name = user_obj.display_name or user_obj.name
             except Exception:
                 display_name = f"ID:{uid}"
-
-        money = u.get("money", 0)
-        richest_lines.append(f"• {display_name} — 💰 {money:,} Ngân Phiếu")
-
+        money_val = int(u.get("ngan_phi", 0))
+        richest_lines.append(
+            f"• {display_name} — 💰 {money_val:,} Ngân Phiếu"
+        )
     richest_text = "\n".join(richest_lines) if richest_lines else "_Không có dữ liệu._"
 
-     # ===== 5. Top server Discord hoạt động (gọn icon 🏠 + 🧙) =====
-    # Gom user theo guild_id (đếm số người chơi trong từng server)
+    # ===== 5. Hoạt động server: Top 10 guild =====
+    # gom user theo guild_id
     guild_count = {}
-    for uid, u in users_dict.items():
+    for u in users_dict.values():
         gid = str(u.get("guild_id", ""))
-        if not gid:
-            continue
-        guild_count[gid] = guild_count.get(gid, 0) + 1
+        if gid:
+            guild_count[gid] = guild_count.get(gid, 0) + 1
 
-    # Nếu có dữ liệu người chơi
-    top_guilds = sorted(guild_count.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    top_guilds = sorted(
+        guild_count.items(),
+        key=lambda kv: kv[1],
+        reverse=True
+    )[:10]
 
     guild_lines = []
     for gid, count in top_guilds:
         ginfo = guilds_dict.get(str(gid), {})
         gname = ginfo.get("name", f"Server {gid}")
-        member_ct = ginfo.get("member_count", 0)
-        guild_lines.append(f"• {gname} — 🏠 {member_ct:,} | 🧙 {count:,}")
+        member_ct = int(ginfo.get("member_count", 0))
+        guild_lines.append(
+            f"• {gname} — 🏠 {member_ct:,} | 🧙 {count:,}"
+        )
 
-    # Fallback: nếu chưa có user nào có guild_id
     if not guild_lines and guilds_dict:
+        # fallback trường hợp chưa có user.guild_id
         for gid, ginfo in list(guilds_dict.items())[:10]:
             gname = ginfo.get("name", f"Server {gid}")
-            mem_ct = ginfo.get("member_count", 0)
-            guild_lines.append(f"• {gname} — 🏠 {mem_ct:,} | 🧙 0")
-
+            mem_ct = int(ginfo.get("member_count", 0))
+            guild_lines.append(
+                f"• {gname} — 🏠 {mem_ct:,} | 🧙 0"
+            )
     guilds_text = "\n".join(guild_lines) if guild_lines else "_Không có dữ liệu server._"
-     # ===== 5. Top server Discord hoạt động (gọn icon 🏠 + 🧙) =====
 
+    # ===== 6. Tổng hoạt động gameplay =====
+    total_ol_all = 0
+    total_odt_all = 0
+    for uid, u in users_dict.items():
+        st = u.get("stats", {})
+        total_ol_all  += int(st.get("ol_count", 0))
+        total_odt_all += int(st.get("odt_count", 0))
 
-    # ===== 6. Dung lượng data.json =====
+    # Top 5 spam ol nhất
+    top_ol = sorted(
+        users_dict.items(),
+        key=lambda kv: int(kv[1].get("stats", {}).get("ol_count", 0)),
+        reverse=True
+    )[:5]
+    top_ol_lines = []
+    for uid, u in top_ol:
+        st = u.get("stats", {})
+        display_name = u.get("name", f"ID:{uid}")
+        top_ol_lines.append(
+            f"• {display_name} — 🔍 {int(st.get('ol_count',0))} lần `ol`"
+        )
+    top_ol_text = "\n".join(top_ol_lines) if top_ol_lines else "_Không có dữ liệu._"
+
+    # Top 5 đổ thạch nhiều nhất
+    top_odt = sorted(
+        users_dict.items(),
+        key=lambda kv: int(kv[1].get("stats", {}).get("odt_count", 0)),
+        reverse=True
+    )[:5]
+    top_odt_lines = []
+    for uid, u in top_odt:
+        st = u.get("stats", {})
+        display_name = u.get("name", f"ID:{uid}")
+        top_odt_lines.append(
+            f"• {display_name} — 🪨 {int(st.get('odt_count',0))} lần `odt`"
+        )
+    top_odt_text = "\n".join(top_odt_lines) if top_odt_lines else "_Không có dữ liệu._"
+
+    # ===== 7. Backup / dung lượng =====
     try:
         data_path = os.path.join(BASE_DATA_DIR, "data.json")
         size_kb = os.path.getsize(data_path) / 1024
@@ -1465,7 +1564,6 @@ async def cmd_othongtinmaychu(ctx):
     except Exception:
         size_info = "Không xác định"
 
-    # ===== 7. Đếm số backup hiện có trong /backups/manual =====
     manual_dir = os.path.join(BASE_DATA_DIR, "backups", "manual")
     backup_files = []
     try:
@@ -1480,7 +1578,7 @@ async def cmd_othongtinmaychu(ctx):
     # ===== 8. Thời gian hiện tại =====
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # ===== 9. Tạo embed trả về =====
+    # ===== 9. Embed trả về =====
     embed = discord.Embed(
         title="📊 THỐNG KÊ DỮ LIỆU SERVER",
         description=f"Cập nhật lúc: `{now_str}`",
@@ -1507,19 +1605,12 @@ async def cmd_othongtinmaychu(ctx):
         inline=False
     )
 
-    # Dung lượng
+    # Hoạt động gameplay
     embed.add_field(
-        name="💾 Dung lượng data.json",
-        value=size_info,
-        inline=False
-    )
-
-    # Backup
-    embed.add_field(
-        name="📦 Sao lưu hiện có",
+        name="🎮 Hoạt động gameplay",
         value=(
-            f"• Số file trong /backups/manual: **{backup_count}**\n"
-            f"• Giới hạn tự động giữ: 10 file mới nhất"
+            f"• Tổng `ol` toàn máy chủ: {total_ol_all:,}\n"
+            f"• Tổng `odt` toàn máy chủ: {total_odt_all:,}"
         ),
         inline=False
     )
@@ -1531,10 +1622,35 @@ async def cmd_othongtinmaychu(ctx):
         inline=False
     )
 
+    # Top `ol`
+    embed.add_field(
+        name="🔍 Top 5 thám hiểm (`ol`)",
+        value=top_ol_text,
+        inline=False
+    )
+
+    # Top `odt`
+    embed.add_field(
+        name="🪨 Top 5 đổ thạch (`odt`)",
+        value=top_odt_text,
+        inline=False
+    )
+
     # Top server
     embed.add_field(
         name="🏘 Top 10 máy chủ Discord hoạt động",
         value=guilds_text,
+        inline=False
+    )
+
+    # Backup
+    embed.add_field(
+        name="📦 Sao lưu & dung lượng",
+        value=(
+            f"• Số file backup (manual): **{backup_count}**\n"
+            f"• data.json: {size_info}\n"
+            f"• Giới hạn giữ: 10 bản gần nhất"
+        ),
         inline=False
     )
 
@@ -1903,108 +2019,52 @@ async def cmd_oxtien(ctx, member: discord.Member):
 
 
 #===========PHỤC HỒI==========================
-
-
-
-@bot.command(name="ophuchoi", aliases=["phuchoi"])
+@bot.command(name="phuchoi")
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def cmd_phuchoi(ctx, filename: str = None):
-    """
-    Khôi phục dữ liệu từ 1 file backup .json trong thư mục backups/.
-    BẮT BUỘC phải chỉ định tên file .json.
-    Ví dụ:
-        ophuchoi data.json.v16.auto.20251030-153611.json
-
-    Quy tắc an toàn:
-    - Không có filename  => từ chối (không tự chọn bản gần nhất nữa).
-    - filename phải kết thúc bằng '.json'.
-    - Bot sẽ tìm file đó trong các thư mục con: manual, before-restore, startup, pre-save, resetuser, export.
-    - Trước khi ghi đè, bot snapshot trạng thái hiện tại vào before-restore.
-    """
-
-    # 0. Bắt buộc phải đưa tên file .json
+    # Bắt buộc phải chỉ định file .json
     if not filename:
         await ctx.reply(
-            "⚠️ Bạn phải chỉ định file backup .json để khôi phục.\n"
-            "Ví dụ:\n"
-            "`ophuchoi data.json.v16.auto.20251030-153611.json`",
+            "⚠️ Dùng đúng cú pháp:\n"
+            "`ophuchoi <tên_file.json>`\n"
+            "Ví dụ: `ophuchoi data.json.v16.auto.20251030-153211.json`",
             mention_author=False
         )
         return
 
-    if not filename.endswith(".json"):
-        await ctx.reply(
-            "⚠️ Tên file không hợp lệ. Phải kết thúc bằng `.json`.\n"
-            "Ví dụ đúng:\n"
-            "`ophuchoi data.json.v16.auto.20251030-153611.json`",
-            mention_author=False
-        )
-        return
+    data = load_data()
 
-    # 1. Chụp lại data hiện tại trước khi restore (để có đường quay lại)
+    # backup trước khi restore
     try:
-        current_data = load_data()
-        snapshot_data_v16(current_data, tag="before-restore", subkey="before_restore")
+        snapshot_data_v16(data, tag="before-restore", subkey="before_restore")
     except Exception:
         pass
 
-    # 2. Tìm file backup khớp tên trong tất cả thư mục backup
-    search_subdirs = [
-        "manual",
-        "before-restore",
-        "before_restore",   # đề phòng khác tên thư mục
-        "startup",
-        "pre-save",
-        "pre_save",
-        "resetuser",
-        "export",
-    ]
+    BACKUP_DIR_ROOT = os.path.join(BASE_DATA_DIR, "backups")
+    cand = os.path.join(BACKUP_DIR_ROOT, filename)
 
-    found_path = None
-    for sub in search_subdirs:
-        cand = os.path.join(BASE_DATA_DIR, "backups", sub, filename)
-        if os.path.isfile(cand):
-            found_path = cand
-            break
-
-    # fallback: thử thẳng trong backups/ (phòng TH file cũ nằm trực tiếp chứ không trong thư mục con)
-    if not found_path:
-        cand = os.path.join(BASE_DATA_DIR, "backups", filename)
-        if os.path.isfile(cand):
-            found_path = cand
-
-    # 3. Nếu sau tất cả vẫn không tìm thấy
-    if not found_path or (not os.path.isfile(found_path)):
+    if not os.path.isfile(cand):
         await ctx.reply(
-            "❌ Không tìm thấy file backup phù hợp với tên bạn đưa.\n"
-            "Hãy dùng `olistbackup` để xem danh sách tên file, rồi dán lại y nguyên.",
+            "❌ Không tìm thấy file backup với tên đó. "
+            "Hãy dùng `olistbackup` để xem danh sách file hợp lệ.",
             mention_author=False
         )
         return
 
-    # 4. Đọc file backup và ghi đè data.json
     try:
-        with open(found_path, "r", encoding="utf-8") as f:
+        with open(cand, "r", encoding="utf-8") as f:
             restored = json.load(f)
-
         save_data(restored)
-
         await ctx.reply(
-            (
-                "✅ ĐÃ KHÔI PHỤC DỮ LIỆU THÀNH CÔNG!\n"
-                f"📦 File: `{os.path.basename(found_path)}`\n"
-                "💾 Gợi ý: chạy `otestdata` để kiểm tra lại."
-            ),
+            f"✅ ĐÃ KHÔI PHỤC DỮ LIỆU TỪ `{filename}` THÀNH CÔNG.",
             mention_author=False
         )
-
     except Exception as e:
         await ctx.reply(
             f"❌ Khôi phục thất bại: {e}",
             mention_author=False
         )
-
 #===========PHỤC HỒI==========================
 
 
@@ -2410,11 +2470,18 @@ def _fmt_item_line(it) -> str:
         f"— Giá trị: {format_num(it['value'])}"
     )
 
+
+
+#==========OL========================
+
 @bot.command(name="l", aliases=["ol"])
 async def cmd_ol(ctx):
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
+
+    # cập nhật danh tính / hoạt động
+    touch_user_activity(ctx, user)
 
     now = time.time()
     if now < user["cooldowns"]["ol"]:
@@ -2427,9 +2494,14 @@ async def cmd_ol(ctx):
     rarity = choose_rarity()
     map_loc = random.choice(MAP_POOL)
 
+    # user loot được rương
     user["rungs"][rarity] += 1
-    user["stats"]["ol_count"] += 1
+    # đếm số lần đi thám hiểm
+    user["stats"]["ol_count"] = int(user["stats"].get("ol_count", 0)) + 1
+
+    # cooldown
     user["cooldowns"]["ol"] = now + COOLDOWN_OL
+
     save_data(data)
 
     rarity_name = {
@@ -2467,6 +2539,11 @@ async def cmd_ol(ctx):
             await msg.edit(embed=emb)
     except Exception:
         pass
+#==========OL========================
+
+
+#==========OM========================
+
 
 @bot.command(name="mo", aliases=["omo"])
 @commands.cooldown(1, 5, commands.BucketType.user)
@@ -2914,7 +2991,7 @@ def _try_jackpot(data: dict, member: discord.Member) -> int:
 
 
 
-
+#==============ODT======================
 
 @bot.command(name="odt", aliases=["dt"])
 @commands.cooldown(1, 5, commands.BucketType.user)
@@ -2923,6 +3000,9 @@ async def cmd_odt(ctx, amount: str = None):
     data = ensure_user(user_id)
     user = data["users"][user_id]
     odt_state = _odt_init_state(user)
+
+    # cập nhật log hoạt động
+    touch_user_activity(ctx, user)
 
     if amount is None:
         await ctx.reply(
@@ -2966,6 +3046,11 @@ async def cmd_odt(ctx, amount: str = None):
         )
         return
 
+    # log: người này vừa chơi thêm 1 lần
+    user["stats"]["odt_count"] = int(user["stats"].get("odt_count", 0)) + 1
+    # log: đã chi bao nhiêu NP vào odt
+    user["stats"]["odt_np_spent_total"] = int(user["stats"].get("odt_np_spent_total", 0)) + amount_val
+
     # trừ tiền trước khi biết kết quả
     user["ngan_phi"] = bal - amount_val
     save_data(data)
@@ -3003,6 +3088,10 @@ async def cmd_odt(ctx, amount: str = None):
         gain = _try_jackpot(data, ctx.author)
         if gain > 0:
             user["ngan_phi"] += gain
+
+            # log tiền nhận từ jackpot vào tổng earned
+            user["stats"]["odt_np_earned_total"] = int(user["stats"].get("odt_np_earned_total", 0)) + gain
+
             jp = _jp(data)
             jp["last_win"] = {
                 "user_id": ctx.author.id,
@@ -3031,6 +3120,9 @@ async def cmd_odt(ctx, amount: str = None):
 
         reward = amount_val * outcome
         user["ngan_phi"] += reward
+
+        # log tiền kiếm được từ odt
+        user["stats"]["odt_np_earned_total"] = int(user["stats"].get("odt_np_earned_total", 0)) + reward
 
         text = random.choice(ODT_TEXTS_WIN)
         if outcome == 5:
@@ -3077,6 +3169,13 @@ async def cmd_odt(ctx, amount: str = None):
         content=(ctx.author.mention if jackpot_announce else None),
         embed=emb
     )
+
+
+
+# ===============ODT======================
+
+
+
 
 @bot.command(name="pingg")
 async def cmd_opingg(ctx):
@@ -3186,11 +3285,6 @@ async def before_auto_backup():
     global _last_report_ts
     _last_report_ts = 0
     print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
-
-
-
-
-
 
 
 
