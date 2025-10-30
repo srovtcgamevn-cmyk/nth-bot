@@ -1110,7 +1110,7 @@ async def cmd_otestdata(ctx):
     await ctx.reply(msg, mention_author=False)
 
 
-@bot.command(name="okhoiphucfile")
+@bot.command(name="khoiphucfile")
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def cmd_okhoiphucfile(ctx):
