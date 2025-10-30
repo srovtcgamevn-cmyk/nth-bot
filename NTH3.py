@@ -896,15 +896,6 @@ async def cmd_olenh(ctx: commands.Context):
 
 
 
-
-
-
-
-
-
-
-
-
 # =========================================
 # CẤU HÌNH KÊNH BOT / THEO DÕI SERVER
 # Lệnh: osetbot / setbot
@@ -1436,44 +1427,35 @@ async def cmd_othongtinmaychu(ctx):
 
     richest_text = "\n".join(richest_lines) if richest_lines else "_Không có dữ liệu._"
 
-    # ===== 5. Top server Discord hoạt động =====
-    # Cách 1: đếm số user theo guild_id
+     # ===== 5. Top server Discord hoạt động (gọn icon 🏠 + 🧙) =====
+    # Gom user theo guild_id (đếm số người chơi trong từng server)
     guild_count = {}
     for uid, u in users_dict.items():
-        gid = str(u.get("guild_id", ""))  # nếu người chơi có ghi server
+        gid = str(u.get("guild_id", ""))
         if not gid:
             continue
         guild_count[gid] = guild_count.get(gid, 0) + 1
 
-    # Sắp xếp theo số người chơi
-    top_guilds = sorted(
-        guild_count.items(),
-        key=lambda kv: kv[1],
-        reverse=True
-    )[:10]
+    # Nếu có dữ liệu người chơi
+    top_guilds = sorted(guild_count.items(), key=lambda kv: kv[1], reverse=True)[:10]
 
     guild_lines = []
     for gid, count in top_guilds:
         ginfo = guilds_dict.get(str(gid), {})
         gname = ginfo.get("name", f"Server {gid}")
-        guild_lines.append(f"• {gname} — 👥 {count} người")
+        member_ct = ginfo.get("member_count", 0)
+        guild_lines.append(f"• {gname} — 🏠 {member_ct:,} | 🧙 {count:,}")
 
-    # Fallback:
-    # Nếu chưa có ai có guild_id (guild_lines rỗng)
-    # nhưng mình đã lưu được server qua osetbot,
-    # thì vẫn show danh sách server đã ghi nhận.
+    # Fallback: nếu chưa có user nào có guild_id
     if not guild_lines and guilds_dict:
-        # lấy tối đa 10 server đã ghi nhận
         for gid, ginfo in list(guilds_dict.items())[:10]:
             gname = ginfo.get("name", f"Server {gid}")
-            # nếu đã biết member_count, show ra
-            mem_ct = ginfo.get("member_count")
-            if mem_ct is not None:
-                guild_lines.append(f"• {gname} — 🏠 {mem_ct} thành viên")
-            else:
-                guild_lines.append(f"• {gname}")
+            mem_ct = ginfo.get("member_count", 0)
+            guild_lines.append(f"• {gname} — 🏠 {mem_ct:,} | 🧙 0")
 
     guilds_text = "\n".join(guild_lines) if guild_lines else "_Không có dữ liệu server._"
+     # ===== 5. Top server Discord hoạt động (gọn icon 🏠 + 🧙) =====
+
 
     # ===== 6. Dung lượng data.json =====
     try:
@@ -2930,6 +2912,10 @@ def _try_jackpot(data: dict, member: discord.Member) -> int:
 
     return gain
 
+
+
+
+
 @bot.command(name="odt", aliases=["dt"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_odt(ctx, amount: str = None):
@@ -3200,9 +3186,8 @@ async def before_auto_backup():
     global _last_report_ts
     _last_report_ts = 0
     print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
-# ===============================================
-# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
-# ===============================================
+
+
 
 
 
