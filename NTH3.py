@@ -1057,6 +1057,7 @@ def ensure_rungs(u: dict) -> dict:
     for k in ("D","C","B","A","S"):
         r.setdefault(k, 0)
     return r
+# =============================================================
 
 @bot.command(name="lenhquantri")
 @owner_only()
@@ -1073,6 +1074,9 @@ async def cmd_olenhquantri(ctx):
         "`addruong @user <phẩm> <số>` — Cấp rương",
         "`xtien @user` — Chẩn đoán số dư & nhánh lưu",
         "`batanh [on|off]` — Bật/tắt hiển thị ảnh",
+        "`okhoiphucfile` — Khôi phục dữ liệu từ file `data.json` (khi dữ liệu lớn)",
+        "`otestdata` — Kiểm tra dữ liệu đang lưu trong volume Railway",
+
     ]
     await ctx.reply("\n".join(lines), mention_author=False)
 
