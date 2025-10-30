@@ -3370,8 +3370,8 @@ async def _bxh_build_overview_embed(period: str, requestor_name: str):
     if period == "all":
         title = "🏆 TỔNG BẢNG XẾP HẠNG"
         block_note = (
-            "➡ Chọn nút bên dưới để xem TOP 10 chi tiết từng hạng mục,\n"
-            "   hoặc xem BXH Tuần / Ngày."
+            "Chọn nút bên dưới để xem TOP 10\n"
+            "chi tiết hoặc xem BXH Tuần/ Ngày👇\n"
         )
     elif period == "week":
         title = "🏵️ BẢNG XẾP HẠNG TUẦN"
