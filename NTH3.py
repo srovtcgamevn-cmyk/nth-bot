@@ -1076,6 +1076,118 @@ async def cmd_olenhquantri(ctx):
     ]
     await ctx.reply("\n".join(lines), mention_author=False)
 
+
+@bot.command(name="testdata")
+@owner_only()
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_otestdata(ctx):
+    """
+    Kiểm tra nhanh dữ liệu hiện đang load trong volume:
+    - Số người chơi
+    - Liệt kê một vài ID đầu tiên
+    Giúp xác nhận bot đang đọc đúng /data/data.json sau restore.
+    """
+    data = load_data()
+    users = data.get("users", {})
+    count_users = len(users)
+
+    # lấy 3 id đầu tiên nếu có
+    preview_ids = list(users.keys())[:3]
+    if preview_ids:
+        sample_text = ", ".join(preview_ids)
+    else:
+        sample_text = "(không có user nào)"
+
+    msg = (
+        f"📦 Hiện bot đang đọc dữ liệu từ volume.\n"
+        f"- Số người chơi ghi nhận: **{count_users}**\n"
+        f"- Một vài ID đầu tiên: {sample_text}\n"
+        f"- File data.json thực tế nằm tại BASE_DATA_DIR: {BASE_DATA_DIR}"
+    )
+
+    await ctx.reply(msg, mention_author=False)
+
+
+@bot.command(name="khoiphucdata")
+@owner_only()
+@commands.cooldown(1, 10, commands.BucketType.user)
+async def cmd_khoiphucdata(ctx, *, raw_json: str = None):
+    """
+    IMPORT DỮ LIỆU TỪ PC VÀO BOT TRÊN RAILWAY (VOLUME)
+
+    Cách dùng:
+    - Copy toàn bộ nội dung file data.json cũ của bạn
+      (file đang có dữ liệu người chơi đầy đủ lúc chạy local PC)
+    - Dán vào sau lệnh:
+        khoiphucdata { ...nguyên nội dung json... }
+
+    Bot sẽ:
+    1. Backup data hiện tại trong volume (trước khi ghi đè).
+    2. Ghi đè data.json trong volume = dữ liệu bạn gửi.
+    3. Báo lại kết quả.
+
+    Chỉ owner dùng được.
+    """
+
+    if raw_json is None or raw_json.strip() == "":
+        await ctx.reply(
+            "❗ Thiếu dữ liệu JSON.\n"
+            "Cách dùng:\n"
+            "`khoiphucdata { ...toàn bộ nội dung file data.json cũ... }`",
+            mention_author=False
+        )
+        return
+
+    # Bước 1: parse JSON người dùng dán vào
+    try:
+        new_data = json.loads(raw_json)
+        if not isinstance(new_data, dict):
+            raise ValueError("JSON không phải dạng object gốc.")
+    except Exception as e:
+        await ctx.reply(
+            f"❌ Không đọc được JSON bạn gửi. Lỗi: {e}",
+            mention_author=False
+        )
+        return
+
+    # Bước 2: load data hiện tại để backup an toàn
+    current_data = load_data()
+    try:
+        snapshot_data_v16(current_data, tag="before-import", subkey="manual")
+    except Exception:
+        # backup fail thì vẫn tiếp tục, nhưng mình cứ báo
+        pass
+
+    # Bước 3: ghi đè data.json trong volume bằng new_data
+    try:
+        save_data(new_data)
+    except Exception as e:
+        await ctx.reply(
+            f"❌ Ghi đè dữ liệu thất bại: {e}",
+            mention_author=False
+        )
+        return
+
+    # Bước 4: xác nhận lại xem đã ghi chưa
+    check_after = load_data()
+    users_after = check_after.get("users", {})
+    count_after = len(users_after)
+
+    # Gửi phản hồi
+    await ctx.reply(
+        "✅ ĐÃ NHẬP DỮ LIỆU MỚI TỪ JSON.\n"
+        f"- Số user sau import: **{count_after}**\n"
+        f"- Dữ liệu đã được lưu vào volume (BASE_DATA_DIR = {BASE_DATA_DIR}).\n"
+        "👉 Bạn nên chạy `otestdata` để tự kiểm tra lại.",
+        mention_author=False
+    )
+
+
+
+
+
+
+
 @bot.command(name="saoluu")
 @owner_only()
 @commands.cooldown(1, 5, commands.BucketType.user)
