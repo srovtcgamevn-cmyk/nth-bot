@@ -34,6 +34,7 @@ INTENTS = discord.Intents.default()
 INTENTS.message_content = True
 INTENTS.members = True
 
+DATA_FILE = "data.json"
 COOLDOWN_OL = 10
 STARTING_NP = 1000
 
@@ -41,6 +42,17 @@ STARTING_NP = 1000
 IGNORE_O_TOKENS = {"ok","oh","ob","oke","okay","ooo","oi"}
 
 # ===== HỆ THỐNG BACKUP v16 =====
+BACKUP_DIRS = {
+    "startup": "backups/startup",
+    "pre_save": "backups/pre-save",
+    "manual": "backups/manual",
+    "before_restore": "backups/before-restore",
+    "resetuser": "backups/resetuser",
+    "export": "backups/export"
+}
+def _ensure_backup_dirs():
+    for p in BACKUP_DIRS.values():
+        os.makedirs(p, exist_ok=True)
 def _stamp_now():
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 def _sha256_file(path):
@@ -571,46 +583,7 @@ def images_enabled_global() -> bool:
 # 🧩 BOT & CẤU HÌNH CHUNG — BẮT ĐẦU
 # ===================================
 bot = commands.Bot(
-    command_prefix=commands.when_mentioned_or("o", "O"),
-    intents=INTENTS
-)
-
-
-# ============================================
-# NTH3.3_live — BT-1727-KIM
-# Cập nhật: 2025-10-30
-# Thay đổi chính:
-# - Dữ liệu runtime (data.json) và backups lưu trong volume Railway (/app/data)
-# - Không reset dữ liệu khi redeploy
-# - Thêm lệnh oplsdata, osaoluutest, olaydata
-# - Lệnh ophuchoi yêu cầu chọn file backup rõ ràng
-# ============================================
-
-# ====== CẤU HÌNH LƯU DỮ LIỆU TRÊN RAILWAY (Ổ ĐĨA VOLUME) ======
-DATA_DIR = os.environ.get("DATA_DIR", "/app/data")
-os.makedirs(DATA_DIR, exist_ok=True)
-
-DATA_FILE = os.path.join(DATA_DIR, "data.json")
-
-BACKUP_DIR = os.path.join(DATA_DIR, "backups")
-os.makedirs(BACKUP_DIR, exist_ok=True)
-
-BACKUP_DIRS = {
-    "startup":        os.path.join(BACKUP_DIR, "startup"),
-    "pre_save":       os.path.join(BACKUP_DIR, "pre-save"),
-    "manual":         os.path.join(BACKUP_DIR, "manual"),
-    "before_restore": os.path.join(BACKUP_DIR, "before-restore"),
-    "resetuser":      os.path.join(BACKUP_DIR, "resetuser"),
-    "export":         os.path.join(BACKUP_DIR, "export"),
-}
-
-def _ensure_backup_dirs():
-    for p in BACKUP_DIRS.values():
-        os.makedirs(p, exist_ok=True)
-
-_ensure_backup_dirs()
-# ==============================================================
-,
+    command_prefix=commands.when_mentioned_or("o","O"),
     intents=INTENTS,
     help_command=None,
     case_insensitive=True
@@ -997,7 +970,7 @@ async def cmd_phuchoi(ctx, filename: str = None):
     data = load_data()
     try: snapshot_data_v16(data, tag="before-restore", subkey="before_restore")
     except Exception: pass
-
+    BACKUP_DIR = os.path.join("backups")
     path = None
     if filename:
         cand = os.path.join(BACKUP_DIR, filename)
@@ -1674,67 +1647,3 @@ if __name__ == "__main__":
         asyncio.run(_main())
 # ================================
 # 🚀 KHỞI TẠO & CHẠY BOT — KẾT THÚC
-
-def load_data() -> dict:
-    """Đọc data.json từ volume. Nếu chưa có thì trả dict rỗng."""
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            data = {}
-    except FileNotFoundError:
-        data = {}
-    except Exception:
-        data = {}
-    return data
-
-
-def snapshot_data_v16(data: dict, tag: str, subkey: str) -> str:
-    """Tạo snapshot backup trong volume /app/data/backups/<subkey>/."""
-    _ensure_backup_dirs()
-    ts = time.strftime("%Y%m%d-%H%M%S", time.localtime())
-    fname = f"data.json.v16.{tag}.{ts}.json"
-
-    subdir = BACKUP_DIRS.get(subkey, BACKUP_DIR)
-    os.makedirs(subdir, exist_ok=True)
-
-    fpath = os.path.join(subdir, fname)
-    with open(fpath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    return fpath
-
-
-def save_data(data: dict):
-    """Ghi data.json vào volume an toàn, kèm snapshot 'pre-save'."""
-    try:
-        snapshot_data_v16(data, tag="pre-save", subkey="pre_save")
-    except Exception:
-        pass
-
-    tmp_path = DATA_FILE + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, DATA_FILE)
-
-
-def list_recent_backups_v16(limit: int = 10):
-    """Liệt kê backup mới nhất từ volume. Trả về list [(mtime, subkey, name, fullpath)]."""
-    _ensure_backup_dirs()
-    results = []
-    for subkey, subdir in BACKUP_DIRS.items():
-        try:
-            for name in os.listdir(subdir):
-                if not name.endswith(".json"):
-                    continue
-                full = os.path.join(subdir, name)
-                try:
-                    mtime = os.path.getmtime(full)
-                except OSError:
-                    mtime = 0
-                results.append((mtime, subkey, name, full))
-        except FileNotFoundError:
-            continue
-    results.sort(key=lambda x: x[0], reverse=True)
-    return results[:limit]
-
