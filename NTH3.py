@@ -34,7 +34,7 @@ INTENTS = discord.Intents.default()
 INTENTS.message_content = True
 INTENTS.members = True
 
-
+DATA_FILE = "data.json"
 COOLDOWN_OL = 10
 STARTING_NP = 1000
 
@@ -970,7 +970,7 @@ async def cmd_phuchoi(ctx, filename: str = None):
     data = load_data()
     try: snapshot_data_v16(data, tag="before-restore", subkey="before_restore")
     except Exception: pass
-    
+    BACKUP_DIR = os.path.join("backups")
     path = None
     if filename:
         cand = os.path.join(BACKUP_DIR, filename)
