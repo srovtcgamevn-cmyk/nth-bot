@@ -3199,23 +3199,16 @@ async def cmd_odt(ctx, amount: str = None):
 
 # ==========================================================
 # 🏆 BẢNG XẾP HẠNG (obxh / bxh)
-# Bản hỗ trợ:
-# - Layout ngắn gọn "🥇 TOP 1 — ..."
-# - View 7 nút với màu theo yêu cầu
-# - Nút hiện tại sẽ disabled
-# - Timeout 300s
 # ==========================================================
-
-# ---------- UTIL / DATA PREP ----------
 
 def _bxh_safe_user_for_rank(u: dict) -> dict:
     clone = dict(u)
 
     stats = dict(clone.get("stats", {}))
     clone["stats"] = stats
-    stats.setdefault("ol_count", 0)     # số lần thám hiểm
-    stats.setdefault("odt_count", 0)    # số lần đổ thạch
-    stats.setdefault("opened", 0)       # tổng rương đã mở (lifetime)
+    stats.setdefault("ol_count", 0)
+    stats.setdefault("odt_count", 0)
+    stats.setdefault("opened", 0)
 
     r_raw = clone.get("rungs", {})
     clone["rungs"] = {
@@ -3227,9 +3220,7 @@ def _bxh_safe_user_for_rank(u: dict) -> dict:
     }
 
     clone["ngan_phi"] = int(clone.get("ngan_phi", 0))
-
     return clone
-
 
 def _bxh_collect_users(data: dict) -> dict[str, dict]:
     prepared = {}
@@ -3238,12 +3229,9 @@ def _bxh_collect_users(data: dict) -> dict[str, dict]:
             prepared[uid] = _bxh_safe_user_for_rank(raw)
     return prepared
 
-
 def _bxh_total_ruong_alltime(u: dict) -> tuple[int, dict]:
     """
-    Tổng Rương Báu suốt đời:
-    - rương đang giữ (S/A/B/C/D)
-    - + rương đã mở (stats.opened)
+    Tổng Rương Báu (đang giữ + đã mở).
     """
     stats = u["stats"]
     opened_total = int(stats.get("opened", 0))
@@ -3253,10 +3241,8 @@ def _bxh_total_ruong_alltime(u: dict) -> tuple[int, dict]:
 
     holding_now = s + a + b + c + d
     total_alltime = holding_now + opened_total
-
     breakdown_now = {"S": s, "A": a, "B": b, "C": c, "D": d}
     return total_alltime, breakdown_now
-
 
 async def _bxh_display_name(uid: str) -> str:
     try:
@@ -3269,15 +3255,13 @@ async def _bxh_display_name(uid: str) -> str:
         pass
     return f"ID:{uid}"
 
-
 def _bxh_rank(prepared: dict[str, dict], category: str):
     """
-    Trả về (top10, full_sorted) theo category:
+    category:
       "ol"    => stats.ol_count
       "odt"   => stats.odt_count
       "tien"  => ngan_phi
       "ruong" => tổng rương báu (lifetime)
-    Mỗi phần tử trong list = (uid, value)
     """
     arr = []
     for uid, u in prepared.items():
@@ -3296,22 +3280,23 @@ def _bxh_rank(prepared: dict[str, dict], category: str):
     arr.sort(key=lambda x: x[1], reverse=True)
     return arr[:10], arr
 
-
 # ---------- OVERVIEW EMBED (TỔNG / TUẦN / NGÀY) ----------
 
 async def _bxh_build_overview_embed(period: str, requestor_name: str):
     """
     period in {"all","week","day"}
-    requestor_name: tên người xem (ctx.author.display_name / inter.user.display_name)
-    UI format yêu cầu:
-    🗺️ Thám Hiểm
-    🥇 TOP 1 — Lucky Man — 20 lần
-    ...
+    Hiển thị 4 khối:
+      🗺️ Thám Hiểm (TOP1 ol_count)
+      💎 Đổ Thạch (TOP1 odt_count)
+      💰 Ngân Phiếu (TOP1 giàu nhất)
+      📦 Rương Báu (TOP1 nhiều rương)
+    !!! Hiện tại CHUNG 1 NGUỒN DỮ LIỆU (lifetime).
+    Chỉ khác tiêu đề theo 'period'.
     """
     data = load_data()
     prepared = _bxh_collect_users(data)
 
-    # Lấy top1 từng mảng (lifetime)
+    # Lấy top1 từng mảng
     top_ol,   _all_ol   = _bxh_rank(prepared, "ol")
     top_odt,  _all_odt  = _bxh_rank(prepared, "odt")
     top_tien, _all_tien = _bxh_rank(prepared, "tien")
@@ -3355,9 +3340,6 @@ async def _bxh_build_overview_embed(period: str, requestor_name: str):
 
         total_alltime, breakdown = _bxh_total_ruong_alltime(prepared[uid])
 
-        # Emoji phẩm rương
-        # RARITY_CHEST_EMOJI["S"] ... nếu file bạn đã map mấy emoji phẩm S/A/B/C/D,
-        # còn nếu bạn muốn màu tròn kiểu 🟣 🟡 🟠 🔵 ⚪ thì thay ở đây.
         emo_S = RARITY_CHEST_EMOJI.get("S", "🟣")
         emo_A = RARITY_CHEST_EMOJI.get("A", "🟡")
         emo_B = RARITY_CHEST_EMOJI.get("B", "🟠")
@@ -3372,39 +3354,24 @@ async def _bxh_build_overview_embed(period: str, requestor_name: str):
             f"{emo_S} {s}  {emo_A} {a}  {emo_B} {b}  {emo_C} {c}  {emo_D} {d}"
         )
 
-    # period tiêu đề
-    if period == "all":
-        title = "🏆 TỔNG BẢNG XẾP HẠNG"
-        block_note = (
-            "Chọn nút bên dưới để xem TOP 10\n"
-            "chi tiết hoặc xem BXH Tuần/ Ngày👇\n"
-        )
-    elif period == "week":
+    # tiêu đề theo tab
+    if period == "week":
         title = "🏵️ BẢNG XẾP HẠNG TUẦN"
-        # Hiện tại chưa có log tuần -> placeholder
-        block_note = (
-            "⚠️ Hệ thống đang thu thập dữ liệu tuần.\n"
-            "   Số liệu sẽ xuất hiện sau khi log tuần được kích hoạt."
-        )
-    else:
+        note = "🔄 Số liệu đang dùng tổng tích lũy (chưa tách tuần)."
+    elif period == "day":
         title = "🌄 BẢNG XẾP HẠNG NGÀY"
-        block_note = (
-            "⚠️ Hệ thống đang thu thập dữ liệu ngày.\n"
-            "   Số liệu sẽ xuất hiện sau khi log ngày được kích hoạt."
-        )
-
-    # nếu period != "all", ta vẫn muốn show layout giống "all" hay chỉ hiện cảnh báo?
-    # Yêu cầu hiện tại: tuần/ngày chỉ show nội dung cảnh báo, không cần thống kê thật.
-    if period == "all":
-        desc = "\n\n".join([
-            await block_thamhiem(),
-            await block_dothach(),
-            await block_tien(),
-            await block_ruong(),
-            block_note
-        ])
+        note = "🔄 Số liệu đang dùng tổng tích lũy (chưa tách ngày)."
     else:
-        desc = block_note
+        title = "🏆 TỔNG BẢNG XẾP HẠNG"
+        note = "Chọn các nút bên dưới để xem TOP 10 chi tiết."
+
+    desc = "\n\n".join([
+        await block_thamhiem(),
+        await block_dothach(),
+        await block_tien(),
+        await block_ruong(),
+        note
+    ])
 
     emb = make_embed(
         title=title,
@@ -3414,17 +3381,15 @@ async def _bxh_build_overview_embed(period: str, requestor_name: str):
     )
     return emb
 
-
 async def _bxh_render_overview_ctx(ctx: commands.Context, period: str):
     return await _bxh_build_overview_embed(period, ctx.author.display_name)
 
 async def _bxh_render_overview_inter(inter: discord.Interaction, period: str, owner_name: str):
     return await _bxh_build_overview_embed(period, owner_name)
 
-
 def _bxh_footer_with_rank(category: str, author_id: int, author_name: str, full_sorted: list):
     """
-    Footer hiển thị vị trí và chỉ số của chính người bấm.
+    Footer hiển thị vị trí cá nhân người đang bấm.
     """
     pos = None
     you_line = None
@@ -3454,11 +3419,10 @@ def _bxh_footer_with_rank(category: str, author_id: int, author_name: str, full_
         footer_txt += f" • {you_line}"
     return footer_txt
 
-
 async def _bxh_render_detail(category: str, author_id: int, author_name: str):
     """
+    Chi tiết TOP 10 cho từng hạng mục.
     category in ["ol","odt","tien","ruong"]
-    Hiển thị TOP 10 đầy đủ cho 1 hạng mục.
     """
     data = load_data()
     prepared = _bxh_collect_users(data)
@@ -3490,7 +3454,6 @@ async def _bxh_render_detail(category: str, author_id: int, author_name: str):
             dn = await _bxh_display_name(uid)
             total_alltime, brk = _bxh_total_ruong_alltime(prepared[uid])
 
-            # emoji phẩm
             emo_S = RARITY_CHEST_EMOJI.get("S", "🟣")
             emo_A = RARITY_CHEST_EMOJI.get("A", "🟡")
             emo_B = RARITY_CHEST_EMOJI.get("B", "🟠")
@@ -3521,9 +3484,6 @@ async def _bxh_render_detail(category: str, author_id: int, author_name: str):
     )
     return emb
 
-
-# ---------- VIEW (CÓ DISABLED NÚT HIỆN TẠI) ----------
-
 class BXHView(discord.ui.View):
     """
     View 7 nút:
@@ -3534,20 +3494,13 @@ class BXHView(discord.ui.View):
       💎 Đổ Thạch (success)
       💰 Ngân Phiếu (success)
       📦 Rương Báu (success)
-
-    current_tab:
-      "all", "week", "day", "ol", "odt", "tien", "ruong"
-    -> nút tương ứng sẽ disabled=True
-
-    Timeout = 300s (5 phút)
+    current_tab in ["all","week","day","ol","odt","tien","ruong"]
     """
     def __init__(self, owner_id: int, owner_name: str, current_tab: str, timeout: float = 300):
         super().__init__(timeout=timeout)
         self.owner_id = owner_id
         self.owner_name = owner_name
         self.current_tab = current_tab
-
-        # Sau khi View init, ta sẽ set disabled cho nút đúng tab
         self._apply_disabled_state()
 
     async def _is_owner(self, inter: discord.Interaction) -> bool:
@@ -3563,7 +3516,6 @@ class BXHView(discord.ui.View):
         return True
 
     def _apply_disabled_state(self):
-        # Map tab -> nút
         tab_map = {
             "all":  "btn_total",
             "week": "btn_week",
@@ -3575,25 +3527,13 @@ class BXHView(discord.ui.View):
         }
         target = tab_map.get(self.current_tab)
         if target:
-            for child in self.children:
-                if hasattr(child, "custom_id"):
-                    # chúng ta không set custom_id thủ công ở đây,
-                    # nên fallback theo name attribute
-                    pass
-            # vì discord.ui.button decorator tạo attribute trùng tên hàm,
-            # ta có thể dùng getattr để disable
             try:
                 getattr(self, target).disabled = True
             except Exception:
                 pass
 
-    # ====== HÀNG 1: Tổng / Tuần / Ngày ======
-
-    @discord.ui.button(
-        label="Tổng",
-        emoji="🏆",
-        style=discord.ButtonStyle.danger
-    )
+    # HÀNG 1: Tổng / Tuần / Ngày
+    @discord.ui.button(label="Tổng", emoji="🏆", style=discord.ButtonStyle.danger)
     async def btn_total(self, inter: discord.Interaction, button: discord.ui.Button):
         if not await self._is_owner(inter):
             return
@@ -3601,11 +3541,7 @@ class BXHView(discord.ui.View):
         new_view = BXHView(self.owner_id, self.owner_name, current_tab="all")
         await inter.response.edit_message(embed=emb, view=new_view)
 
-    @discord.ui.button(
-        label="Tuần",
-        emoji="🏵️",
-        style=discord.ButtonStyle.primary
-    )
+    @discord.ui.button(label="Tuần", emoji="🏵️", style=discord.ButtonStyle.primary)
     async def btn_week(self, inter: discord.Interaction, button: discord.ui.Button):
         if not await self._is_owner(inter):
             return
@@ -3613,11 +3549,7 @@ class BXHView(discord.ui.View):
         new_view = BXHView(self.owner_id, self.owner_name, current_tab="week")
         await inter.response.edit_message(embed=emb, view=new_view)
 
-    @discord.ui.button(
-        label="Ngày",
-        emoji="🌄",
-        style=discord.ButtonStyle.success
-    )
+    @discord.ui.button(label="Ngày", emoji="🌄", style=discord.ButtonStyle.success)
     async def btn_day(self, inter: discord.Interaction, button: discord.ui.Button):
         if not await self._is_owner(inter):
             return
@@ -3625,13 +3557,8 @@ class BXHView(discord.ui.View):
         new_view = BXHView(self.owner_id, self.owner_name, current_tab="day")
         await inter.response.edit_message(embed=emb, view=new_view)
 
-    # ====== HÀNG 2: Top 10 chi tiết ======
-
-    @discord.ui.button(
-        label="Thám Hiểm",
-        emoji="🗺️",
-        style=discord.ButtonStyle.success
-    )
+    # HÀNG 2: Top 10 chi tiết
+    @discord.ui.button(label="Thám Hiểm", emoji="🗺️", style=discord.ButtonStyle.success)
     async def btn_thamhiem(self, inter: discord.Interaction, button: discord.ui.Button):
         if not await self._is_owner(inter):
             return
@@ -3639,11 +3566,7 @@ class BXHView(discord.ui.View):
         new_view = BXHView(self.owner_id, self.owner_name, current_tab="ol")
         await inter.response.edit_message(embed=emb, view=new_view)
 
-    @discord.ui.button(
-        label="Đổ Thạch",
-        emoji=EMOJI_DOTHACHT,
-        style=discord.ButtonStyle.success
-    )
+    @discord.ui.button(label="Đổ Thạch", emoji=EMOJI_DOTHACHT, style=discord.ButtonStyle.success)
     async def btn_dothach(self, inter: discord.Interaction, button: discord.ui.Button):
         if not await self._is_owner(inter):
             return
@@ -3651,11 +3574,7 @@ class BXHView(discord.ui.View):
         new_view = BXHView(self.owner_id, self.owner_name, current_tab="odt")
         await inter.response.edit_message(embed=emb, view=new_view)
 
-    @discord.ui.button(
-        label="Ngân Phiếu",
-        emoji=NP_EMOJI,
-        style=discord.ButtonStyle.success
-    )
+    @discord.ui.button(label="Ngân Phiếu", emoji=NP_EMOJI, style=discord.ButtonStyle.success)
     async def btn_tien(self, inter: discord.Interaction, button: discord.ui.Button):
         if not await self._is_owner(inter):
             return
@@ -3663,11 +3582,7 @@ class BXHView(discord.ui.View):
         new_view = BXHView(self.owner_id, self.owner_name, current_tab="tien")
         await inter.response.edit_message(embed=emb, view=new_view)
 
-    @discord.ui.button(
-        label="Rương Báu",
-        emoji="<:ruongthuong:1433525898107158660>",
-        style=discord.ButtonStyle.success
-    )
+    @discord.ui.button(label="Rương Báu", emoji="<:ruongthuong:1433525898107158660>", style=discord.ButtonStyle.success)
     async def btn_ruong(self, inter: discord.Interaction, button: discord.ui.Button):
         if not await self._is_owner(inter):
             return
@@ -3675,17 +3590,13 @@ class BXHView(discord.ui.View):
         new_view = BXHView(self.owner_id, self.owner_name, current_tab="ruong")
         await inter.response.edit_message(embed=emb, view=new_view)
 
-
-# ---------- COMMAND ----------
-
 @bot.command(name="obxh", aliases=["bxh"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_obxh(ctx: commands.Context):
     """
-    Gọi BXH lần đầu:
-    - Hiển thị 🏆 TỔNG BẢNG XẾP HẠNG
-    - Gửi view có 7 nút
-    - Nút "Tổng" sẽ bị disable vì đang ở tab Tổng
+    Mở BXH lần đầu:
+    - Mặc định tab = Tổng
+    - View có 7 nút
     """
     emb = await _bxh_render_overview_ctx(ctx, "all")
     view = BXHView(ctx.author.id, ctx.author.display_name, current_tab="all")
