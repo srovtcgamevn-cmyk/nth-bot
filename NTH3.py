@@ -931,6 +931,7 @@ GAMEPLAY_REQUIRE = {
     "onhanvat","nhanvat",
     "odt","dt",
     "onhanthuong","nhanthuong",
+    "otang",
 
 }
 
@@ -948,6 +949,7 @@ async def cmd_olenh(ctx: commands.Context):
         "**onhanvat** — Thông tin nhân vật\n\n"
         "**⬆️ LỆNH MỚI UPDATE**\n\n"
         "**obxh** — Xem Bảng Xếp Hạng\n"
+        "**otang** — `otang @nguoichoi <số>`\n"
         "**onhanthuong** — Nhận thưởng 500K NP + 1 Rương S\n\n"
 
         "**⚙️ THÔNG TIN NÂNG CẤP**\n\n"
@@ -4101,6 +4103,122 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 #===========================NHAN THUONG===================
 
 
+# ================== CHUYỂN TIỀN GIỮA NGƯỜI CHƠI ==================
+# Lệnh: otang
+# Ai cũng dùng được, không cần owner
+# Ví dụ: otang @User 1,000
+
+@bot.command(name="tang", aliases=["otang"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
+    """
+    Chuyển Ngân Phiếu cho người chơi khác.
+    Cú pháp:
+        otang @nguoi_nhan <số_ngan_phiếu>
+    Ví dụ:
+        otang @Nam 1,000
+        otang @Linh 50000
+    """
+    # 1. Kiểm tra target và số tiền
+    if member is None or so is None:
+        await ctx.reply(
+            f"📝 Cách dùng: `otang @nguoichoi <số>`\n"
+            f"Ví dụ: `otang {ctx.author.mention} 1,000`",
+            mention_author=False
+        )
+        return
+
+    # Không cho tự tặng chính mình
+    if member.id == ctx.author.id:
+        await ctx.reply(
+            "😑 Bạn không thể tự tặng cho chính mình.",
+            mention_author=False
+        )
+        return
+
+    # Parse số tiền
+    try:
+        amount = int(str(so).replace(",", "").strip())
+        if amount <= 0:
+            raise ValueError()
+    except Exception:
+        await ctx.reply(
+            "⚠️ Số lượng không hợp lệ. Ví dụ: `otang @user 1,000`.",
+            mention_author=False
+        )
+        return
+
+    # 2. Đảm bảo cả 2 user tồn tại trong data
+    sender_id = str(ctx.author.id)
+    recv_id   = str(member.id)
+
+    data = ensure_user(sender_id)
+    data = ensure_user(recv_id)  # gọi lại để chắc chắn người nhận cũng có
+
+    sender = data["users"][sender_id]
+    receiver = data["users"][recv_id]
+
+    # cập nhật hoạt động (để thống kê name/guild/last_active)
+    touch_user_activity(ctx, sender)
+    # cố gắng log thông tin người nhận nếu cùng server
+    try:
+        # tạo context giả cho receiver (để lưu guild_id và last_active)
+        # nếu same guild thì dùng ctx cho luôn
+        if ctx.guild:
+            receiver["guild_id"] = ctx.guild.id
+        receiver["name"] = member.display_name
+        receiver["last_active"] = int(time.time())
+    except Exception:
+        pass
+
+    # 3. Kiểm tra số dư
+    sender_bal = int(sender.get("ngan_phi", 0))
+    if sender_bal < amount:
+        await ctx.reply(
+            f"❗ Bạn không đủ Ngân Phiếu.\n"
+            f"Số dư hiện tại: {format_num(sender_bal)}",
+            mention_author=False
+        )
+        return
+
+    # 4. Thực hiện chuyển
+    sender["ngan_phi"]  = sender_bal - amount
+    receiver["ngan_phi"] = int(receiver.get("ngan_phi", 0)) + amount
+
+    # (tuỳ chọn) thống kê cá nhân:
+    # - người gửi: tổng đã tặng (ghi vào stats để sau này còn xem)
+    # - người nhận: tổng đã nhận từ người chơi
+    s_stats = sender.setdefault("stats", {})
+    r_stats = receiver.setdefault("stats", {})
+    s_stats["gift_sent_total"] = int(s_stats.get("gift_sent_total", 0)) + amount
+    r_stats["gift_received_total"] = int(r_stats.get("gift_received_total", 0)) + amount
+
+    save_data(data)
+
+    # 5. Gửi embed thông báo
+    emb = make_embed(
+        title=f"{NP_EMOJI} Chuyển Ngân Phiếu thành công!",
+        description=(
+            f"**{ctx.author.display_name}** ➜ {member.mention}\n"
+            f"Đã tặng: **{format_num(amount)}** Ngân Phiếu\n\n"
+            f"Số dư còn lại của bạn: **{format_num(sender['ngan_phi'])}** NP"
+        ),
+        color=0x2ECC71,
+        footer=f"Giao dịch bởi {ctx.author.display_name}"
+    )
+    await ctx.send(embed=emb)
+
+    # 6. Thử báo riêng cho người nhận (không bắt buộc)
+    try:
+        await member.send(
+            f"{NP_EMOJI} Bạn vừa được nhận **{format_num(amount)}** Ngân Phiếu "
+            f"từ **{ctx.author.display_name}**!\n"
+            f"Số dư hiện tại của bạn: {format_num(receiver['ngan_phi'])} NP"
+        )
+    except Exception:
+        # Có thể DM khóa, ignore
+        pass
+# ================== /CHUYỂN TIỀN GIỮA NGƯỜI CHƠI ==================
 
 
 
