@@ -930,6 +930,8 @@ GAMEPLAY_REQUIRE = {
     "oban","ban",
     "onhanvat","nhanvat",
     "odt","dt",
+    "onhanthuong","nhanthuong",
+
 }
 
 @bot.command(name="lenh", aliases=["olenh"])
@@ -945,7 +947,9 @@ async def cmd_olenh(ctx: commands.Context):
         "**omac** `<ID>` / `othao <ID>` / `oxem <ID>`\n"
         "**onhanvat** — Thông tin nhân vật\n\n"
         "**⬆️ LỆNH MỚI UPDATE**\n\n"
-        "**obxh** — Xem Bảng Xếp Hạng\n\n"
+        "**obxh** — Xem Bảng Xếp Hạng\n"
+        "**onhanthuong** — Nhận thưởng 500K NP + 1 Rương S\n\n"
+
         "**⚙️ THÔNG TIN NÂNG CẤP**\n\n"
         "• Lưu trữ dữ liệu vĩnh viễn\n"
         "• Sao lưu dữ liệu tự động\n"
@@ -3684,6 +3688,421 @@ async def cmd_obxh(ctx: commands.Context):
     emb = await _bxh_render_overview_ctx(ctx, "all")
     view = BXHView(ctx.author.id, ctx.author.display_name, current_tab="all")
     await ctx.send(embed=emb, view=view)
+
+
+
+
+#===========================NHAN THUONG===================
+#===========================NHAN THUONG===================
+#===========================NHAN THUONG===================
+#===========================NHAN THUONG===================
+
+
+
+
+# -----------------------
+# 🎁 NHIỆM VỤ CỘNG ĐỒNG
+# -----------------------
+MAIN_GUILD_ID          = 1413785749215510680  # server chính của bạn
+MISSION_CHANNEL_ID     = 1431507301990269061  # kênh có bài nhiệm vụ
+MISSION_MESSAGE_ID     = 1433051721495478353  # ID bài nhiệm vụ
+REWARD_CHEST_RARITY    = "S"                  # loại rương tặng
+
+async def check_community_requirements(bot, user_id: int):
+    """
+    Kiểm tra xem user đã làm nhiệm vụ cộng đồng chưa.
+
+    Trả về (status, reason):
+    - (True,  None): đủ điều kiện -> cho rương
+    - (False, "lý do"): chưa đủ điều kiện -> chưa cho
+    - (None, "lý do"): bot không thể tự kiểm tra -> cần admin duyệt tay
+    """
+
+    # 1. bot phải thấy guild chính
+    guild = bot.get_guild(MAIN_GUILD_ID)
+    if guild is None:
+        return (None, "Bot không ở trong máy chủ chính hoặc không có quyền xem máy chủ chính.")
+
+    # 2. user phải là member trong guild chính
+    member = guild.get_member(user_id)
+    if member is None:
+        return (False, "Bạn chưa tham gia máy chủ chính.")
+
+    # 3. bot phải thấy message nhiệm vụ
+    channel = bot.get_channel(MISSION_CHANNEL_ID)
+    if channel is None:
+        return (None, "Bot không thể truy cập kênh nhiệm vụ (thiếu quyền xem kênh).")
+
+    try:
+        message = await channel.fetch_message(MISSION_MESSAGE_ID)
+    except Exception:
+        return (None, "Bot không thể đọc bài nhiệm vụ (thiếu quyền đọc lịch sử tin nhắn).")
+
+    # 4. kiểm tra user đã react icon chưa
+    reacted = False
+    try:
+        for reaction in message.reactions:
+            try:
+                async for u in reaction.users():
+                    if u.id == user_id:
+                        reacted = True
+                        break
+                if reacted:
+                    break
+            except Exception:
+                # nếu fail 1 reaction thì bỏ qua reaction đó, thử reaction khác
+                pass
+    except Exception:
+        return (None, "Bot không thể xem ai đã thả icon vào bài nhiệm vụ (thiếu quyền xem reaction).")
+
+    if not reacted:
+        return (False, "Bạn chưa bấm icon trong bài nhiệm vụ.")
+
+    # -> join server chính + react bài -> OK
+    return (True, None)
+
+
+@bot.command(name="onhanthuong", aliases=["nhanthuong"])
+async def onhanthuong_cmd(ctx):
+    uid = str(ctx.author.id)
+
+    # lấy data toàn cục + object người chơi
+    data = ensure_user(uid)
+    player = data["users"][uid]
+
+    # =========================
+    # 1. Kiểm tra kênh hợp lệ (tránh spam ngoài kênh game)
+    # =========================
+    # Hệ thống của bạn đã có global_channel_check nên thật ra bước này không bắt buộc.
+    # Mình vẫn giữ try/except NameError để không crash nếu hàm không tồn tại.
+    try:
+        if not is_channel_allowed(ctx):
+            await ctx.reply(
+                "❗ Lệnh này chỉ dùng ở kênh game đã được cấu hình bằng lệnh osetbot.",
+                mention_author=False
+            )
+            return
+    except NameError:
+        pass
+
+    # đảm bảo có các trường dùng cho nhiệm vụ
+    if "reward_community_pending" not in player:
+        player["reward_community_pending"] = False
+    if "reward_community_claimed" not in player:
+        player["reward_community_claimed"] = False
+    if "rungs" not in player:
+        player["rungs"] = {}
+    if REWARD_CHEST_RARITY not in player["rungs"]:
+        player["rungs"][REWARD_CHEST_RARITY] = 0
+
+    # =========================
+    # 2. Gửi thông báo công khai
+    # =========================
+    public_msg = (
+        "📩 Hệ thống đã gửi hướng dẫn nhận quà vào tin nhắn riêng.\n"
+        "Vui lòng kiểm tra tin nhắn riêng của bot."
+    )
+
+    public_sent = False
+    try:
+        await ctx.reply(public_msg, mention_author=False)
+        public_sent = True
+    except Exception:
+        pass
+
+    # =========================
+    # 3. Cập nhật hoạt động
+    # =========================
+    try:
+        touch_user_activity(ctx, player)
+    except Exception:
+        pass
+
+    # =========================
+    # 4. Nếu user đã claim rồi
+    # =========================
+    if player.get("reward_community_claimed", False):
+        embed_claimed = discord.Embed(
+            title="❌ BẠN ĐÃ NHẬN PHẦN THƯỞNG",
+            description=(
+                "Bạn đã nhận **Rương S** trước đó.\n"
+                "Phần thưởng cộng đồng chỉ nhận được **một lần duy nhất** cho mỗi tài khoản.\n\n"
+                "Chúc tu luyện thuận lợi."
+            ),
+            color=discord.Color.dark_grey()
+        )
+        try:
+            await ctx.author.send(embed=embed_claimed)
+        except discord.Forbidden:
+            if not public_sent:
+                await ctx.reply(
+                    "❗ Bot không thể gửi tin nhắn riêng cho bạn. "
+                    "Vui lòng bật nhận tin nhắn riêng từ thành viên trong server rồi thử lại `onhanthuong`.",
+                    mention_author=False
+                )
+        return
+
+    # =========================
+    # 5. Nếu chưa pending -> lần đầu gọi lệnh
+    # =========================
+    if not player.get("reward_community_pending", False):
+        player["reward_community_pending"] = True
+
+        guide_embed = discord.Embed(
+            title="🎁 PHẦN THƯỞNG CỘNG ĐỒNG — RƯƠNG S",
+            description=(
+                "Bạn có thể nhận **1 Rương S (Truyền Thuyết) + 500,000 Ngân Phiếu** miễn phí bằng cách hoàn thành các bước sau:\n\n"
+                "1. Tham gia máy chủ chính của game:\n"
+                "   https://discord.gg/ZrcgXGAAWJ\n\n"
+                "2. Vào bài nhiệm vụ và bấm 1 icon bất kỳ:\n"
+                "   https://discordapp.com/channels/1413785749215510680/1431507301990269061/1433051721495478353\n\n"
+                "Sau khi hoàn thành, quay lại server và gõ lại lệnh `onhanthuong` để nhận **Rương S x1 Ngân Phiếu x 500,000**.\n\n"
+
+
+                "_Bạn đã được ghi vào danh sách chờ nhận thưởng._"
+            ),
+            color=discord.Color.blue()
+        )
+
+        # lưu lại trạng thái pending
+        save_data(data)
+
+        try:
+            await ctx.author.send(embed=guide_embed)
+        except discord.Forbidden:
+            await ctx.reply(
+                "❗ Bot không thể gửi tin nhắn riêng cho bạn. "
+                "Vui lòng bật nhận tin nhắn riêng từ thành viên trong server rồi gõ lại `onhanthuong`.",
+                mention_author=False
+            )
+        return
+
+    # =========================
+    # 6. Đến đây: đã pending nhưng chưa claim -> kiểm tra điều kiện
+    # =========================
+    status, reason = await check_community_requirements(bot, int(uid))
+
+    # 6A. ĐỦ điều kiện -> phát thưởng
+    if status is True:
+        # đảm bảo tồn tại kho rương
+        if "rungs" not in player:
+            player["rungs"] = {}
+        if REWARD_CHEST_RARITY not in player["rungs"]:
+            player["rungs"][REWARD_CHEST_RARITY] = 0
+
+        # ====== THƯỞNG RƯƠNG S ======
+        player["rungs"][REWARD_CHEST_RARITY] += 1
+
+        # ====== THƯỞNG THÊM NGÂN PHIẾU ======
+        BONUS_NP = 500_000  # <- bạn muốn bao nhiêu chỉnh ở đây
+        # đảm bảo field ngan_phi tồn tại và là int
+        try:
+            player["ngan_phi"] = int(player.get("ngan_phi", 0)) + BONUS_NP
+        except Exception:
+            # nếu vì lý do gì đó field hư kiểu, ép lại
+            player["ngan_phi"] = BONUS_NP
+
+        # cập nhật thống kê kiếm tiền tổng
+        player.setdefault("stats", {})
+        player["stats"]["ngan_phi_earned_total"] = int(
+            player["stats"].get("ngan_phi_earned_total", 0)
+        ) + BONUS_NP
+
+        # đánh dấu đã nhận
+        player["reward_community_claimed"] = True
+        player["reward_community_pending"] = False
+
+        save_data(data)
+
+        # ====== DM thông báo thành công ======
+        embed_success = discord.Embed(
+            title="✅ HOÀN THÀNH NHIỆM VỤ CỘNG ĐỒNG",
+            description=(
+                "Bạn đã hoàn thành nhiệm vụ cộng đồng.\n\n"
+                f"Phần thưởng của bạn:\n"
+                f"- Rương {REWARD_CHEST_RARITY} x1 🎁\n"
+                f"- {format_num(BONUS_NP)} Ngân Phiếu 💰\n\n"
+                "Cảm ơn bạn đã tham gia máy chủ chính và tương tác trong bài nhiệm vụ.\n\n"
+                "_Phần thưởng này đã được khóa. Bạn sẽ không thể nhận lại lần nữa._"
+            ),
+            color=discord.Color.green()
+        )
+
+        try:
+            await ctx.author.send(embed=embed_success)
+        except discord.Forbidden:
+            await ctx.reply(
+                f"✅ Bạn đã nhận Rương {REWARD_CHEST_RARITY} x1 và {format_num(BONUS_NP)} Ngân Phiếu. "
+                "(Bot không thể gửi DM do bạn chặn tin nhắn.)",
+                mention_author=False
+            )
+        return
+
+    # 6B. CHƯA ĐỦ điều kiện (thiếu join server hoặc chưa react)
+    if status is False:
+        embed_not_ready = discord.Embed(
+            title="⏳ CHƯA HOÀN THÀNH",
+            description=(
+                "Hệ thống vẫn chưa thể xác minh bạn đã hoàn thành nhiệm vụ.\n\n"
+                f"{reason}\n\n"
+                "Bạn cần:\n"
+                "1. Tham gia máy chủ chính:\n"
+                "   https://discord.gg/ZrcgXGAAWJ\n\n"
+                "2. Vào bài nhiệm vụ và bấm 1 icon bất kỳ:\n"
+                "   https://discordapp.com/channels/1413785749215510680/1431507301990269061/1433051721495478353\n\n"
+                "Sau đó, hãy gõ lại `onhanthuong` để nhận **Rương S x1**."
+            ),
+            color=discord.Color.orange()
+        )
+        try:
+            await ctx.author.send(embed=embed_not_ready)
+        except discord.Forbidden:
+            await ctx.reply(
+                "⏳ Bạn chưa đủ điều kiện nhận quà. "
+                "Hãy tham gia server chính và bấm icon trong bài nhiệm vụ, rồi gõ lại `onhanthuong`. "
+                "(Bot không thể gửi DM vì bạn chặn tin nhắn.)",
+                mention_author=False
+            )
+        return
+
+    # 6C. BOT KHÔNG THỂ TỰ XÁC MINH (thiếu quyền / không thấy kênh / không đọc reaction)
+    embed_manual = discord.Embed(
+        title="⏳ CHƯA THỂ XÁC MINH TỰ ĐỘNG",
+        description=(
+            "Hệ thống hiện không thể tự động xác minh nhiệm vụ của bạn "
+            "(có thể bot không có quyền xem thành viên hoặc xem danh sách reaction trong kênh nhiệm vụ).\n\n"
+            "Nếu bạn đã:\n"
+            " - Tham gia máy chủ chính\n"
+            " - Bấm icon trong bài nhiệm vụ\n\n"
+            "Hãy ping Admin để được duyệt thủ công và nhận **Rương S x1**.\n\n"
+            f"Chi tiết kỹ thuật: {reason if reason else 'Không rõ nguyên nhân'}"
+        ),
+        color=discord.Color.gold()
+    )
+
+    try:
+        await ctx.author.send(embed=embed_manual)
+    except discord.Forbidden:
+        await ctx.reply(
+            "⏳ Bot không thể tự xác minh và cũng không thể gửi DM cho bạn. "
+            "Hãy ping Admin để được hỗ trợ nhận Rương S.",
+            mention_author=False
+        )
+    return
+
+
+
+
+# -----------------------
+# 🔔 ĐĂNG KÝ THÔNG BÁO BẰNG REACTION
+# Người chơi react vào bài nhiệm vụ -> bot gán role "Thông Báo Sự Kiện"
+# Người chơi bỏ react -> bot gỡ role
+# -----------------------
+
+SUBSCRIBE_ROLE_NAME = "Thông Báo Sự Kiện"  # bạn đặt đúng tên role trong server
+
+async def _give_sub_role(payload):
+    """Thêm role SUBSCRIBE_ROLE_NAME cho người đã react."""
+    # đảm bảo đúng bài nhiệm vụ
+    if (
+        payload.guild_id != MAIN_GUILD_ID or
+        payload.channel_id != MISSION_CHANNEL_ID or
+        payload.message_id != MISSION_MESSAGE_ID
+    ):
+        return
+
+    guild = bot.get_guild(MAIN_GUILD_ID)
+    if guild is None:
+        return
+
+    # bỏ qua bot tự react
+    if payload.user_id == bot.user.id:
+        return
+
+    member = guild.get_member(payload.user_id)
+    if member is None:
+        return
+
+    # tìm role theo tên
+    role = discord.utils.get(guild.roles, name=SUBSCRIBE_ROLE_NAME)
+    if role is None:
+        # bạn CHƯA tạo role này trong server -> bot chịu, không gán được
+        return
+
+    # bot phải có quyền Manage Roles và role bot phải ở cao hơn role này
+    try:
+        if role not in member.roles:
+            await member.add_roles(role, reason="Đăng ký nhận thông báo sự kiện")
+    except discord.Forbidden:
+        # bot không có quyền gán role (cần Manage Roles và thứ tự role đúng)
+        pass
+    except Exception:
+        pass
+
+async def _remove_sub_role(payload):
+    """Gỡ role SUBSCRIBE_ROLE_NAME nếu người chơi bỏ reaction."""
+    if (
+        payload.guild_id != MAIN_GUILD_ID or
+        payload.channel_id != MISSION_CHANNEL_ID or
+        payload.message_id != MISSION_MESSAGE_ID
+    ):
+        return
+
+    guild = bot.get_guild(MAIN_GUILD_ID)
+    if guild is None:
+        return
+
+    # bỏ qua bot
+    if payload.user_id == bot.user.id:
+        return
+
+    member = guild.get_member(payload.user_id)
+    if member is None:
+        return
+
+    role = discord.utils.get(guild.roles, name=SUBSCRIBE_ROLE_NAME)
+    if role is None:
+        return
+
+    try:
+        if role in member.roles:
+            await member.remove_roles(role, reason="Hủy đăng ký thông báo sự kiện")
+    except discord.Forbidden:
+        pass
+    except Exception:
+        pass
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    """
+    Khi ai đó bấm icon ở bất kỳ message/public channel,
+    payload sẽ chạy qua đây.
+    Mình lọc lại 3 ID: guild/channel/message, chỉ xử lý nếu đúng bài nhiệm vụ.
+    """
+    await _give_sub_role(payload)
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    """
+    Khi ai đó bỏ icon (unreact), mình gỡ role để họ ngừng nhận ping.
+    """
+    await _remove_sub_role(payload)
+
+
+
+
+
+
+
+
+#===========================NHAN THUONG===================
+#===========================NHAN THUONG===================
+#===========================NHAN THUONG===================
+#===========================NHAN THUONG===================
+
+
+
+
 
 
 
