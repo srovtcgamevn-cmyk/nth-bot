@@ -919,6 +919,12 @@ ADMIN_WHITELIST = {
     "gianlan","thabong","phattu",
     "batanh","pingg",
     "lenh","olenh"
+    "saoluuantoan","osaoluuantoan"
+    "xuatdata","oxuatdata"
+    "osaoluuantoan","saoluuantoan"
+
+
+
 }
 GAMEPLAY_REQUIRE = {
     "ol","l",
@@ -1419,6 +1425,10 @@ async def cmd_olenhquantri(ctx):
         "`otestdata` — Kiểm tra dữ liệu đang lưu trong volume Railway",
         "`othoigiansaoluu` — Thay đổi thời gian sao lưu tự động và thông báo",
         "`othongtinmc` — Thông tin máy chủ hiện tại",
+        "`osaoluuantoan` — Sao lưu an toán",
+        "`oxuatdata` — Xuất data về Discord",
+        "`oxoabackup` — Dọn dẹp trống đầy volum",
+
 
 
     ]
@@ -1432,7 +1442,7 @@ async def cmd_olenhquantri(ctx):
 
 
 
-@bot.command(name="othongtimc", aliases=["thongtimc"])
+@bot.command(name="othongtinmc", aliases=["thongtinmc"])
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def cmd_othongtinmc(ctx):
@@ -2134,6 +2144,199 @@ async def cmd_resetuser(ctx, member: discord.Member):
             f"Người chơi `{member.display_name}` chưa có dữ liệu.",
             mention_author=False
         )
+
+
+
+
+
+
+
+
+# =================== BACKUP & XUẤT DỮ LIỆU HOÀN CHỈNH ===================
+
+# ⚙️ Giữ lại tối đa 10 file backup mới nhất cho mỗi loại (manual, pre-save, startup, ...)
+MAX_BACKUPS_PER_DIR = 10
+
+def _cleanup_old_backups_limit():
+    """
+    DỌN TOÀN BỘ backup trong mọi thư mục BACKUP_DIRS.
+    - Với mỗi thư mục backup (startup, pre-save, manual, ...):
+      -> chỉ giữ lại MAX_BACKUPS_PER_DIR file mới nhất
+      -> xóa các file cũ hơn (kể cả .sha256)
+    - Mục tiêu: không để volume phình tới vài GB.
+    """
+    for subkey, folder in BACKUP_DIRS.items():
+        if not folder or not os.path.isdir(folder):
+            continue
+
+        try:
+            pattern = os.path.join(folder, "data.json.v*.json")
+            files = glob(pattern)
+
+            if len(files) <= MAX_BACKUPS_PER_DIR:
+                continue
+
+            files_sorted_new_first = sorted(files, reverse=True)
+            keep = set(files_sorted_new_first[:MAX_BACKUPS_PER_DIR])
+            to_delete = [f for f in files_sorted_new_first if f not in keep]
+
+            deleted = 0
+            for f in to_delete:
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+                sha_path = f + ".sha256"
+                if os.path.exists(sha_path):
+                    try:
+                        os.remove(sha_path)
+                    except Exception:
+                        pass
+                deleted += 1
+
+            print(f"[AUTO-BACKUP-CLEANUP] [{subkey}] Xóa {deleted} file cũ, giữ {MAX_BACKUPS_PER_DIR} file mới nhất.")
+
+        except Exception as e:
+            print(f"[AUTO-BACKUP-CLEANUP] Lỗi dọn thư mục {subkey}: {e}")
+
+
+
+# ================== SAO LƯU AN TOÀN ==================
+
+@bot.command(name="saoluuantoan", aliases=["osaoluuantoan"])
+@owner_only()
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_osaoluu_antoan(ctx):
+    """
+    Tạo ngay 1 bản backup mới nhất (manual) trước khi dọn dẹp.
+    Dùng khi sắp xóa backup cũ để chắc chắn luôn còn 1 bản khôi phục gần nhất.
+    """
+    data_now = load_data()
+    try:
+        backup_path = snapshot_data_v16(data_now, tag="manual-before-clean", subkey="manual")
+
+        try:
+            _cleanup_old_backups_limit()
+        except Exception as cle:
+            print(f"[BACKUP CLEANUP] Lỗi dọn backup sau khi tạo bản an toàn: {cle}")
+
+        await ctx.reply(
+            f"✅ Đã tạo bản backup an toàn: `{os.path.basename(backup_path)}`\n"
+            f"📦 Đã dọn bớt backup cũ, giữ tối đa 10 bản mỗi loại.",
+            mention_author=False
+        )
+    except Exception as e:
+        await ctx.reply(
+            f"❌ Sao lưu an toàn thất bại: {e}",
+            mention_author=False
+        )
+
+
+
+# ================== XOÁ TOÀN BỘ BACKUP ==================
+
+@bot.command(name="xoabackup", aliases=["oxoabackup"])
+@owner_only()
+@commands.cooldown(1, 10, commands.BucketType.user)
+async def cmd_xoabackup(ctx):
+    """
+    GIẢI PHÓNG DUNG LƯỢNG.
+    Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
+    KHÔNG xoá data.json chính.
+    Nên chạy `osaoluuantoan` trước để chắc chắn luôn còn 1 bản backup mới nhất.
+    """
+    import shutil
+    backup_root = os.path.join(BASE_DATA_DIR, "backups")
+    try:
+        if os.path.isdir(backup_root):
+            shutil.rmtree(backup_root)
+        os.makedirs(backup_root, exist_ok=True)
+        await ctx.reply(
+            "🧹 Đã xoá toàn bộ backup cũ (startup / pre-save / manual / ...).\n"
+            "📦 File dữ liệu chính data.json vẫn còn nguyên.\n"
+            "💡 Gợi ý: kiểm tra lại dung lượng volume trên Railway.",
+            mention_author=False
+        )
+    except Exception as e:
+        await ctx.reply(
+            f"❌ Không thể xoá backup: {e}",
+            mention_author=False
+        )
+
+
+
+# ================== XUẤT FILE BACKUP ZIP ==================
+
+@bot.command(name="xuatdata", aliases=["oxuatdata", "backupxuat"])
+@owner_only()
+@commands.cooldown(1, 30, commands.BucketType.user)
+async def cmd_xuatdata(ctx):
+    """
+    Đóng gói toàn bộ dữ liệu hiện tại (data.json + backups/)
+    thành 1 file ZIP và gửi lên Discord để tải về.
+    Sau khi gửi xong sẽ xóa file ZIP tạm để không tốn dung lượng.
+    """
+    import zipfile
+    import time
+
+    timestamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+    export_name = f"export_{timestamp}.zip"
+    export_path = os.path.join(BASE_DATA_DIR, export_name)
+
+    data_file_path = os.path.join(BASE_DATA_DIR, "data.json")
+    backups_dir = os.path.join(BASE_DATA_DIR, "backups")
+
+    try:
+        with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Ghi file data.json
+            if os.path.isfile(data_file_path):
+                zf.write(data_file_path, arcname="data.json")
+
+            # Ghi toàn bộ thư mục backups
+            if os.path.isdir(backups_dir):
+                for root, dirs, files in os.walk(backups_dir):
+                    for fname in files:
+                        full_path = os.path.join(root, fname)
+                        arcname = os.path.relpath(full_path, BASE_DATA_DIR)
+                        zf.write(full_path, arcname=arcname)
+
+        await ctx.reply(
+            content=(
+                "📦 Đã tạo file sao lưu tổng hợp (data.json + backups/)\n"
+                "⬇ Tải file ZIP này về máy của bạn và lưu cẩn thận.\n"
+                "⚠ Ai có file này có thể xem toàn bộ dữ liệu bot, không nên chia sẻ công khai."
+            ),
+            file=discord.File(export_path, filename=export_name),
+            mention_author=False
+        )
+
+    except Exception as e:
+        await ctx.reply(f"❌ Không thể xuất data: {e}", mention_author=False)
+        try:
+            if os.path.exists(export_path):
+                os.remove(export_path)
+        except:
+            pass
+        return
+
+    # Xóa file ZIP tạm sau khi gửi thành công
+    try:
+        if os.path.exists(export_path):
+            os.remove(export_path)
+    except Exception as cleanup_err:
+        print(f"[WARN] Không xoá được file xuất tạm: {cleanup_err}")
+
+# =================== /BACKUP & XUẤT DỮ LIỆU ===================
+
+
+
+
+
+
+
+
+
+
 
 
 # ======================
