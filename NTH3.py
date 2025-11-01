@@ -4594,7 +4594,7 @@ DAILY_MISSION_TEMPLATES = [
     },
     {
         "key": "tang_5",
-        "title": "`otang` {NP_EMOJI} cho người chơi khác 5 lần",
+        "title": f"`otang` {NP_EMOJI} cho người chơi khác 5 lần",
         "stat_field": ("quest_runtime", "tang_today"),
         "target": 5,
         "reward_np": 3_000,
