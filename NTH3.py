@@ -3400,414 +3400,6 @@ async def cmd_odt(ctx, amount: str = None):
 
 
 
-# ==========================================================
-# 🏆 BẢNG XẾP HẠNG (obxh / bxh)
-# ==========================================================
-
-def _bxh_safe_user_for_rank(u: dict) -> dict:
-    clone = dict(u)
-
-    stats = dict(clone.get("stats", {}))
-    clone["stats"] = stats
-    stats.setdefault("ol_count", 0)
-    stats.setdefault("odt_count", 0)
-    stats.setdefault("opened", 0)
-
-    r_raw = clone.get("rungs", {})
-    clone["rungs"] = {
-        "S": int(r_raw.get("S", 0)),
-        "A": int(r_raw.get("A", 0)),
-        "B": int(r_raw.get("B", 0)),
-        "C": int(r_raw.get("C", 0)),
-        "D": int(r_raw.get("D", 0)),
-    }
-
-    clone["ngan_phi"] = int(clone.get("ngan_phi", 0))
-    return clone
-
-def _bxh_collect_users(data: dict) -> dict[str, dict]:
-    prepared = {}
-    for uid, raw in data.get("users", {}).items():
-        if isinstance(raw, dict):
-            prepared[uid] = _bxh_safe_user_for_rank(raw)
-    return prepared
-
-def _bxh_total_ruong_alltime(u: dict) -> tuple[int, dict]:
-    """
-    Tổng Rương Báu (đang giữ + đã mở).
-    """
-    stats = u["stats"]
-    opened_total = int(stats.get("opened", 0))
-
-    r = u["rungs"]
-    s = r["S"]; a = r["A"]; b = r["B"]; c = r["C"]; d = r["D"]
-
-    holding_now = s + a + b + c + d
-    total_alltime = holding_now + opened_total
-    breakdown_now = {"S": s, "A": a, "B": b, "C": c, "D": d}
-    return total_alltime, breakdown_now
-
-async def _bxh_display_name(uid: str) -> str:
-    try:
-        obj = bot.get_user(int(uid))
-        if not obj:
-            obj = await bot.fetch_user(int(uid))
-        if obj:
-            return obj.display_name or obj.name
-    except Exception:
-        pass
-    return f"ID:{uid}"
-
-def _bxh_rank(prepared: dict[str, dict], category: str):
-    """
-    category:
-      "ol"    => stats.ol_count
-      "odt"   => stats.odt_count
-      "tien"  => ngan_phi
-      "ruong" => tổng rương báu (lifetime)
-    """
-    arr = []
-    for uid, u in prepared.items():
-        if category == "ol":
-            val = int(u["stats"].get("ol_count", 0))
-        elif category == "odt":
-            val = int(u["stats"].get("odt_count", 0))
-        elif category == "tien":
-            val = int(u["ngan_phi"])
-        elif category == "ruong":
-            val, _ = _bxh_total_ruong_alltime(u)
-        else:
-            continue
-        arr.append((uid, val))
-
-    arr.sort(key=lambda x: x[1], reverse=True)
-    return arr[:10], arr
-
-# ---------- OVERVIEW EMBED (TỔNG / TUẦN / NGÀY) ----------
-
-async def _bxh_build_overview_embed(period: str, requestor_name: str):
-    """
-    period in {"all","week","day"}
-    Hiển thị 4 khối:
-      🗺️ Thám Hiểm (TOP1 ol_count)
-      💎 Đổ Thạch (TOP1 odt_count)
-      💰 Ngân Phiếu (TOP1 giàu nhất)
-      📦 Rương Báu (TOP1 nhiều rương)
-    !!! Hiện tại CHUNG 1 NGUỒN DỮ LIỆU (lifetime).
-    Chỉ khác tiêu đề theo 'period'.
-    """
-    data = load_data()
-    prepared = _bxh_collect_users(data)
-
-    # Lấy top1 từng mảng
-    top_ol,   _all_ol   = _bxh_rank(prepared, "ol")
-    top_odt,  _all_odt  = _bxh_rank(prepared, "odt")
-    top_tien, _all_tien = _bxh_rank(prepared, "tien")
-    top_r,    _all_r    = _bxh_rank(prepared, "ruong")
-
-    async def block_thamhiem():
-        if not top_ol:
-            return "🗺️ Thám Hiểm\nKhông có dữ liệu."
-        uid, val = top_ol[0]
-        dn = await _bxh_display_name(uid)
-        return (
-            "🗺️ Thám Hiểm\n"
-            f"🥇 TOP 1 — {dn} — {val} lần"
-        )
-
-    async def block_dothach():
-        if not top_odt:
-            return f"{EMOJI_DOTHACHT} Đổ Thạch\nKhông có dữ liệu."
-        uid, val = top_odt[0]
-        dn = await _bxh_display_name(uid)
-        return (
-            f"{EMOJI_DOTHACHT} Đổ Thạch\n"
-            f"🥇 TOP 1 — {dn} — {val} lần"
-        )
-
-    async def block_tien():
-        if not top_tien:
-            return f"{NP_EMOJI} Ngân Phiếu\nKhông có dữ liệu."
-        uid, val = top_tien[0]
-        dn = await _bxh_display_name(uid)
-        return (
-            f"{NP_EMOJI} Ngân Phiếu\n"
-            f"🥇 TOP 1 — {dn} — {format_num(val)} Ngân Phiếu"
-        )
-
-    async def block_ruong():
-        if not top_r:
-            return "<:ruongthuong:1433525898107158660> Rương Báu\nKhông có dữ liệu."
-        uid, _val = top_r[0]
-        dn = await _bxh_display_name(uid)
-
-        total_alltime, breakdown = _bxh_total_ruong_alltime(prepared[uid])
-
-        emo_S = RARITY_CHEST_EMOJI.get("S", "🟣")
-        emo_A = RARITY_CHEST_EMOJI.get("A", "🟡")
-        emo_B = RARITY_CHEST_EMOJI.get("B", "🟠")
-        emo_C = RARITY_CHEST_EMOJI.get("C", "🔵")
-        emo_D = RARITY_CHEST_EMOJI.get("D", "⚪")
-
-        s = breakdown["S"]; a = breakdown["A"]; b = breakdown["B"]; c = breakdown["C"]; d = breakdown["D"]
-
-        return (
-            "<:ruongthuong:1433525898107158660> Rương Báu\n"
-            f"🥇 TOP 1 — {dn} — {total_alltime} Rương Báu\n"
-            f"{emo_S} {s}  {emo_A} {a}  {emo_B} {b}  {emo_C} {c}  {emo_D} {d}"
-        )
-
-    # tiêu đề theo tab
-    if period == "week":
-        title = "🏵️ BẢNG XẾP HẠNG TUẦN"
-        note = "🔄 Số liệu đang dùng tổng tích lũy (chưa tách tuần)."
-    elif period == "day":
-        title = "🌄 BẢNG XẾP HẠNG NGÀY"
-        note = "🔄 Số liệu đang dùng tổng tích lũy (chưa tách ngày)."
-    else:
-        title = "🏆 TỔNG BẢNG XẾP HẠNG"
-        note = "Chọn các nút bên dưới để xem TOP 10 chi tiết."
-
-    desc = "\n\n".join([
-        await block_thamhiem(),
-        await block_dothach(),
-        await block_tien(),
-        await block_ruong(),
-        note
-    ])
-
-    emb = make_embed(
-        title=title,
-        description=desc,
-        color=0xF1C40F,
-        footer=f"Yêu cầu bởi {requestor_name}"
-    )
-    return emb
-
-async def _bxh_render_overview_ctx(ctx: commands.Context, period: str):
-    return await _bxh_build_overview_embed(period, ctx.author.display_name)
-
-async def _bxh_render_overview_inter(inter: discord.Interaction, period: str, owner_name: str):
-    return await _bxh_build_overview_embed(period, owner_name)
-
-def _bxh_footer_with_rank(category: str, author_id: int, author_name: str, full_sorted: list):
-    """
-    Footer hiển thị vị trí cá nhân người đang bấm.
-    """
-    pos = None
-    you_line = None
-    aid = str(author_id)
-
-    for rank_idx, item in enumerate(full_sorted, start=1):
-        uid_here = str(item[0])
-        if uid_here != aid:
-            continue
-        val = item[1]
-        if category == "ol":
-            you_line = f"Bạn: {val} lần"
-        elif category == "odt":
-            you_line = f"Bạn: {val} lần"
-        elif category == "tien":
-            you_line = f"Bạn: {format_num(val)} Ngân Phiếu"
-        elif category == "ruong":
-            you_line = f"Bạn: {val} Rương Báu (tính cả đã mở)"
-        pos = rank_idx
-        break
-
-    if pos is None:
-        return f"Yêu cầu bởi {author_name}"
-
-    footer_txt = f"Vị trí của bạn: #{pos}"
-    if you_line:
-        footer_txt += f" • {you_line}"
-    return footer_txt
-
-async def _bxh_render_detail(category: str, author_id: int, author_name: str):
-    """
-    Chi tiết TOP 10 cho từng hạng mục.
-    category in ["ol","odt","tien","ruong"]
-    """
-    data = load_data()
-    prepared = _bxh_collect_users(data)
-
-    topN, full_sorted = _bxh_rank(prepared, category)
-    lines = []
-
-    if category == "ol":
-        title = "🗺️ TOP 10 — THÁM HIỂM"
-        for i, (uid, val) in enumerate(topN, start=1):
-            dn = await _bxh_display_name(uid)
-            lines.append(f"#{i} {dn} — {val} lần")
-
-    elif category == "odt":
-        title = f"{EMOJI_DOTHACHT} TOP 10 — ĐỔ THẠCH"
-        for i, (uid, val) in enumerate(topN, start=1):
-            dn = await _bxh_display_name(uid)
-            lines.append(f"#{i} {dn} — {val} lần")
-
-    elif category == "tien":
-        title = f"{NP_EMOJI} TOP 10 — NGÂN PHIẾU"
-        for i, (uid, val) in enumerate(topN, start=1):
-            dn = await _bxh_display_name(uid)
-            lines.append(f"#{i} {dn} — {format_num(val)} Ngân Phiếu")
-
-    elif category == "ruong":
-        title = "<:ruongthuong:1433525898107158660> TOP 10 — RƯƠNG BÁU"
-        for i, (uid, _v) in enumerate(topN, start=1):
-            dn = await _bxh_display_name(uid)
-            total_alltime, brk = _bxh_total_ruong_alltime(prepared[uid])
-
-            emo_S = RARITY_CHEST_EMOJI.get("S", "🟣")
-            emo_A = RARITY_CHEST_EMOJI.get("A", "🟡")
-            emo_B = RARITY_CHEST_EMOJI.get("B", "🟠")
-            emo_C = RARITY_CHEST_EMOJI.get("C", "🔵")
-            emo_D = RARITY_CHEST_EMOJI.get("D", "⚪")
-
-            s = brk["S"]; a = brk["A"]; b = brk["B"]; c = brk["C"]; d = brk["D"]
-
-            lines.append(
-                f"#{i} {dn} — {total_alltime} Rương Báu\n"
-                f"{emo_S} {s}  {emo_A} {a}  {emo_B} {b}  {emo_C} {c}  {emo_D} {d}"
-            )
-
-    else:
-        title = "TOP 10"
-        lines = ["Chưa có dữ liệu."]
-
-    if not lines:
-        lines = ["Chưa có dữ liệu."]
-
-    footer_txt = _bxh_footer_with_rank(category, author_id, author_name, full_sorted)
-
-    emb = make_embed(
-        title=title,
-        description="\n".join(lines),
-        color=0xF1C40F,
-        footer=footer_txt
-    )
-    return emb
-
-class BXHView(discord.ui.View):
-    """
-    View 7 nút:
-      🏆 Tổng (danger)
-      🏵️ Tuần (primary)
-      🌄 Ngày (success)
-      🗺️ Thám Hiểm (success)
-      💎 Đổ Thạch (success)
-      💰 Ngân Phiếu (success)
-      📦 Rương Báu (success)
-    current_tab in ["all","week","day","ol","odt","tien","ruong"]
-    """
-    def __init__(self, owner_id: int, owner_name: str, current_tab: str, timeout: float = 300):
-        super().__init__(timeout=timeout)
-        self.owner_id = owner_id
-        self.owner_name = owner_name
-        self.current_tab = current_tab
-        self._apply_disabled_state()
-
-    async def _is_owner(self, inter: discord.Interaction) -> bool:
-        if inter.user.id != self.owner_id:
-            try:
-                await inter.response.send_message(
-                    "⚠️ Đây không phải bảng xếp hạng của bạn.",
-                    ephemeral=True
-                )
-            except Exception:
-                pass
-            return False
-        return True
-
-    def _apply_disabled_state(self):
-        tab_map = {
-            "all":  "btn_total",
-            "week": "btn_week",
-            "day":  "btn_day",
-            "ol":   "btn_thamhiem",
-            "odt":  "btn_dothach",
-            "tien": "btn_tien",
-            "ruong":"btn_ruong",
-        }
-        target = tab_map.get(self.current_tab)
-        if target:
-            try:
-                getattr(self, target).disabled = True
-            except Exception:
-                pass
-
-    # HÀNG 1: Tổng / Tuần / Ngày
-    @discord.ui.button(label="Tổng", emoji="🏆", style=discord.ButtonStyle.danger)
-    async def btn_total(self, inter: discord.Interaction, button: discord.ui.Button):
-        if not await self._is_owner(inter):
-            return
-        emb = await _bxh_render_overview_inter(inter, "all", self.owner_name)
-        new_view = BXHView(self.owner_id, self.owner_name, current_tab="all")
-        await inter.response.edit_message(embed=emb, view=new_view)
-
-    @discord.ui.button(label="Tuần", emoji="🏵️", style=discord.ButtonStyle.primary)
-    async def btn_week(self, inter: discord.Interaction, button: discord.ui.Button):
-        if not await self._is_owner(inter):
-            return
-        emb = await _bxh_render_overview_inter(inter, "week", self.owner_name)
-        new_view = BXHView(self.owner_id, self.owner_name, current_tab="week")
-        await inter.response.edit_message(embed=emb, view=new_view)
-
-    @discord.ui.button(label="Ngày", emoji="🌄", style=discord.ButtonStyle.success)
-    async def btn_day(self, inter: discord.Interaction, button: discord.ui.Button):
-        if not await self._is_owner(inter):
-            return
-        emb = await _bxh_render_overview_inter(inter, "day", self.owner_name)
-        new_view = BXHView(self.owner_id, self.owner_name, current_tab="day")
-        await inter.response.edit_message(embed=emb, view=new_view)
-
-    # HÀNG 2: Top 10 chi tiết
-    @discord.ui.button(label="Thám Hiểm", emoji="🗺️", style=discord.ButtonStyle.success)
-    async def btn_thamhiem(self, inter: discord.Interaction, button: discord.ui.Button):
-        if not await self._is_owner(inter):
-            return
-        emb = await _bxh_render_detail("ol", self.owner_id, self.owner_name)
-        new_view = BXHView(self.owner_id, self.owner_name, current_tab="ol")
-        await inter.response.edit_message(embed=emb, view=new_view)
-
-    @discord.ui.button(label="Đổ Thạch", emoji=EMOJI_DOTHACHT, style=discord.ButtonStyle.success)
-    async def btn_dothach(self, inter: discord.Interaction, button: discord.ui.Button):
-        if not await self._is_owner(inter):
-            return
-        emb = await _bxh_render_detail("odt", self.owner_id, self.owner_name)
-        new_view = BXHView(self.owner_id, self.owner_name, current_tab="odt")
-        await inter.response.edit_message(embed=emb, view=new_view)
-
-    @discord.ui.button(label="Ngân Phiếu", emoji=NP_EMOJI, style=discord.ButtonStyle.success)
-    async def btn_tien(self, inter: discord.Interaction, button: discord.ui.Button):
-        if not await self._is_owner(inter):
-            return
-        emb = await _bxh_render_detail("tien", self.owner_id, self.owner_name)
-        new_view = BXHView(self.owner_id, self.owner_name, current_tab="tien")
-        await inter.response.edit_message(embed=emb, view=new_view)
-
-    @discord.ui.button(label="Rương Báu", emoji="<:ruongthuong:1433525898107158660>", style=discord.ButtonStyle.success)
-    async def btn_ruong(self, inter: discord.Interaction, button: discord.ui.Button):
-        if not await self._is_owner(inter):
-            return
-        emb = await _bxh_render_detail("ruong", self.owner_id, self.owner_name)
-        new_view = BXHView(self.owner_id, self.owner_name, current_tab="ruong")
-        await inter.response.edit_message(embed=emb, view=new_view)
-
-@bot.command(name="obxh", aliases=["bxh"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_obxh(ctx: commands.Context):
-    """
-    Mở BXH lần đầu:
-    - Mặc định tab = Tổng
-    - View có 7 nút
-    """
-    emb = await _bxh_render_overview_ctx(ctx, "all")
-    view = BXHView(ctx.author.id, ctx.author.display_name, current_tab="all")
-    await ctx.send(embed=emb, view=view)
-
-
-
-
 #===========================NHAN THUONG===================
 #===========================NHAN THUONG===================
 #===========================NHAN THUONG===================
@@ -4217,122 +3809,6 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 #===========================NHAN THUONG===================
 
 
-# ================== CHUYỂN TIỀN GIỮA NGƯỜI CHƠI ==================
-# Lệnh: otang
-# Ai cũng dùng được, không cần owner
-# Ví dụ: otang @User 1,000
-
-@bot.command(name="tang", aliases=["otang"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
-    """
-    Chuyển Ngân Phiếu cho người chơi khác.
-    Cú pháp:
-        otang @nguoi_nhan <số_ngan_phiếu>
-    Ví dụ:
-        otang @Nam 1,000
-        otang @Linh 50000
-    """
-    # 1. Kiểm tra target và số tiền
-    if member is None or so is None:
-        await ctx.reply(
-            f"📝 Cách dùng: `otang @nguoichoi <số>`\n"
-            f"Ví dụ: `otang {ctx.author.mention} 1,000`",
-            mention_author=False
-        )
-        return
-
-    # Không cho tự tặng chính mình
-    if member.id == ctx.author.id:
-        await ctx.reply(
-            "😑 Bạn không thể tự tặng cho chính mình.",
-            mention_author=False
-        )
-        return
-
-    # Parse số tiền
-    try:
-        amount = int(str(so).replace(",", "").strip())
-        if amount <= 0:
-            raise ValueError()
-    except Exception:
-        await ctx.reply(
-            "⚠️ Số lượng không hợp lệ. Ví dụ: `otang @user 1,000`.",
-            mention_author=False
-        )
-        return
-
-    # 2. Đảm bảo cả 2 user tồn tại trong data
-    sender_id = str(ctx.author.id)
-    recv_id   = str(member.id)
-
-    data = ensure_user(sender_id)
-    data = ensure_user(recv_id)  # gọi lại để chắc chắn người nhận cũng có
-
-    sender = data["users"][sender_id]
-    receiver = data["users"][recv_id]
-
-    # cập nhật hoạt động (để thống kê name/guild/last_active)
-    touch_user_activity(ctx, sender)
-    # cố gắng log thông tin người nhận nếu cùng server
-    try:
-        # tạo context giả cho receiver (để lưu guild_id và last_active)
-        # nếu same guild thì dùng ctx cho luôn
-        if ctx.guild:
-            receiver["guild_id"] = ctx.guild.id
-        receiver["name"] = member.display_name
-        receiver["last_active"] = int(time.time())
-    except Exception:
-        pass
-
-    # 3. Kiểm tra số dư
-    sender_bal = int(sender.get("ngan_phi", 0))
-    if sender_bal < amount:
-        await ctx.reply(
-            f"❗ Bạn không đủ Ngân Phiếu.\n"
-            f"Số dư hiện tại: {format_num(sender_bal)}",
-            mention_author=False
-        )
-        return
-
-    # 4. Thực hiện chuyển
-    sender["ngan_phi"]  = sender_bal - amount
-    receiver["ngan_phi"] = int(receiver.get("ngan_phi", 0)) + amount
-
-    # (tuỳ chọn) thống kê cá nhân:
-    # - người gửi: tổng đã tặng (ghi vào stats để sau này còn xem)
-    # - người nhận: tổng đã nhận từ người chơi
-    s_stats = sender.setdefault("stats", {})
-    r_stats = receiver.setdefault("stats", {})
-    s_stats["gift_sent_total"] = int(s_stats.get("gift_sent_total", 0)) + amount
-    r_stats["gift_received_total"] = int(r_stats.get("gift_received_total", 0)) + amount
-
-    save_data(data)
-
-    # 5. Gửi embed thông báo
-    emb = make_embed(
-        title=f"{NP_EMOJI} Chuyển Ngân Phiếu thành công!",
-        description=(
-            f"**{ctx.author.display_name}** ➜ {member.mention}\n"
-            f"Đã tặng: **{format_num(amount)}** Ngân Phiếu\n\n"
-            f"Số dư còn lại của bạn: **{format_num(sender['ngan_phi'])}** NP"
-        ),
-        color=0x2ECC71,
-        footer=f"Giao dịch bởi {ctx.author.display_name}"
-    )
-    await ctx.send(embed=emb)
-
-    # 6. Thử báo riêng cho người nhận (không bắt buộc)
-    try:
-        await member.send(
-            f"{NP_EMOJI} Bạn vừa được nhận **{format_num(amount)}** Ngân Phiếu "
-            f"từ **{ctx.author.display_name}**!\n"
-            f"Số dư hiện tại của bạn: {format_num(receiver['ngan_phi'])} NP"
-        )
-    except Exception:
-        # Có thể DM khóa, ignore
-        pass
-# ================== /CHUYỂN TIỀN GIỮA NGƯỜI CHƠI ==================
 
 
 
@@ -4457,6 +3933,1226 @@ async def before_auto_backup():
 
 
 
+# ================== /CHUYỂN TIỀN GIỮA NGƯỜI CHƠI ==================
+@bot.command(name="otang")
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
+    """
+    Chuyển Ngân Phiếu cho người chơi khác.
+    Cú pháp:
+        otang @nguoi_nhan <số_ngan_phieu>
+    Ví dụ:
+        otang @Nam 1,000
+        otang @Linh 50000
+    """
+
+    # 1. Kiểm tra input
+    if member is None or so is None:
+        await ctx.reply(
+            f"📝 Cách dùng: `otang @nguoichoi <số>`\n"
+            f"Ví dụ: `otang {ctx.author.mention} 1,000`",
+            mention_author=False
+        )
+        return
+
+    # 2. Không cho tự chuyển cho chính mình
+    if member.id == ctx.author.id:
+        await ctx.reply(
+            "😅 Bạn không thể tự tặng cho chính mình.",
+            mention_author=False
+        )
+        return
+
+    # 3. Parse số tiền
+    try:
+        amount = int(str(so).replace(",", "").strip())
+    except Exception:
+        await ctx.reply(
+            "⚠️ Số không hợp lệ. Ví dụ: `otang @abc 1,000`",
+            mention_author=False
+        )
+        return
+
+    if amount <= 0:
+        await ctx.reply(
+            "⚠️ Số phải > 0.",
+            mention_author=False
+        )
+        return
+
+    # 4. Lấy data 2 người
+    giver_id = str(ctx.author.id)
+    recv_id  = str(member.id)
+
+    data = ensure_user(giver_id)
+    data = ensure_user(recv_id)  # ensure_user() load + save lại, ok
+
+    data = load_data()  # load bản mới nhất sau ensure_user
+    giver = data["users"][giver_id]
+    recv  = data["users"][recv_id]
+
+    # cập nhật hoạt động để log thống kê
+    touch_user_activity(ctx, giver)
+    touch_user_activity(ctx, recv)
+
+    # 5. Check tiền người gửi
+    bal = int(giver.get("ngan_phi", 0))
+    if bal < amount:
+        await ctx.reply(
+            f"❗ Bạn không đủ Ngân Phiếu. (Hiện có: {bal:,})",
+            mention_author=False
+        )
+        return
+
+    # 6. Trừ người gửi
+    giver["ngan_phi"] = bal - amount
+
+    # log: người gửi đã chi NP -> coi như tiêu ra (không cộng earn)
+    giver_stats = giver.setdefault("stats", {})
+    giver_stats.setdefault("ngan_phi_earned_total", 0)
+    giver_stats.setdefault("odt_np_spent_total", 0)
+    giver_stats.setdefault("odt_np_earned_total", 0)
+    giver_stats.setdefault("ol_count", 0)
+    giver_stats.setdefault("odt_count", 0)
+    giver_stats.setdefault("opened", 0)
+    giver_stats.setdefault("sold_count", 0)
+    giver_stats.setdefault("sold_value_total", 0)
+    # không cộng gì thêm cho giver ở đây vì đây là tiền đi ra
+
+    # 7. Cộng người nhận
+    recv_bal = int(recv.get("ngan_phi", 0))
+    recv["ngan_phi"] = recv_bal + amount
+
+    # log: người nhận được tiền -> tính vào tổng kiếm được
+    recv_stats = recv.setdefault("stats", {})
+    recv_stats.setdefault("ngan_phi_earned_total", 0)
+    recv_stats.setdefault("odt_np_spent_total", 0)
+    recv_stats.setdefault("odt_np_earned_total", 0)
+    recv_stats.setdefault("ol_count", 0)
+    recv_stats.setdefault("odt_count", 0)
+    recv_stats.setdefault("opened", 0)
+    recv_stats.setdefault("sold_count", 0)
+    recv_stats.setdefault("sold_value_total", 0)
+
+    recv_stats["ngan_phi_earned_total"] = int(
+        recv_stats.get("ngan_phi_earned_total", 0)
+    ) + amount
+
+    # 8. Lưu lại
+    save_data(data)
+
+         #5. Gửi embed thông báo
+    emb = make_embed(
+        title=f"{NP_EMOJI} Chuyển Ngân Phiếu thành công!",
+        description=(
+            f"**{ctx.author.display_name}** ➜ {member.mention}\n"
+            f"Đã tặng: **{format_num(amount)}** Ngân Phiếu\n\n"
+            f"Số dư còn lại của bạn: **{format_num(sender['ngan_phi'])}** NP"
+        ),
+        color=0x2ECC71,
+        footer=f"Giao dịch bởi {ctx.author.display_name}"
+    )
+    await ctx.send(embed=emb)
+
+    # 6. Thử báo riêng cho người nhận (không bắt buộc)
+    try:
+        await member.send(
+            f"{NP_EMOJI} Bạn vừa được nhận **{format_num(amount)}** Ngân Phiếu "
+            f"từ **{ctx.author.display_name}**!\n"
+            f"Số dư hiện tại của bạn: {format_num(receiver['ngan_phi'])} NP"
+        )
+    except Exception:
+        # Có thể DM khóa, ignore
+        pass
+# ================== /CHUYỂN TIỀN GIỮA NGƯỜI CHƠI ==================
+
+###############################################
+# 📅 NHIỆM VỤ NGÀY (onhiemvu)
+# - Hiển thị tiến độ nhiệm vụ ngày
+# - Cho biết phần thưởng tổng nếu hoàn thành 5/5
+###############################################
+
+import math
+from datetime import datetime, timezone
+
+# Cấu hình nhiệm vụ mặc định mỗi ngày
+# Mỗi mission có:
+#   key         -> định danh nội bộ
+#   title       -> mô tả cho player
+#   stat_field  -> đọc từ đâu để tính tiến độ
+#   target      -> mốc cần đạt
+#   reward_np   -> thưởng khi hoàn thành nhiệm vụ này
+DAILY_MISSION_TEMPLATES = [
+    {
+        "key": "ol_10",
+        "title": "Đi thám hiểm 10 lần (ol)",
+        "stat_field": ("stats", "ol_count"),
+        "target": 10,
+        "reward_np": 5_000,
+    },
+    {
+        "key": "odt_10",
+        "title": "Đổ thạch 10 lần (odt)",
+        "stat_field": ("stats", "odt_count"),
+        "target": 10,
+        "reward_np": 4_000,
+    },
+    {
+        "key": "omo_5",
+        "title": "Mở 5 rương (omo)",
+        # Nhiệm vụ mở rương = tổng rương đã mở trong ngày.
+        # Ta sẽ log qua stats["opened"] nhưng TÍNH THEO NGÀY RIÊNG.
+        # Vì stats["opened"] là lifetime, nên ta cần counter riêng theo ngày.
+        # -> ta sẽ dùng "opened_today" trong quest_state,
+        "stat_field": ("quest_runtime", "opened_today"),
+        "target": 5,
+        "reward_np": 2_000,
+    },
+    {
+        "key": "chat_50",
+        "title": "Gửi 50 tin nhắn trong server",
+        "stat_field": ("quest_runtime", "messages_today"),
+        "target": 50,
+        "reward_np": 2_000,
+    },
+    {
+        "key": "cmd_30",
+        "title": "Gõ 30 lệnh bot",
+        "stat_field": ("quest_runtime", "commands_today"),
+        "target": 30,
+        "reward_np": 3_000,
+    },
+]
+
+# Thưởng tổng khi full 5/5
+DAILY_FULL_REWARD_NP = 100_000
+DAILY_FULL_REWARD_RUONG = {
+    "S": 1  # Rương S x1
+}
+DAILY_FULL_REWARD_EMOJI = "<a:rs_d:1432101376699269364>"  # emoji rương S của bạn
+
+
+def _today_key_str():
+    """Trả về chuỗi ngày dạng YYYY-MM-DD (theo giờ hệ thống)."""
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _ensure_daily_quest_block(user: dict) -> dict:
+    """
+    Đảm bảo user có khối daily_quests.
+    Cấu trúc:
+    user["daily_quests"] = {
+        "date": "2025-11-01",
+        "missions": {
+            "<key>": {
+                "target": int,
+                "progress_start": int,  # mốc ban đầu trong stat tại thời điểm tạo nhiệm vụ
+                "reward_np": int,
+                "done": False,
+                "claimed": False
+            },
+            ...
+        },
+        "full_done": False,      # đã hoàn thành 5/5?
+        "full_claimed": False,  # đã nhận thưởng tổng chưa?
+        "quest_runtime": {      # các counter trong ngày không thể lấy từ stats lifetime
+            "opened_today": 0,
+            "messages_today": 0,
+            "commands_today": 0,
+        }
+    }
+    """
+    today_key = _today_key_str()
+
+    dq = user.setdefault("daily_quests", {})
+    dq_date = dq.get("date")
+
+    # Nếu chưa có nhiệm vụ ngày hôm nay -> tạo mới
+    if dq_date != today_key:
+        dq.clear()
+        dq["date"] = today_key
+        dq["missions"] = {}
+        dq["full_done"] = False
+        dq["full_claimed"] = False
+        dq["quest_runtime"] = {
+            "opened_today": 0,
+            "messages_today": 0,
+            "commands_today": 0,
+        }
+
+        # snapshot stat ban đầu để tính tiến độ kiểu "đi ol 10 lần trong ngày"
+        # Ta lưu giá trị gốc ở thời điểm khởi tạo để biết hôm nay đã làm bao nhiêu.
+        for tpl in DAILY_MISSION_TEMPLATES:
+            key = tpl["key"]
+            target = tpl["target"]
+            reward_np = tpl["reward_np"]
+
+            # Đọc giá trị khởi đầu từ user
+            # stat_field có dạng ("stats","ol_count") nghĩa là user["stats"]["ol_count"]
+            start_val = 0
+            sf_root, sf_key = tpl["stat_field"]
+
+            if sf_root == "stats":
+                start_val = int(user.get("stats", {}).get(sf_key, 0))
+            elif sf_root == "quest_runtime":
+                # quest_runtime reset mỗi ngày, nên start_val=0
+                start_val = 0
+            else:
+                start_val = 0
+
+            dq["missions"][key] = {
+                "target": target,
+                "progress_start": start_val,
+                "reward_np": reward_np,
+                "done": False,
+                "claimed": False,
+                "title": tpl["title"],
+                "sf_root": sf_root,
+                "sf_key": sf_key,
+            }
+
+    else:
+        # đảm bảo các field luôn tồn tại (phòng code cũ chưa có)
+        dq.setdefault("missions", {})
+        dq.setdefault("full_done", False)
+        dq.setdefault("full_claimed", False)
+        qr = dq.setdefault("quest_runtime", {})
+        qr.setdefault("opened_today", 0)
+        qr.setdefault("messages_today", 0)
+        qr.setdefault("commands_today", 0)
+
+        # đảm bảo tất cả mission template đều tồn tại trong ngày hiện tại
+        for tpl in DAILY_MISSION_TEMPLATES:
+            key = tpl["key"]
+            if key not in dq["missions"]:
+                # tạo mission mới giữa ngày nếu thiếu
+                start_val = 0
+                sf_root, sf_key = tpl["stat_field"]
+                if sf_root == "stats":
+                    start_val = int(user.get("stats", {}).get(sf_key, 0))
+                elif sf_root == "quest_runtime":
+                    start_val = 0
+
+                dq["missions"][key] = {
+                    "target": tpl["target"],
+                    "progress_start": start_val,
+                    "reward_np": tpl["reward_np"],
+                    "done": False,
+                    "claimed": False,
+                    "title": tpl["title"],
+                    "sf_root": sf_root,
+                    "sf_key": sf_key,
+                }
+
+    return dq
+
+
+def _calc_progress_for_mission(user: dict, dq: dict, mdata: dict) -> int:
+    """
+    Tính tiến độ hiện tại cho 1 nhiệm vụ.
+    progress = (giá trị hiện tại) - progress_start    (đối với stats...)
+            hoặc = quest_runtime[field]               (đối với quest_runtime...)
+    """
+    sf_root = mdata["sf_root"]
+    sf_key  = mdata["sf_key"]
+    base    = int(mdata.get("progress_start", 0))
+    target  = int(mdata.get("target", 0))
+
+    if sf_root == "stats":
+        current_val = int(user.get("stats", {}).get(sf_key, 0))
+        delta = current_val - base
+    elif sf_root == "quest_runtime":
+        current_val = int(dq.get("quest_runtime", {}).get(sf_key, 0))
+        delta = current_val  # vì quest_runtime reset daily
+    else:
+        delta = 0
+
+    if delta < 0:
+        delta = 0
+    if delta > target:
+        delta = target
+    return delta
+
+
+def _refresh_daily_quest_completion(user: dict):
+    """
+    Cập nhật trạng thái hoàn thành từng nhiệm vụ + trạng thái full_done.
+    Không chi trả thưởng ở đây, chỉ đánh dấu logic.
+    """
+    dq = _ensure_daily_quest_block(user)
+    all_done = True
+    for key, m in dq["missions"].items():
+        prog = _calc_progress_for_mission(user, dq, m)
+        if prog >= m["target"]:
+            m["done"] = True
+        else:
+            m["done"] = False
+            all_done = False
+    dq["full_done"] = all_done
+    return dq
+
+
+def _format_daily_header_block(dq: dict) -> tuple[str, int]:
+    """
+    Tạo text phần đầu embed:
+    - Nếu chưa full_done => hiển thị mục tiêu tổng & phần thưởng tổng
+    - Nếu đã full_done => hiển thị đã hoàn thành, và nếu chưa nhận full_claimed thì nói rõ
+    Trả về (header_text, done_count)
+    """
+    missions = dq.get("missions", {})
+    done_count = sum(1 for m in missions.values() if m.get("done"))
+    total = len(missions)
+
+    date_label = dq.get("date", _today_key_str())
+
+    if not dq.get("full_done", False):
+        # chưa full
+        header_lines = [
+            f"📅 Nhiệm vụ ngày {date_label}",
+            f"🎯 Hoàn thành tất cả {total} nhiệm vụ để nhận:",
+            f"   {NP_EMOJI} {format_num(DAILY_FULL_REWARD_NP)} Ngân Phiếu + {DAILY_FULL_REWARD_EMOJI} Rương S x1",
+            f"──────────────────────────────",
+        ]
+    else:
+        # đã full
+        if dq.get("full_claimed", False):
+            claim_txt = "✅ Bạn đã nhận thưởng lớn hôm nay."
+        else:
+            claim_txt = (
+                "🏆 Bạn đã hoàn thành tất cả nhiệm vụ hôm nay!\n"
+                f"🎁 Sẵn sàng nhận: {NP_EMOJI} +{format_num(DAILY_FULL_REWARD_NP)} "
+                f"& {DAILY_FULL_REWARD_EMOJI} +1 Rương S"
+            )
+
+        header_lines = [
+            f"📅 Nhiệm vụ ngày {date_label}",
+            claim_txt,
+            f"──────────────────────────────",
+        ]
+
+    header_text = "\n".join(header_lines)
+    return header_text, done_count
+
+
+def _format_single_mission_line(idx: int, m: dict, progress_now: int) -> str:
+    """
+    Hiển thị 1 nhiệm vụ dạng:
+
+    :white_check_mark: 1️⃣ Đi thám hiểm 10 lần (ol)
+    • Tiến độ: 7 / 10 → Phần thưởng: 5,000 Ngân Phiếu
+    """
+    box = "✅" if m.get("done") else "⬛"
+    title = m.get("title", f"Nhiệm vụ #{idx}")
+    target = int(m.get("target", 0))
+    reward_np = int(m.get("reward_np", 0))
+
+    return (
+        f"{box} {idx}️⃣ {title}\n"
+        f"• Tiến độ: {progress_now} / {target} → Phần thưởng: {format_num(reward_np)} Ngân Phiếu"
+    )
+
+
+###############################################
+# 📅 NHIỆM VỤ NGÀY (onhiemvu)
+# - Hiển thị tiến độ nhiệm vụ ngày
+# - Cho biết phần thưởng tổng nếu hoàn thành 5/5
+###############################################
+
+from datetime import datetime
+
+# Danh sách 5 nhiệm vụ mỗi ngày
+DAILY_MISSION_TEMPLATES = [
+    {
+        "key": "ol_10",
+        "title": "Đi thám hiểm 10 lần (ol)",
+        "stat_field": ("stats", "ol_count"),
+        "target": 10,
+        "reward_np": 5_000,
+    },
+    {
+        "key": "odt_10",
+        "title": "Đổ thạch 10 lần (odt)",
+        "stat_field": ("stats", "odt_count"),
+        "target": 10,
+        "reward_np": 4_000,
+    },
+    {
+        "key": "omo_5",
+        "title": "Mở 5 rương (omo)",
+        # cái này dùng bộ đếm riêng trong ngày
+        "stat_field": ("quest_runtime", "opened_today"),
+        "target": 5,
+        "reward_np": 2_000,
+    },
+    {
+        "key": "chat_50",
+        "title": "Gửi 50 tin nhắn trong server",
+        "stat_field": ("quest_runtime", "messages_today"),
+        "target": 50,
+        "reward_np": 2_000,
+    },
+    {
+        "key": "cmd_30",
+        "title": "Gõ 30 lệnh bot",
+        "stat_field": ("quest_runtime", "commands_today"),
+        "target": 30,
+        "reward_np": 3_000,
+    },
+]
+
+# Thưởng lớn khi hoàn thành cả 5 nhiệm vụ
+DAILY_FULL_REWARD_NP = 100_000
+DAILY_FULL_REWARD_RUONG = {
+    "S": 1  # Rương S x1
+}
+DAILY_FULL_REWARD_EMOJI = "<a:rs_d:1432101376699269364>"  # emoji rương S của bạn
+
+def _today_key_str():
+    """Ví dụ '2025-11-01' (reset theo ngày)."""
+    return datetime.now().strftime("%Y-%m-%d")
+
+def _ensure_daily_quest_block(user: dict) -> dict:
+    """
+    Tạo / bảo đảm khối daily_quests của user có dạng:
+
+    user["daily_quests"] = {
+        "date": "2025-11-01",
+        "missions": {
+            "ol_10": {
+                "target": 10,
+                "progress_start": <snapshot stat ban đầu>,
+                "reward_np": 5000,
+                "done": False,
+                "claimed": False,
+                "title": "Đi thám hiểm 10 lần (ol)",
+                "sf_root": "stats",
+                "sf_key": "ol_count"
+            },
+            ... (5 nhiệm vụ)
+        },
+        "full_done": False,
+        "full_claimed": False,
+        "quest_runtime": {
+            "opened_today": 0,
+            "messages_today": 0,
+            "commands_today": 0
+        }
+    }
+    """
+    today_key = _today_key_str()
+
+    dq = user.setdefault("daily_quests", {})
+    dq_date = dq.get("date")
+
+    # Nếu qua ngày mới -> reset nhiệm vụ
+    if dq_date != today_key:
+        dq.clear()
+        dq["date"] = today_key
+        dq["missions"] = {}
+        dq["full_done"] = False
+        dq["full_claimed"] = False
+        dq["quest_runtime"] = {
+            "opened_today": 0,
+            "messages_today": 0,
+            "commands_today": 0,
+        }
+
+        # tạo 5 mission
+        for tpl in DAILY_MISSION_TEMPLATES:
+            key = tpl["key"]
+            sf_root, sf_key = tpl["stat_field"]
+
+            if sf_root == "stats":
+                start_val = int(user.get("stats", {}).get(sf_key, 0))
+            elif sf_root == "quest_runtime":
+                start_val = 0
+            else:
+                start_val = 0
+
+            dq["missions"][key] = {
+                "target": tpl["target"],
+                "progress_start": start_val,
+                "reward_np": tpl["reward_np"],
+                "done": False,
+                "claimed": False,
+                "title": tpl["title"],
+                "sf_root": sf_root,
+                "sf_key": sf_key,
+            }
+
+    else:
+        # đảm bảo các field luôn tồn tại
+        dq.setdefault("missions", {})
+        dq.setdefault("full_done", False)
+        dq.setdefault("full_claimed", False)
+        qr = dq.setdefault("quest_runtime", {})
+        qr.setdefault("opened_today", 0)
+        qr.setdefault("messages_today", 0)
+        qr.setdefault("commands_today", 0)
+
+        # nếu giữa chừng bạn thêm mission mới, thì thêm nó vào
+        for tpl in DAILY_MISSION_TEMPLATES:
+            key = tpl["key"]
+            if key not in dq["missions"]:
+                sf_root, sf_key = tpl["stat_field"]
+                if sf_root == "stats":
+                    start_val = int(user.get("stats", {}).get(sf_key, 0))
+                elif sf_root == "quest_runtime":
+                    start_val = 0
+                else:
+                    start_val = 0
+                dq["missions"][key] = {
+                    "target": tpl["target"],
+                    "progress_start": start_val,
+                    "reward_np": tpl["reward_np"],
+                    "done": False,
+                    "claimed": False,
+                    "title": tpl["title"],
+                    "sf_root": sf_root,
+                    "sf_key": sf_key,
+                }
+
+    return dq
+
+def _calc_progress_for_mission(user: dict, dq: dict, mdata: dict) -> int:
+    """
+    Tính tiến độ hiện tại cho nhiệm vụ:
+    - Nếu nhiệm vụ dựa trên stats (ví dụ ol_count), tính (stats_now - progress_start)
+    - Nếu nhiệm vụ dựa trên quest_runtime (ví dụ opened_today), lấy trực tiếp counter trong ngày
+    Kết quả luôn clamp trong [0, target]
+    """
+    sf_root = mdata["sf_root"]
+    sf_key  = mdata["sf_key"]
+    base    = int(mdata.get("progress_start", 0))
+    target  = int(mdata.get("target", 0))
+
+    if sf_root == "stats":
+        current_val = int(user.get("stats", {}).get(sf_key, 0))
+        delta = current_val - base
+    elif sf_root == "quest_runtime":
+        current_val = int(dq.get("quest_runtime", {}).get(sf_key, 0))
+        delta = current_val
+    else:
+        delta = 0
+
+    if delta < 0:
+        delta = 0
+    if delta > target:
+        delta = target
+    return delta
+
+def _refresh_daily_quest_completion(user: dict):
+    """
+    - Đảm bảo daily_quests tồn tại cho hôm nay
+    - Cập nhật m["done"] cho từng nhiệm vụ
+    - Đánh dấu full_done = True nếu 5/5 đều done
+    """
+    dq = _ensure_daily_quest_block(user)
+    all_done = True
+    for key, m in dq["missions"].items():
+        prog = _calc_progress_for_mission(user, dq, m)
+        m["done"] = (prog >= m["target"])
+        if not m["done"]:
+            all_done = False
+    dq["full_done"] = all_done
+    return dq
+
+def _format_daily_header_block(dq: dict) -> tuple[str, int]:
+    """
+    Phần mở đầu embed:
+    - Cho biết phần thưởng tổng nếu chưa xong
+    - Nếu đã xong hết 5/5 thì show thông báo khác
+    Trả về (text_header, số_nhiệm_vụ_đã_hoàn_thành)
+    """
+    missions = dq.get("missions", {})
+    done_count = sum(1 for m in missions.values() if m.get("done"))
+    total = len(missions)
+
+    date_label = dq.get("date", _today_key_str())
+
+    if not dq.get("full_done", False):
+        # chưa hoàn thành 5/5
+        header_lines = [
+            f"📅 Nhiệm vụ ngày {date_label}",
+            f"🎯 Hoàn thành tất cả {total} nhiệm vụ để nhận:",
+            f"   {NP_EMOJI} {format_num(DAILY_FULL_REWARD_NP)} Ngân Phiếu + {DAILY_FULL_REWARD_EMOJI} Rương S x1",
+            f"──────────────────────────────",
+        ]
+    else:
+        # đã xong hết 5/5
+        if dq.get("full_claimed", False):
+            claim_txt = "✅ Bạn đã nhận thưởng lớn hôm nay."
+        else:
+            claim_txt = (
+                "🏆 Bạn đã hoàn thành tất cả nhiệm vụ hôm nay!\n"
+                f"🎁 Sẵn sàng nhận: {NP_EMOJI} +{format_num(DAILY_FULL_REWARD_NP)} "
+                f"& {DAILY_FULL_REWARD_EMOJI} +1 Rương S"
+            )
+
+        header_lines = [
+            f"📅 Nhiệm vụ ngày {date_label}",
+            claim_txt,
+            f"──────────────────────────────",
+        ]
+
+    header_text = "\n".join(header_lines)
+    return header_text, done_count
+
+def _format_single_mission_line(idx: int, m: dict, progress_now: int) -> str:
+    """
+    Ví dụ output:
+    ✅ 1️⃣ Đi thám hiểm 10 lần (ol)
+    • Tiến độ: 7 / 10 → Phần thưởng: 5,000 Ngân Phiếu
+    """
+    box = "✅" if m.get("done") else "⬛"
+    title = m.get("title", f"Nhiệm vụ #{idx}")
+    target = int(m.get("target", 0))
+    reward_np = int(m.get("reward_np", 0))
+
+    return (
+        f"{box} {idx}️⃣ {title}\n"
+        f"• Tiến độ: {progress_now} / {target} → Phần thưởng: {format_num(reward_np)} Ngân Phiếu"
+    )
+
+def quest_runtime_increment(user: dict, field: str, amount: int = 1):
+    """
+    Gọi hàm này ở các chỗ tương ứng để tăng counter trong ngày:
+        quest_runtime_increment(user, "opened_today", so_ruong_mo)
+        quest_runtime_increment(user, "messages_today", 1)
+        quest_runtime_increment(user, "commands_today", 1)
+    Sau đó nhớ save_data(data).
+    """
+    dq = _ensure_daily_quest_block(user)
+    qr = dq["quest_runtime"]
+    qr[field] = int(qr.get(field, 0)) + amount
+    return dq
+
+@bot.command(name="onhiemvu", aliases=["nhiemvu"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_onhiemvu(ctx: commands.Context):
+    """
+    Hiển thị tình trạng nhiệm vụ ngày (tiến độ từng nhiệm vụ + thưởng lớn 5/5).
+    Không trả thưởng ở đây, chỉ show.
+    """
+    user_id = str(ctx.author.id)
+
+    # tạo user nếu chưa có
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+
+    # log hoạt động gần nhất
+    touch_user_activity(ctx, user)
+
+    # cập nhật trạng thái done / full_done
+    dq = _refresh_daily_quest_completion(user)
+
+    # header (thưởng tổng, vv.)
+    header_text, done_count = _format_daily_header_block(dq)
+
+    # build list từng nhiệm vụ
+    body_lines = []
+    missions_sorted = list(dq["missions"].items())
+
+    # đảm bảo thứ tự 1..5 luôn cố định theo DAILY_MISSION_TEMPLATES
+    order_map = {tpl["key"]: i for i, tpl in enumerate(DAILY_MISSION_TEMPLATES, start=1)}
+    missions_sorted.sort(key=lambda kv: order_map.get(kv[0], 999))
+
+    for key, m in missions_sorted:
+        prog_now = _calc_progress_for_mission(user, dq, m)
+        idx_display = order_map.get(key, 0)
+        body_lines.append(_format_single_mission_line(idx_display, m, prog_now))
+
+    desc_text = (
+        f"{header_text}\n" +
+        "\n\n".join(body_lines) +
+        f"\n\n📌 Tiến độ tổng: {done_count}/{len(dq['missions'])} nhiệm vụ đã hoàn thành hôm nay."
+    )
+
+    emb = make_embed(
+        title="📜 NHIỆM VỤ HÀNG NGÀY",
+        description=desc_text,
+        color=0x00B894,
+        footer=f"Yêu cầu bởi {ctx.author.display_name}"
+    )
+
+    await ctx.reply(embed=emb, mention_author=False)
+
+
+# ==========================================================
+# 🏆 BẢNG XẾP HẠNG (obxh / bxh)
+# ==========================================================
+
+def _bxh_safe_user_for_rank(u: dict) -> dict:
+    clone = dict(u)
+
+    stats = dict(clone.get("stats", {}))
+    clone["stats"] = stats
+    stats.setdefault("ol_count", 0)
+    stats.setdefault("odt_count", 0)
+    stats.setdefault("opened", 0)
+
+    r_raw = clone.get("rungs", {})
+    clone["rungs"] = {
+        "S": int(r_raw.get("S", 0)),
+        "A": int(r_raw.get("A", 0)),
+        "B": int(r_raw.get("B", 0)),
+        "C": int(r_raw.get("C", 0)),
+        "D": int(r_raw.get("D", 0)),
+    }
+
+    clone["ngan_phi"] = int(clone.get("ngan_phi", 0))
+    return clone
+
+def _bxh_collect_users(data: dict) -> dict[str, dict]:
+    prepared = {}
+    for uid, raw in data.get("users", {}).items():
+        if isinstance(raw, dict):
+            prepared[uid] = _bxh_safe_user_for_rank(raw)
+    return prepared
+
+def _bxh_total_ruong_alltime(u: dict) -> tuple[int, dict]:
+    """
+    Tổng Rương Báu (đang giữ + đã mở).
+    """
+    stats = u["stats"]
+    opened_total = int(stats.get("opened", 0))
+
+    r = u["rungs"]
+    s = r["S"]; a = r["A"]; b = r["B"]; c = r["C"]; d = r["D"]
+
+    holding_now = s + a + b + c + d
+    total_alltime = holding_now + opened_total
+    breakdown_now = {"S": s, "A": a, "B": b, "C": c, "D": d}
+    return total_alltime, breakdown_now
+
+async def _bxh_display_name(uid: str) -> str:
+    try:
+        obj = bot.get_user(int(uid))
+        if not obj:
+            obj = await bot.fetch_user(int(uid))
+        if obj:
+            return obj.display_name or obj.name
+    except Exception:
+        pass
+    return f"ID:{uid}"
+
+def _bxh_rank(prepared: dict[str, dict], category: str):
+    """
+    category:
+      "ol"    => stats.ol_count
+      "odt"   => stats.odt_count
+      "tien"  => ngan_phi
+      "ruong" => tổng rương báu (lifetime)
+    """
+    arr = []
+    for uid, u in prepared.items():
+        if category == "ol":
+            val = int(u["stats"].get("ol_count", 0))
+        elif category == "odt":
+            val = int(u["stats"].get("odt_count", 0))
+        elif category == "tien":
+            val = int(u["ngan_phi"])
+        elif category == "ruong":
+            val, _ = _bxh_total_ruong_alltime(u)
+        else:
+            continue
+        arr.append((uid, val))
+
+    arr.sort(key=lambda x: x[1], reverse=True)
+    return arr[:10], arr
+
+async def _bxh_build_overview_embed(requestor_name: str):
+    """
+    Hiển thị 4 khối lifetime:
+      🗺️ Thám Hiểm (TOP1 ol_count)
+      💎 Đổ Thạch (TOP1 odt_count)
+      💰 Ngân Phiếu (TOP1 giàu nhất)
+      📦 Rương Báu (TOP1 nhiều rương)
+    """
+    data = load_data()
+    prepared = _bxh_collect_users(data)
+
+    top_ol,   _all_ol   = _bxh_rank(prepared, "ol")
+    top_odt,  _all_odt  = _bxh_rank(prepared, "odt")
+    top_tien, _all_tien = _bxh_rank(prepared, "tien")
+    top_r,    _all_r    = _bxh_rank(prepared, "ruong")
+
+    async def block_thamhiem():
+        if not top_ol:
+            return "🗺️ Thám Hiểm\nKhông có dữ liệu."
+        uid, val = top_ol[0]
+        dn = await _bxh_display_name(uid)
+        return (
+            "🗺️ Thám Hiểm\n"
+            f"🥇 TOP 1 — {dn} — {val} lần"
+        )
+
+    async def block_dothach():
+        if not top_odt:
+            return f"{EMOJI_DOTHACHT} Đổ Thạch\nKhông có dữ liệu."
+        uid, val = top_odt[0]
+        dn = await _bxh_display_name(uid)
+        return (
+            f"{EMOJI_DOTHACHT} Đổ Thạch\n"
+            f"🥇 TOP 1 — {dn} — {val} lần"
+        )
+
+    async def block_tien():
+        if not top_tien:
+            return f"{NP_EMOJI} Ngân Phiếu\nKhông có dữ liệu."
+        uid, val = top_tien[0]
+        dn = await _bxh_display_name(uid)
+        return (
+            f"{NP_EMOJI} Ngân Phiếu\n"
+            f"🥇 TOP 1 — {dn} — {format_num(val)} Ngân Phiếu"
+        )
+
+    async def block_ruong():
+        if not top_r:
+            return "<:ruongthuong:1433525898107158660> Rương Báu\nKhông có dữ liệu."
+        uid, _val = top_r[0]
+        dn = await _bxh_display_name(uid)
+
+        total_alltime, breakdown = _bxh_total_ruong_alltime(prepared[uid])
+
+        emo_S = RARITY_CHEST_EMOJI.get("S", "🟣")
+        emo_A = RARITY_CHEST_EMOJI.get("A", "🟡")
+        emo_B = RARITY_CHEST_EMOJI.get("B", "🟠")
+        emo_C = RARITY_CHEST_EMOJI.get("C", "🔵")
+        emo_D = RARITY_CHEST_EMOJI.get("D", "⚪")
+
+        s = breakdown["S"]; a = breakdown["A"]; b = breakdown["B"]; c = breakdown["C"]; d = breakdown["D"]
+
+        return (
+            "<:ruongthuong:1433525898107158660> Rương Báu\n"
+            f"🥇 TOP 1 — {dn} — {total_alltime} Rương Báu\n"
+            f"{emo_S} {s}  {emo_A} {a}  {emo_B} {b}  {emo_C} {c}  {emo_D} {d}"
+        )
+
+    desc = "\n\n".join([
+        await block_thamhiem(),
+        await block_dothach(),
+        await block_tien(),
+        await block_ruong(),
+        "Chọn các nút bên dưới để xem TOP 10 chi tiết."
+    ])
+
+    emb = make_embed(
+        title="🏆 TỔNG BẢNG XẾP HẠNG",
+        description=desc,
+        color=0xF1C40F,
+        footer=f"Yêu cầu bởi {requestor_name}"
+    )
+    return emb
+
+async def _bxh_render_overview_ctx(ctx: commands.Context):
+    return await _bxh_build_overview_embed(ctx.author.display_name)
+
+async def _bxh_render_overview_inter(inter: discord.Interaction, owner_name: str):
+    return await _bxh_build_overview_embed(owner_name)
+
+def _bxh_footer_with_rank(category: str, author_id: int, author_name: str, full_sorted: list):
+    """
+    Footer hiển thị vị trí cá nhân người đang bấm.
+    """
+    pos = None
+    you_line = None
+    aid = str(author_id)
+
+    for rank_idx, item in enumerate(full_sorted, start=1):
+        uid_here = str(item[0])
+        if uid_here != aid:
+            continue
+        val = item[1]
+        if category == "ol":
+            you_line = f"Bạn: {val} lần"
+        elif category == "odt":
+            you_line = f"Bạn: {val} lần"
+        elif category == "tien":
+            you_line = f"Bạn: {format_num(val)} Ngân Phiếu"
+        elif category == "ruong":
+            you_line = f"Bạn: {val} Rương Báu (tính cả đã mở)"
+        pos = rank_idx
+        break
+
+    if pos is None:
+        return f"Yêu cầu bởi {author_name}"
+
+    footer_txt = f"Vị trí của bạn: #{pos}"
+    if you_line:
+        footer_txt += f" • {you_line}"
+    return footer_txt
+
+async def _bxh_render_detail(category: str, author_id: int, author_name: str):
+    """
+    Chi tiết TOP 10 cho từng hạng mục.
+    category in ["ol","odt","tien","ruong"]
+    """
+    data = load_data()
+    prepared = _bxh_collect_users(data)
+
+    topN, full_sorted = _bxh_rank(prepared, category)
+    lines = []
+
+    if category == "ol":
+        title = "🗺️ TOP 10 — THÁM HIỂM"
+        for i, (uid, val) in enumerate(topN, start=1):
+            dn = await _bxh_display_name(uid)
+            lines.append(f"#{i} {dn} — {val} lần")
+
+    elif category == "odt":
+        title = f"{EMOJI_DOTHACHT} TOP 10 — ĐỔ THẠCH"
+        for i, (uid, val) in enumerate(topN, start=1):
+            dn = await _bxh_display_name(uid)
+            lines.append(f"#{i} {dn} — {val} lần")
+
+    elif category == "tien":
+        title = f"{NP_EMOJI} TOP 10 — NGÂN PHIẾU"
+        for i, (uid, val) in enumerate(topN, start=1):
+            dn = await _bxh_display_name(uid)
+            lines.append(f"#{i} {dn} — {format_num(val)} NP")
+
+    elif category == "ruong":
+        title = "💎 TOP 10 — RƯƠNG BÁU"
+
+        # Top 3 có chi tiết từng phẩm (dùng emoji RARITY_EMOJI)
+        for i, (uid, _v) in enumerate(topN, start=1):
+            dn = await _bxh_display_name(uid)
+            total_alltime, brk = _bxh_total_ruong_alltime(prepared[uid])
+
+            s = brk["S"]; a = brk["A"]; b = brk["B"]; c = brk["C"]; d = brk["D"]
+
+            if i <= 3:
+                # Top 3 có breakdown chi tiết với emoji đẹp
+                lines.append(
+                    f"#{i} {dn} — {total_alltime} Rương Báu\n"
+                    f"{RARITY_EMOJI['S']} {s}  "
+                    f"{RARITY_EMOJI['A']} {a}  "
+                    f"{RARITY_EMOJI['B']} {b}  "
+                    f"{RARITY_EMOJI['C']} {c}  "
+                    f"{RARITY_EMOJI['D']} {d}"
+                )
+            else:
+                # Từ hạng 4 trở đi chỉ hiển thị tổng
+                lines.append(f"#{i} {dn} — {total_alltime} Rương Báu")
+
+
+    else:
+        title = "TOP 10"
+        lines = ["Chưa có dữ liệu."]
+
+    if not lines:
+        lines = ["Chưa có dữ liệu."]
+
+    footer_txt = _bxh_footer_with_rank(category, author_id, author_name, full_sorted)
+
+    emb = make_embed(
+        title=title,
+        description="\n".join(lines),
+        color=0xF1C40F,
+        footer=footer_txt
+    )
+    return emb
+
+class BXHView(discord.ui.View):
+    """
+    View chỉ còn 5 nút (không có Tuần / Ngày nữa):
+      🏆 Tổng
+      🗺️ Thám Hiểm
+      💎 Đổ Thạch
+      💰 Ngân Phiếu
+      📦 Rương Báu
+    current_tab in ["all","ol","odt","tien","ruong"]
+    """
+    def __init__(self, owner_id: int, owner_name: str, current_tab: str, timeout: float = 300):
+        super().__init__(timeout=timeout)
+        self.owner_id = owner_id
+        self.owner_name = owner_name
+        self.current_tab = current_tab
+        self._apply_disabled_state()
+
+    async def _is_owner(self, inter: discord.Interaction) -> bool:
+        if inter.user.id != self.owner_id:
+            try:
+                await inter.response.send_message(
+                    "⚠️ Đây không phải bảng xếp hạng của bạn.",
+                    ephemeral=True
+                )
+            except Exception:
+                pass
+            return False
+        return True
+
+    def _apply_disabled_state(self):
+        tab_map = {
+            "all":  "btn_total",
+            "ol":   "btn_thamhiem",
+            "odt":  "btn_dothach",
+            "tien": "btn_tien",
+            "ruong":"btn_ruong",
+        }
+        target = tab_map.get(self.current_tab)
+        if target:
+            try:
+                getattr(self, target).disabled = True
+            except Exception:
+                pass
+
+    @discord.ui.button(label="Tổng", emoji="🏆", style=discord.ButtonStyle.danger)
+    async def btn_total(self, inter: discord.Interaction, button: discord.ui.Button):
+        if not await self._is_owner(inter):
+            return
+        emb = await _bxh_render_overview_inter(inter, self.owner_name)
+        new_view = BXHView(self.owner_id, self.owner_name, current_tab="all")
+        await inter.response.edit_message(embed=emb, view=new_view)
+
+    @discord.ui.button(label="Thám Hiểm", emoji="🗺️", style=discord.ButtonStyle.success)
+    async def btn_thamhiem(self, inter: discord.Interaction, button: discord.ui.Button):
+        if not await self._is_owner(inter):
+            return
+        emb = await _bxh_render_detail("ol", self.owner_id, self.owner_name)
+        new_view = BXHView(self.owner_id, self.owner_name, current_tab="ol")
+        await inter.response.edit_message(embed=emb, view=new_view)
+
+    @discord.ui.button(label="Đổ Thạch", emoji=EMOJI_DOTHACHT, style=discord.ButtonStyle.success)
+    async def btn_dothach(self, inter: discord.Interaction, button: discord.ui.Button):
+        if not await self._is_owner(inter):
+            return
+        emb = await _bxh_render_detail("odt", self.owner_id, self.owner_name)
+        new_view = BXHView(self.owner_id, self.owner_name, current_tab="odt")
+        await inter.response.edit_message(embed=emb, view=new_view)
+
+    @discord.ui.button(label="Ngân Phiếu", emoji=NP_EMOJI, style=discord.ButtonStyle.success)
+    async def btn_tien(self, inter: discord.Interaction, button: discord.ui.Button):
+        if not await self._is_owner(inter):
+            return
+        emb = await _bxh_render_detail("tien", self.owner_id, self.owner_name)
+        new_view = BXHView(self.owner_id, self.owner_name, current_tab="tien")
+        await inter.response.edit_message(embed=emb, view=new_view)
+
+    @discord.ui.button(label="Rương Báu", emoji="<:ruongthuong:1433525898107158660>", style=discord.ButtonStyle.success)
+    async def btn_ruong(self, inter: discord.Interaction, button: discord.ui.Button):
+        if not await self._is_owner(inter):
+            return
+        emb = await _bxh_render_detail("ruong", self.owner_id, self.owner_name)
+        new_view = BXHView(self.owner_id, self.owner_name, current_tab="ruong")
+        await inter.response.edit_message(embed=emb, view=new_view)
+
+@bot.command(name="obxh", aliases=["bxh"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_obxh(ctx: commands.Context):
+    """
+    Mở BXH lần đầu:
+    - Mặc định tab = Tổng
+    """
+    emb = await _bxh_render_overview_ctx(ctx)
+    view = BXHView(ctx.author.id, ctx.author.display_name, current_tab="all")
+    await ctx.send(embed=emb, view=view)
+
+# ================================
+# 🚀 BXH
+# ================================
+
+
+# ================== /CHUYỂN TIỀN MỚI  GIỮA NGƯỜI CHƠI ==================
+@bot.command(name="tang")
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
+    """
+    Chuyển Ngân Phiếu cho người chơi khác.
+    Cú pháp:
+        otang @nguoi_nhan <số_ngan_phiếu>
+    Ví dụ:
+        otang @Nam 1,000
+        otang @Linh 50000
+    """
+
+    # 1️⃣ Kiểm tra input
+    if member is None or so is None:
+        await ctx.reply(
+            "📝 Cách dùng: `otang @nguoichoi <số>`\nVí dụ: `otang @Nam 1,000`",
+            mention_author=False
+        )
+        return
+
+    # 2️⃣ Không cho chuyển cho chính mình
+    if member.id == ctx.author.id:
+        await ctx.reply("❗ Bạn không thể tự chuyển Ngân Phiếu cho chính mình.", mention_author=False)
+        return
+
+    # 3️⃣ Xử lý số tiền
+    try:
+        amount = int(str(so).replace(",", "").strip())
+        if amount <= 0:
+            raise ValueError
+    except Exception:
+        await ctx.reply("⚠️ Số tiền không hợp lệ. Ví dụ: `otang @Nam 1,000`", mention_author=False)
+        return
+
+    # 4️⃣ Load data người gửi / người nhận
+    sender_id = str(ctx.author.id)
+    receiver_id = str(member.id)
+
+    data = ensure_user(sender_id)
+    data = ensure_user(receiver_id)
+    users = data["users"]
+
+    sender = users[sender_id]
+    receiver = users[receiver_id]
+
+    # 5️⃣ Kiểm tra số dư
+    bal = int(sender.get("ngan_phi", 0))
+    if bal < amount:
+        await ctx.reply(
+            f"💰 Bạn không đủ Ngân Phiếu. (Hiện có: {format_num(bal)})",
+            mention_author=False
+        )
+        return
+
+    # 6️⃣ Cập nhật số dư
+    sender["ngan_phi"] -= amount
+    receiver["ngan_phi"] = int(receiver.get("ngan_phi", 0)) + amount
+
+    # 7️⃣ Ghi log stats
+    s_stats = sender.setdefault("stats", {})
+    s_stats["ngan_phi_sent_total"] = int(s_stats.get("ngan_phi_sent_total", 0)) + amount
+
+    r_stats = receiver.setdefault("stats", {})
+    r_stats["ngan_phi_received_total"] = int(r_stats.get("ngan_phi_received_total", 0)) + amount
+
+    # 8️⃣ Cập nhật hoạt động
+    touch_user_activity(ctx, sender)
+    touch_user_activity(ctx, receiver)
+    save_data(data)
+
+    # 9️⃣ Embed gửi cho người gửi
+    embed_sender = make_embed(
+        title=f"{NP_EMOJI} CHUYỂN NGÂN PHIẾU",
+        description=(
+            f"✅ Bạn đã chuyển **{format_num(amount)}** {NP_EMOJI} cho **{member.display_name}** thành công!\n\n"
+            f"Số dư còn lại: **{format_num(sender['ngan_phi'])}** {NP_EMOJI}."
+        ),
+        color=0x2ECC71,
+        footer=f"{ctx.author.display_name}"
+    )
+    await ctx.reply(embed=embed_sender, mention_author=False)
+
+    # 🔔 Embed riêng gửi cho người nhận
+    try:
+        embed_receiver = make_embed(
+            title=f"{NP_EMOJI} NHẬN NGÂN PHIẾU",
+            description=(
+                f"💌 Bạn vừa nhận được **{format_num(amount)}** {NP_EMOJI} "
+                f"từ **{ctx.author.display_name}**!\n\n"
+                f"Số dư hiện tại: **{format_num(receiver['ngan_phi'])}** {NP_EMOJI}."
+            ),
+            color=0xF1C40F,
+            footer="BOT TU TIÊN — Giao dịch thành công"
+        )
+        await member.send(embed=embed_receiver)
+    except Exception:
+        pass
+###############################################
 
 
 
