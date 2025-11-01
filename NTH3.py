@@ -8,6 +8,19 @@
 #   - Hiển thị Top giàu, Top ol, Top odt, tổng ol/odt toàn server
 
 
+
+
+
+# ====================================================================================================================================
+# 🧍 BẮT ĐẦU KHU VỰC CẤU HÌNH BOT CÁC THỨ 
+# ====================================================================================================================================
+# ====================================================================================================================================
+# 🧍 BẮT ĐẦU KHU VỰC CẤU HÌNH BOT CÁC THỨ 
+# ====================================================================================================================================
+# ====================================================================================================================================
+# 🧍 BẮT ĐẦU KHU VỰC CẤU HÌNH BOT CÁC THỨ 
+# ====================================================================================================================================
+
 # =========================
 # 🔧 HỆ THAM CHIẾU CHUNG — BẮT ĐẦU
 # (Core: import, dữ liệu, backup v16, cấu hình kênh, emoji, ảnh, rarity, mô tả, helpers)
@@ -906,6 +919,123 @@ async def on_ready():
 # ===================================
 
 
+
+# ===============================================
+# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
+# ===============================================
+from discord.ext import tasks
+import time
+
+# 🧭 Kênh Discord để gửi thông báo
+AUTO_BACKUP_CHANNEL_ID = 1433207596898193479  
+
+# ⏱ Thời gian mặc định (có thể thay đổi lúc chạy bằng lệnh othoigiansaoluu)
+AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
+AUTO_REPORT_INTERVAL_MINUTES = 60    # báo lên kênh tối đa 1 lần mỗi Y phút
+
+# Bộ nhớ runtime
+_last_report_ts = 0  # timestamp giây lần cuối đã báo
+_auto_backup_started = False  # để đảm bảo chỉ start loop 1 lần
+
+@tasks.loop(minutes=1)
+async def auto_backup_task():
+    """
+    Vòng lặp chạy mỗi 1 phút.
+    - Tự đếm phút để biết khi nào cần backup.
+    - Backup xong thì quyết định có báo vào kênh hay không.
+    """
+    global _last_report_ts
+    global AUTO_BACKUP_INTERVAL_MINUTES
+    global AUTO_REPORT_INTERVAL_MINUTES
+
+    # setup biến đếm phút từ lần backup gần nhất
+    if not hasattr(auto_backup_task, "_minutes_since_backup"):
+        auto_backup_task._minutes_since_backup = 0
+
+    auto_backup_task._minutes_since_backup += 1
+
+    # chưa đủ thời gian -> thôi
+    if auto_backup_task._minutes_since_backup < AUTO_BACKUP_INTERVAL_MINUTES:
+        return
+
+    # reset đếm vì sắp backup
+    auto_backup_task._minutes_since_backup = 0
+
+    # Thực hiện backup
+    try:
+        data_now = load_data()
+        filename = snapshot_data_v16(data_now, tag="auto", subkey="manual")
+
+        # Dọn backup cũ (giữ lại 10 bản manual mới nhất)
+        try:
+            _cleanup_old_backups_limit()
+        except Exception as e:
+            print(f"[AUTO-BACKUP] ⚠️ Lỗi dọn backup cũ: {e}")
+
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = (
+            f"✅ **Tự động sao lưu dữ liệu thành công!**\n"
+            f"📦 File: `{os.path.basename(filename)}`\n"
+            f"🕐 Thời gian backup: {current_time}\n"
+            f"⏱️ Chu kỳ backup hiện tại: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
+            f"📣 Chu kỳ báo cáo hiện tại: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần"
+        )
+
+        print(f"[AUTO-BACKUP] {msg}")
+
+        # Có nên báo vào kênh không?
+        now_ts = time.time()
+        elapsed_since_report_min = (now_ts - _last_report_ts) / 60.0
+
+        if elapsed_since_report_min >= AUTO_REPORT_INTERVAL_MINUTES:
+            try:
+                channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
+                if channel:
+                    await channel.send(msg)
+                else:
+                    print("[AUTO-BACKUP] ⚠️ Không tìm thấy kênh Discord để gửi thông báo.")
+            except Exception as e:
+                print(f"[AUTO-BACKUP] ⚠️ Lỗi gửi thông báo Discord: {e}")
+
+            _last_report_ts = now_ts  # đánh dấu lần báo gần nhất
+
+    except Exception as e:
+        print(f"[AUTO-BACKUP] ❌ Lỗi khi tạo backup tự động: {e}")
+
+
+@auto_backup_task.before_loop
+async def before_auto_backup():
+    # đợi bot kết nối xong discord
+    await bot.wait_until_ready()
+    # khởi tạo lại bộ đếm phút
+    auto_backup_task._minutes_since_backup = 0
+    # lần đầu start thì cho phép báo ngay
+    global _last_report_ts
+    _last_report_ts = 0
+    print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
+
+
+
+@bot.command(name="pingg")
+async def cmd_opingg(ctx):
+    t0 = time.perf_counter()
+    msg = await ctx.send("⏱️ Đang đo...")
+    t1 = time.perf_counter()
+    gateway_ms = int(bot.latency * 1000)
+    send_ms = int((t1 - t0) * 1000)
+    await msg.edit(
+        content=f"🏓 Gateway: {gateway_ms} ms • Send/edit: {send_ms} ms"
+    )
+
+
+
+# ===============================================
+# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
+# ===============================================
+
+
+
+
 # =================================================
 # 🧱 QUẢN LÝ — ADMIN (module-style)
 # =================================================
@@ -938,6 +1068,10 @@ GAMEPLAY_REQUIRE = {
     "odt","dt",
     "onhanthuong","nhanthuong",
     "otang",
+    "onhiemvu",
+    "obxh",
+
+
 
 }
 
@@ -956,7 +1090,9 @@ async def cmd_olenh(ctx: commands.Context):
         "**⬆️ LỆNH MỚI UPDATE**\n\n"
         "**obxh** — Xem Bảng Xếp Hạng\n"
         "**otang** — `otang @nguoichoi <số>`\n"
-        "**onhanthuong** — Nhận thưởng 500K NP + 1 Rương S\n\n"
+        "**onhanthuong** — Nhận thưởng 500K NP + 1 Rương S\n"
+        "**onhiemvu** — Nhiệm vụ hàng ngày\n\n"
+
 
         "**⚙️ THÔNG TIN NÂNG CẤP**\n\n"
         "• Lưu trữ dữ liệu vĩnh viễn\n"
@@ -1173,11 +1309,9 @@ class SetBotView(ui.View):
         except Exception:
             pass
 
-#===============SETBOT=======================
-#===============SETBOT=======================
-#===============SETBOT=======================
-#===============SETBOT=======================
-#===============SETBOT=======================
+# ====================================================================================================================================
+# 🧍 SETBOT
+# ====================================================================================================================================
 
 
 @bot.command(name="osetbot", aliases=["setbot"])
@@ -1222,15 +1356,15 @@ async def cmd_osetbot(ctx: commands.Context):
         )
 
 
-#===============SETBOT=======================
-#===============SETBOT=======================
-#===============SETBOT=======================
-#===============SETBOT=======================
-#===============SETBOT=======================
+# ====================================================================================================================================
+# 🧍 SETBOT
+# ====================================================================================================================================
 
 
 
-
+# ====================================================================================================================================
+# 🧍 BOT EVENT
+# ====================================================================================================================================
 
 def _looks_like_noise_o(msg: str) -> bool:
     if not msg:
@@ -1247,10 +1381,6 @@ def _looks_like_noise_o(msg: str) -> bool:
         if first.startswith("o"+t):
             return True
     return False
-
-
-
-
 
 
 
@@ -1349,12 +1479,15 @@ async def global_channel_check(ctx: commands.Context):
                 await ctx.send(msg)
             return False
     return True
-# =================================================
+# ====================================================================================================================================
+# 🧍 BOT EVENT
+# ====================================================================================================================================
 
 
-# ==================================
-# 🧑‍⚖️ QUẢN LÝ — CHỦ BOT (module-style)
-# ==================================
+# ====================================================================================================================================
+# 🧍 QUẢN LÝ — CHỦ BOT (module-style)
+# ====================================================================================================================================
+
 BOT_OWNERS = {821066331826421840}
 
 def is_owner_user(user, bot):
@@ -2329,1081 +2462,24 @@ async def cmd_xuatdata(ctx):
 # =================== /BACKUP & XUẤT DỮ LIỆU ===================
 
 
+# ====================================================================================================================================
+# 🧍 QUẢN LÝ — CHỦ BOT (module-style)
+# ====================================================================================================================================
+# ====================================================================================================================================
+# 🧍 KẾT TRÚC KHU VỰC CẤU HÌNH BOT CÁC THỨ Ở BÊN DƯỚI LÀ CÁC LỆNH TÍNH NĂNG
+# ====================================================================================================================================
+# ====================================================================================================================================
+# 🧍 KẾT TRÚC KHU VỰC CẤU HÌNH BOT CÁC THỨ Ở BÊN DƯỚI LÀ CÁC LỆNH TÍNH NĂNG
+# ====================================================================================================================================
+# ====================================================================================================================================
+# 🧍 KẾT TRÚC KHU VỰC CẤU HÌNH BOT CÁC THỨ Ở BÊN DƯỚI LÀ CÁC LỆNH TÍNH NĂNG
+# ====================================================================================================================================
 
 
 
 
 
 
-
-
-
-
-# ======================
-# 🧍 KHU VỰC: NHÂN VẬT (module-style)
-# ======================
-@bot.command(name="nhanvat", aliases=["onhanvat"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_onhanvat(ctx, member: discord.Member=None):
-    target = member or ctx.author
-    user_id = str(target.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-
-    equip_lines=[]
-    for slot, iid in user["equipped"].items():
-        if iid:
-            it = next((x for x in user["items"] if x["id"]==iid), None)
-            if it:
-                equip_lines.append(
-                    f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
-                )
-
-    emb = make_embed(
-        f"🧭 Nhân vật — {target.display_name}",
-        color=0x9B59B6,
-        footer=f"Yêu cầu bởi {ctx.author.display_name}"
-    )
-    emb.add_field(
-        name=f"{NP_EMOJI} Ngân Phiếu",
-        value=format_num(user.get('ngan_phi',0)),
-        inline=True
-    )
-    emb.add_field(
-        name="Trang bị đang mặc",
-        value="\n".join(equip_lines) if equip_lines else "Không có",
-        inline=False
-    )
-
-    if images_enabled_global():
-        try:
-            file = await file_from_url_cached(IMG_NHAN_VAT, "nhanvat.png")
-            emb.set_image(url="attachment://nhanvat.png")
-            await ctx.send(embed=emb, file=file)
-            return
-        except Exception:
-            pass
-    await ctx.send(embed=emb)
-
-# =======================
-# 🛡️ KHU VỰC: TRANG BỊ (module-style)
-# =======================
-def slot_of(item_type: str):
-    return "slot_aogiap" if item_type == "Áo Giáp" else "slot_vukhi"
-
-class KhoView(discord.ui.View):
-    def __init__(self, author_id:int, items:list, page:int=0, per_page:int=10, timeout:float=180.0):
-        super().__init__(timeout=timeout)
-        self.author_id = author_id
-        self.items = items
-        self.page = page
-        self.per_page = per_page
-        self.max_page = max(0, (len(items)-1)//per_page)
-        self.children[0].disabled = (self.page==0)
-        self.children[1].disabled = (self.page==self.max_page)
-
-    def slice(self):
-        a = self.page*self.per_page
-        b = a+self.per_page
-        return self.items[a:b]
-
-    async def update_msg(self, interaction: discord.Interaction):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "❗ Chỉ chủ kho mới thao tác được.",
-                ephemeral=True
-            )
-            return
-        content = "\n".join([
-            f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
-            for it in self.slice()
-        ]) or "Không có vật phẩm"
-        emb = interaction.message.embeds[0]
-        emb.set_field_at(2, name="Trang bị", value=content, inline=False)
-        emb.set_footer(text=f"Trang {self.page+1}/{self.max_page+1}")
-        self.children[0].disabled = (self.page==0)
-        self.children[1].disabled = (self.page==self.max_page)
-        await interaction.response.edit_message(embed=emb, view=self)
-
-    @discord.ui.button(label="◀ Trước", style=discord.ButtonStyle.secondary)
-    async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.page>0:
-            self.page -= 1
-        await self.update_msg(interaction)
-
-    @discord.ui.button(label="Tiếp ▶", style=discord.ButtonStyle.secondary)
-    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.page<self.max_page:
-            self.page += 1
-        await self.update_msg(interaction)
-
-@bot.command(name="kho", aliases=["okho"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_okho(ctx):
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-
-    items_show = [it for it in user["items"] if not it["equipped"]]
-    page_items = items_show[:10]
-    content = "\n".join([
-        f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
-        for it in page_items
-    ]) or "Không có vật phẩm"
-    page_total = max(1, (len(items_show) - 1)//10 + 1)
-
-    emb = make_embed(
-        f"📦 {ctx.author.display_name} — Kho nhân vật",
-        color=0x3498DB,
-        footer=f"Trang 1/{page_total}"
-    )
-    total_r = sum(int(user["rungs"][k]) for k in ["D","C","B","A","S"])
-    rtext = (
-        f"{RARITY_CHEST_EMOJI['D']} {format_num(user['rungs']['D'])}   "
-        f"{RARITY_CHEST_EMOJI['C']} {format_num(user['rungs']['C'])}   "
-        f"{RARITY_CHEST_EMOJI['B']} {format_num(user['rungs']['B'])}   "
-        f"{RARITY_CHEST_EMOJI['A']} {format_num(user['rungs']['A'])}   "
-        f"{RARITY_CHEST_EMOJI['S']} {format_num(user['rungs']['S'])}"
-    )
-    emb.add_field(
-        name=f"Rương hiện có — {format_num(total_r)}",
-        value=rtext,
-        inline=False
-    )
-    emb.add_field(
-        name=f"{NP_EMOJI} Ngân phiếu hiện có: {format_num(user['ngan_phi'])}",
-        value="\u200b",
-        inline=True
-    )
-    emb.add_field(name="Trang bị", value=content, inline=False)
-
-    stats_text = (
-        f"Rương đã mở: {format_num(user['stats']['opened'])}\n"
-        f"Số lần thám hiểm: {format_num(user['stats']['ol_count'])}\n"
-        f"{NP_EMOJI}Tổng NP đã kiếm được: {format_num(user['stats']['ngan_phi_earned_total'])}"
-    )
-    emb.add_field(name="📊 Thống kê", value=stats_text, inline=False)
-
-    if images_enabled_global():
-        try:
-            file = await file_from_url_cached(IMG_KHO_DO, "khodo.png")
-            emb.set_image(url="attachment://khodo.png")
-            view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
-            view.children[0].disabled = True
-            view.children[1].disabled = (len(items_show) <= 10)
-            msg = await ctx.send(embed=emb, file=file, view=view)
-            try:
-                await asyncio.sleep(3)
-                emb.set_image(url=discord.Embed.Empty)
-                try:
-                    await msg.edit(embed=emb, attachments=[], view=view)
-                except TypeError:
-                    await msg.edit(embed=emb, view=view)
-            except Exception:
-                pass
-            return
-        except Exception:
-            pass
-
-    view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
-    view.children[0].disabled = True
-    view.children[1].disabled = (len(items_show) <= 10)
-    await ctx.send(embed=emb, view=view)
-
-@bot.command(name="mac", aliases=["omac"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_omac(ctx, item_id: str = None):
-    if item_id is None:
-        await ctx.reply(
-            "📝 Cách dùng: `mac <ID>` (Xem ID trong `okho`).",
-            mention_author=False
-        )
-        return
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-    target = next((it for it in user["items"] if it["id"] == item_id), None)
-    if not target:
-        await ctx.reply(
-            "❗ Không tìm thấy vật phẩm với ID đó.",
-            mention_author=False
-        )
-        return
-    if target["equipped"]:
-        await ctx.reply(
-            "Vật phẩm đang được mặc.",
-            mention_author=False
-        )
-        return
-
-    slot = slot_of(target["type"])
-    if user["equipped"][slot]:
-        cur_id = user["equipped"][slot]
-        cur_item = next((it for it in user["items"] if it["id"] == cur_id), None)
-        await ctx.reply(
-            f"🔧 Slot đang bận bởi **{cur_item['name']}** (ID {cur_item['id']}). "
-            f"Hãy dùng `othao {cur_item['id']}` để tháo.",
-            mention_author=False
-        )
-        return
-
-    target["equipped"] = True
-    user["equipped"][slot] = target["id"]
-    save_data(data)
-
-    emoji = RARITY_EMOJI[target["rarity"]]
-    emb = make_embed(
-        title="🪄 Mặc trang bị",
-        description=f"Bạn mặc {emoji} **{target['name']}** (ID `{target['id']}`)",
-        color=RARITY_COLOR[target["rarity"]],
-        footer=f"{ctx.author.display_name}"
-    )
-    await ctx.send(embed=emb)
-
-@bot.command(name="thao", aliases=["othao"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_othao(ctx, item_id: str = None):
-    if item_id is None:
-        await ctx.reply(
-            "📝 Cách dùng: `thao <ID>` (Xem ID trong `okho`).",
-            mention_author=False
-        )
-        return
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-    target = next((it for it in user["items"] if it["id"] == item_id), None)
-    if not target:
-        await ctx.reply(
-            "❗ Không tìm thấy vật phẩm với ID đó.",
-            mention_author=False
-        )
-        return
-    if not target["equipped"]:
-        await ctx.reply(
-            "Vật phẩm không đang mặc.",
-            mention_author=False
-        )
-        return
-
-    slot = slot_of(target["type"])
-    user["equipped"][slot] = None
-    target["equipped"] = False
-    save_data(data)
-
-    emoji = RARITY_EMOJI[target["rarity"]]
-    emb = make_embed(
-        title="🪶 Tháo trang bị",
-        description=(
-            f"Đã tháo {emoji} **{target['name']}** "
-            f"(ID `{target['id']}`) → kiểm tra lại Kho."
-        ),
-        color=0x95A5A6,
-        footer=f"{ctx.author.display_name}"
-    )
-    await ctx.send(embed=emb)
-
-@bot.command(name="xem", aliases=["oxem"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_oxem(ctx, item_id: str = None):
-    if item_id is None:
-        await ctx.reply(
-            "📝 Cách dùng: `xem <ID>` (Xem ID trong `okho`).",
-            mention_author=False
-        )
-        return
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-
-    it = next((x for x in user["items"] if x["id"] == item_id), None)
-    if not it:
-        await ctx.reply(
-            "❗ Không tìm thấy trang bị với ID đó.",
-            mention_author=False
-        )
-        return
-
-    state = "Đang mặc" if it["equipped"] else "Trong kho"
-    emoji = RARITY_EMOJI[it["rarity"]]
-    emb = make_embed(
-        title=f"{emoji} `{it['id']}` {it['name']}",
-        description=(
-            f"Loại: **{it['type']}** • Phẩm: {emoji} • "
-            f"Trạng thái: **{state}**"
-        ),
-        color=RARITY_COLOR[it["rarity"]],
-        footer=ctx.author.display_name
-    )
-
-    img_url = ITEM_IMAGE.get(it["type"], IMG_BANDO_DEFAULT)
-    if images_enabled_global():
-        try:
-            file = await file_from_url_cached(img_url, "item.png")
-            emb.set_image(url="attachment://item.png")
-            await ctx.send(embed=emb, file=file)
-            return
-        except Exception:
-            pass
-    await ctx.send(embed=emb)
-
-# ===================
-# 💰 KHU VỰC: KINH TẾ (module-style)
-# ===================
-COOLDOWN_OL = 10
-
-def _rarity_order_index(r: str) -> int:
-    order = ["S","A","B","C","D"]
-    try:
-        return order.index(r)
-    except ValueError:
-        return 99
-
-def _pick_highest_available_rarity(user) -> str | None:
-    for r in ["S","A","B","C","D"]:
-        if int(user["rungs"].get(r, 0)) > 0:
-            return r
-    return None
-
-def _open_one_chest(user, r: str):
-    user["rungs"][r] = int(user["rungs"].get(r, 0)) - 1
-    gp = get_nganphieu(r)
-    user["ngan_phi"] = int(user.get("ngan_phi", 0)) + gp
-    user.setdefault("stats", {})
-    user["stats"]["ngan_phi_earned_total"] = int(
-        user["stats"].get("ngan_phi_earned_total", 0)
-    ) + gp
-    user["stats"]["opened"] = int(user["stats"].get("opened", 0)) + 1
-
-    item = None
-    try:
-        if PROB_ITEM_IN_RUONG and (random.random() < PROB_ITEM_IN_RUONG):
-            item = generate_item(r, user["items"])
-            user["items"].append(item)
-    except Exception:
-        pass
-    return gp, item
-
-def _fmt_item_line(it) -> str:
-    return (
-        f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} "
-        f"— Giá trị: {format_num(it['value'])}"
-    )
-
-
-
-#==========OL========================
-
-@bot.command(name="l", aliases=["ol"])
-async def cmd_ol(ctx):
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-
-    # cập nhật danh tính / hoạt động
-    touch_user_activity(ctx, user)
-
-    now = time.time()
-    if now < user["cooldowns"]["ol"]:
-        await ctx.reply(
-            f"⏳ Hãy chờ {int(user['cooldowns']['ol'] - now)} giây nữa.",
-            mention_author=False
-        )
-        return
-
-    rarity = choose_rarity()
-    map_loc = random.choice(MAP_POOL)
-
-    # user loot được rương
-    user["rungs"][rarity] += 1
-    # đếm số lần đi thám hiểm
-    user["stats"]["ol_count"] = int(user["stats"].get("ol_count", 0)) + 1
-
-    # cooldown
-    user["cooldowns"]["ol"] = now + COOLDOWN_OL
-
-    save_data(data)
-
-    rarity_name = {
-        "D":"Phổ Thông",
-        "C":"Hiếm",
-        "B":"Tuyệt Phẩm",
-        "A":"Sử Thi",
-        "S":"Truyền Thuyết"
-    }[rarity]
-
-    title = (
-        f"**[{map_loc}]** **{ctx.author.display_name}** Thu được Rương "
-        f"trang bị {rarity_name} {RARITY_CHEST_EMOJI[rarity]} x1"
-    )
-    desc = get_loot_description(map_loc, rarity)
-    emb = make_embed(
-        title=title,
-        description=desc,
-        color=RARITY_COLOR[rarity],
-        footer=ctx.author.display_name
-    )
-
-    if images_enabled_global():
-        try:
-            emb.set_image(url=MAP_IMAGES.get(rarity, IMG_BANDO_DEFAULT))
-        except Exception:
-            pass
-
-    msg = await ctx.send(embed=emb)
-
-    try:
-        await asyncio.sleep(3)
-        if emb.image:
-            emb.set_image(url=discord.Embed.Empty)
-            await msg.edit(embed=emb)
-    except Exception:
-        pass
-#==========OL========================
-
-
-#==========OM========================
-
-
-@bot.command(name="mo", aliases=["omo"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_omo(ctx, *args):
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-    argv = [a.strip().lower() for a in args]
-
-    def _open_many_for_rarity(user, r: str, limit: int = 50):
-        opened = 0
-        total_np = 0
-        items = []
-        while (opened < limit) and (int(user["rungs"].get(r, 0)) > 0):
-            gp, it = _open_one_chest(user, r)
-            opened += 1
-            total_np += gp
-            if it:
-                items.append(it)
-        return opened, total_np, items
-
-    # omo all
-    if len(argv) == 1 and argv[0] == "all":
-        LIMIT = 50
-        opened = 0
-        total_np = 0
-        items = []
-        per_rarity = {"S":0,"A":0,"B":0,"C":0,"D":0}
-        highest_seen = None
-
-        for r in ["S","A","B","C","D"]:
-            while (opened < LIMIT) and (int(user["rungs"].get(r, 0)) > 0):
-                gp, it = _open_one_chest(user, r)
-                opened += 1
-                total_np += gp
-                per_rarity[r] += 1
-                if it:
-                    items.append(it)
-                    if (
-                        (highest_seen is None)
-                        or (_rarity_order_index(it["rarity"]) < _rarity_order_index(highest_seen))
-                    ):
-                        highest_seen = it["rarity"]
-
-        if opened == 0:
-            await ctx.reply(
-                "❗ Bạn không có rương để mở.",
-                mention_author=False
-            )
-            return
-
-        highest_for_title = highest_seen
-        if not highest_for_title:
-            for r in ["S","A","B","C","D"]:
-                if per_rarity[r] > 0:
-                    highest_for_title = r
-                    break
-
-        title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title or "D", "🎁")
-        title = f"{title_emoji} **{ctx.author.display_name}** đã mở x{opened} rương"
-        emb = make_embed(
-            title=title,
-            color=0x2ECC71,
-            footer=ctx.author.display_name
-        )
-
-        rewards_block = (
-            f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(total_np)}**\n"
-            f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{len(items)}**"
-        )
-        emb.add_field(
-            name="Phần thưởng nhận được",
-            value=rewards_block,
-            inline=False
-        )
-
-        breakdown_lines = [
-            f"{RARITY_EMOJI[r]} x{per_rarity[r]}"
-            for r in ["S","A","B","C","D"]
-            if per_rarity[r] > 0
-        ]
-        if breakdown_lines:
-            emb.add_field(
-                name="Đã mở",
-                value="  ".join(breakdown_lines),
-                inline=False
-            )
-
-        if items:
-            lines = [_fmt_item_line(it) for it in items]
-            if len(lines) > 10:
-                extra = len(lines) - 10
-                lines = lines[:10] + [f"... và {extra} món khác"]
-            emb.add_field(
-                name="Vật phẩm nhận được",
-                value="\n".join(lines),
-                inline=False
-            )
-
-        remaining = sum(
-            int(user["rungs"].get(r, 0))
-            for r in ["S","A","B","C","D"]
-        )
-        if remaining > 0:
-            emb.set_footer(
-                text=(
-                    f"Còn {remaining} rương — dùng omo all hoặc "
-                    f"omo <phẩm> all để mở tiếp"
-                )
-            )
-
-        save_data(data)
-        await ctx.send(embed=emb)
-        return
-
-    # omo <rarity> [all / num]
-    if (len(argv) >= 1) and (argv[0] in {"d","c","b","a","s"}):
-        r = argv[0].upper()
-        available = int(user["rungs"].get(r, 0))
-        if available <= 0:
-            await ctx.reply(
-                f"❗ Bạn không có rương phẩm {r}.",
-                mention_author=False
-            )
-            return
-
-        req = 1
-        if len(argv) >= 2:
-            if argv[1] == "all":
-                req = min(50, available)
-            else:
-                try:
-                    req = int(argv[1].replace(",", ""))
-                except Exception:
-                    await ctx.reply(
-                        "⚠️ Số lượng không hợp lệ. Ví dụ: `omo d 3` hoặc `omo d all`.",
-                        mention_author=False
-                    )
-                    return
-                if req <= 0:
-                    await ctx.reply(
-                        "⚠️ Số lượng phải > 0.",
-                        mention_author=False
-                    )
-                    return
-                if req > 50:
-                    await ctx.reply(
-                        "⚠️ Mỗi lần chỉ mở tối đa **50** rương.",
-                        mention_author=False
-                    )
-                    return
-                if req > available:
-                    await ctx.reply(
-                        f"⚠️ Bạn chỉ có **{available}** rương {r}.",
-                        mention_author=False
-                    )
-                    return
-
-        opened, total_np, items = _open_many_for_rarity(user, r, limit=req)
-        if opened == 0:
-            await ctx.reply(
-                "❗ Không mở được rương nào.",
-                mention_author=False
-            )
-            return
-
-        title_emoji = RARITY_CHEST_OPENED_EMOJI.get(r, "🎁")
-        title = f"{title_emoji} **{ctx.author.display_name}** đã mở x{opened} rương"
-        emb = make_embed(
-            title=title,
-            color=RARITY_COLOR.get(r, 0x95A5A6),
-            footer=ctx.author.display_name
-        )
-
-        rewards_block = (
-            f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(total_np)}**\n"
-            f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{len(items)}**"
-        )
-        emb.add_field(
-            name="Phần thưởng nhận được",
-            value=rewards_block,
-            inline=False
-        )
-
-        if items:
-            lines = [_fmt_item_line(it) for it in items]
-            if len(lines) > 10:
-                extra = len(lines) - 10
-                lines = lines[:10] + [f"... và {extra} món khác"]
-            emb.add_field(
-                name="Vật phẩm nhận được",
-                value="\n".join(lines),
-                inline=False
-            )
-
-        remaining_r = int(user["rungs"].get(r, 0))
-        if remaining_r > 0:
-            emb.set_footer(
-                text=(
-                    f"Còn {remaining_r} rương {r} — dùng "
-                    f"omo {r.lower()} all để mở tiếp"
-                )
-            )
-
-        save_data(data)
-        await ctx.send(embed=emb)
-        return
-
-    # omo (không tham số): mở 1 rương tốt nhất
-    r_found = _pick_highest_available_rarity(user)
-    if not r_found:
-        await ctx.reply(
-            "❗ Bạn không có rương để mở.",
-            mention_author=False
-        )
-        return
-
-    gp, item = _open_one_chest(user, r_found)
-    save_data(data)
-
-    highest_for_title = item["rarity"] if item else r_found
-    title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title, "🎁")
-    title = f"{title_emoji} **{ctx.author.display_name}** đã mở 1 rương"
-
-    emb = make_embed(
-        title=title,
-        color=RARITY_COLOR.get(highest_for_title, 0x95A5A6),
-        footer=ctx.author.display_name
-    )
-
-    rewards_block = (
-        f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(gp)}**\n"
-        f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{1 if item else 0}**"
-    )
-    emb.add_field(
-        name="Phần thưởng nhận được",
-        value=rewards_block,
-        inline=False
-    )
-
-    if item:
-        emb.add_field(
-            name="Vật phẩm nhận được",
-            value=_fmt_item_line(item),
-            inline=False
-        )
-
-    await ctx.send(embed=emb)
-
-@bot.command(name="ban", aliases=["oban"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_oban(ctx, *args):
-    user_id=str(ctx.author.id)
-    data=ensure_user(user_id)
-    user=data["users"][user_id]
-    args=list(args)
-
-    def settle(lst):
-        total=sum(it["value"] for it in lst)
-        user["ngan_phi"]+=total
-        user["stats"]["sold_count"]+=len(lst)
-        user["stats"]["sold_value_total"]+=total
-        return total
-
-    if not args:
-        await ctx.reply(
-            "Cú pháp: `oban all` hoặc `oban <D|C|B|A|S> all`",
-            mention_author=False
-        )
-        return
-
-    if args[0].lower()=="all":
-        sell=[it for it in user["items"] if not it["equipped"]]
-        if not sell:
-            await ctx.reply(
-                "Không có trang bị rảnh để bán.",
-                mention_author=False
-            )
-            return
-        total=settle(sell)
-        user["items"]=[it for it in user["items"] if it["equipped"]]
-        save_data(data)
-        await ctx.send(embed=make_embed(
-            "🧾 Bán vật phẩm",
-            f"Đã bán **{len(sell)}** món — Nhận **{NP_EMOJI} {format_num(total)}**",
-            color=0xE67E22,
-            footer=ctx.author.display_name
-        ))
-        return
-
-    if len(args)>=2 and args[1].lower()=="all":
-        rar=args[0].upper()
-        if rar not in ["D","C","B","A","S"]:
-            await ctx.reply(
-                "Phẩm chất không hợp lệ (D/C/B/A/S).",
-                mention_author=False
-            )
-            return
-        sell=[it for it in user["items"] if (it["rarity"]==rar and not it["equipped"])]
-        if not sell:
-            await ctx.reply(
-                f"Không có vật phẩm phẩm chất {rar} để bán.",
-                mention_author=False
-            )
-            return
-        total=settle(sell)
-        user["items"]=[
-            it for it in user["items"]
-            if not (it["rarity"]==rar and not it["equipped"])
-        ]
-        save_data(data)
-        await ctx.send(embed=make_embed(
-            "🧾 Bán vật phẩm",
-            f"Đã bán **{len(sell)}** món {rar} — Nhận **{NP_EMOJI} {format_num(total)}**",
-            color=RARITY_COLOR.get(rar,0x95A5A6),
-            footer=ctx.author.display_name
-        ))
-        return
-
-    await ctx.reply(
-        "Cú pháp không hợp lệ. Ví dụ: `oban all` hoặc `oban D all`.",
-        mention_author=False
-    )
-
-# ----- Đổ thạch (odt/dt) + Jackpot (module-style) -----
-ODT_MAX_BET        = 250_000
-POOL_ON_LOSS_RATE  = 1.0
-
-JACKPOT_PCT         = 0.10
-JACKPOT_GATE        = 0.05
-JACKPOT_BASE        = 0.02
-JACKPOT_HOT_BOOST   = 0.01
-JACKPOT_HOT_CAP     = 5.0
-JACKPOT_WINDOW_SEC  = 5 * 60
-JACKPOT_THRESH_MIN  = 10_000_000
-JACKPOT_THRESH_MAX  = 12_000_000
-JACKPOT_THRESH_STEP = 1_000_000
-
-ODT_TEXTS_WIN = [
-    "Viên đá nổ sáng, kim quang lấp lánh!",
-    "Bụi vỡ tung, lộ bảo thạch thượng cổ!",
-    "Có kẻ trả giá gấp mười muốn thu mua ngay!",
-    "Một tia sáng vụt lên, linh khí cuồn cuộn!",
-    "Long ngâm mơ hồ, bảo vật hiện thân!",
-    "Khảm trận khởi động, linh thạch hóa kim!",
-]
-
-ODT_TEXTS_LOSE = [
-    "Mở ra... bụi là bụi.",
-    "Hóa tro tàn trước khi kịp vui.",
-    "Viên đá vỡ vụn, lòng bạn cũng vậy.",
-    "Đá bay mất. Không kịp nhìn.",
-    "Bạn chưa đập, nó đã nổ!",
-    "Mọi người đang chờ... rồi thất vọng.",
-    "Quạ đen cắp đá, bay mất tiêu.",
-    "Bạn run tay, đá rơi vỡ luôn.",
-    "Có cô nương xinh đẹp xin viên đá. Bạn cho luôn.",
-    "Khói trắng bốc lên... đá giả rồi.",
-]
-
-def _odt_init_state(user: dict):
-    mg = user.setdefault("minigames", {})
-    odt = mg.setdefault("odt", {"win_streak": 0, "loss_streak": 0})
-    return odt
-
-def _odt_pick_outcome(odt_state: dict) -> int:
-    w = int(odt_state.get("win_streak", 0))
-    l = int(odt_state.get("loss_streak", 0))
-    base_p5, base_win = 0.005, 0.49
-    delta = max(-0.04, min(0.04, (l - w) * 0.02))
-    win_p = max(0.05, min(0.95, base_win + delta))
-    p5 = min(base_p5, win_p)
-    p2 = max(0.0, win_p - p5)
-    r = random.random()
-    if r < p5:
-        return 5
-    if r < p5 + p2:
-        return 2
-    return 0
-
-def _jp(data: dict) -> dict:
-    jp = data.setdefault("jackpot", {})
-    jp.setdefault("pool", 0)
-    jp.setdefault("hidden_threshold", 0)
-    jp.setdefault("window_start", 0.0)
-    jp.setdefault("hot_log", [])
-    return jp
-
-def _jp_next_threshold() -> int:
-    return random.randint(JACKPOT_THRESH_MIN, JACKPOT_THRESH_MAX)
-
-def _jp_is_window_open(jp: dict, now: float) -> bool:
-    ws = float(jp.get("window_start", 0))
-    return ws > 0 and (now - ws) <= JACKPOT_WINDOW_SEC
-
-def _jp_open_window_if_needed(jp: dict, now: float):
-    thr = int(jp.get("hidden_threshold", 0))
-    if thr <= 0:
-        thr = _jp_next_threshold()
-        jp["hidden_threshold"] = thr
-    if jp["pool"] >= thr and not _jp_is_window_open(jp, now):
-        jp["window_start"] = now
-
-def _jp_shift_threshold_if_expired(jp: dict, now: float):
-    if jp.get("window_start", 0) and not _jp_is_window_open(jp, now):
-        jp["hidden_threshold"] = int(jp.get("hidden_threshold", 0)) + JACKPOT_THRESH_STEP
-        jp["window_start"] = 0
-
-def _jp_record_hot(jp: dict, now: float):
-    jp["hot_log"] = [t for t in jp.get("hot_log", []) if now - t <= 180.0]
-    jp["hot_log"].append(now)
-
-def _jp_hot_factor(jp: dict) -> float:
-    recent = [t for t in jp.get("hot_log", []) if time.time() - t <= 180.0]
-    return min(JACKPOT_HOT_CAP, len(recent) / 10.0)
-
-def _try_jackpot(data: dict, member: discord.Member) -> int:
-    now = time.time()
-    jp = _jp(data)
-    _jp_open_window_if_needed(jp, now)
-    _jp_shift_threshold_if_expired(jp, now)
-    _jp_record_hot(jp, now)
-
-    pool = int(jp.get("pool", 0))
-    thr  = int(jp.get("hidden_threshold", 0))
-
-    if pool <= 0 or thr <= 0 or pool < thr or not _jp_is_window_open(jp, now):
-        return 0
-
-    if random.random() >= JACKPOT_GATE:
-        return 0
-
-    hot = _jp_hot_factor(jp)
-    trigger = JACKPOT_BASE + min(JACKPOT_HOT_CAP * JACKPOT_HOT_BOOST, hot * JACKPOT_HOT_BOOST)
-
-    if random.random() >= trigger:
-        return 0
-
-    gain = max(1, int(pool * JACKPOT_PCT))
-    jp["pool"] = 0
-    jp["hidden_threshold"] = _jp_next_threshold()
-    jp["window_start"] = 0
-
-    return gain
-
-
-
-#==============ODT======================
-
-@bot.command(name="odt", aliases=["dt"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_odt(ctx, amount: str = None):
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-    odt_state = _odt_init_state(user)
-
-    # cập nhật log hoạt động
-    touch_user_activity(ctx, user)
-
-    if amount is None:
-        await ctx.reply(
-            "💬 Dùng: `odt <số tiền>` hoặc `odt all`. Ví dụ: `odt 1,000`.",
-            mention_author=False
-        )
-        return
-
-    a = str(amount).strip().lower()
-    if a == "all":
-        amount_val = min(int(user.get("ngan_phi", 0)), ODT_MAX_BET)
-        if amount_val <= 0:
-            await ctx.reply(
-                "❗ Số dư bằng 0 — không thể `odt all`.",
-                mention_author=False
-            )
-            return
-    else:
-        try:
-            amount_val = int(a.replace(",", ""))
-            if amount_val <= 0:
-                raise ValueError()
-        except Exception:
-            await ctx.reply(
-                "⚠️ Số tiền không hợp lệ. Ví dụ: `odt 500`, `odt 1,000` hoặc `odt all`.",
-                mention_author=False
-            )
-            return
-        if amount_val > ODT_MAX_BET:
-            await ctx.reply(
-                f"⚠️ Mỗi ván tối đa {format_num(ODT_MAX_BET)} Ngân Phiếu.",
-                mention_author=False
-            )
-            return
-
-    bal = int(user.get("ngan_phi", 0))
-    if bal < amount_val:
-        await ctx.reply(
-            f"❗ Bạn không đủ Ngân Phiếu. (Hiện có: {format_num(bal)})",
-            mention_author=False
-        )
-        return
-
-    # log: người này vừa chơi thêm 1 lần
-    user["stats"]["odt_count"] = int(user["stats"].get("odt_count", 0)) + 1
-    # log: đã chi bao nhiêu NP vào odt
-    user["stats"]["odt_np_spent_total"] = int(user["stats"].get("odt_np_spent_total", 0)) + amount_val
-
-    # trừ tiền trước khi biết kết quả
-    user["ngan_phi"] = bal - amount_val
-    save_data(data)
-
-    outcome = _odt_pick_outcome(odt_state)
-    try:
-        map_name = random.choice(MAP_POOL)
-    except Exception:
-        map_name = random.choice([
-            "Biện Kinh","Đào Khê Thôn","Tam Thanh Sơn",
-            "Hàng Châu","Từ Châu","Nhạn Môn Quan"
-        ])
-
-    title = f"Đổ Thạch — {map_name}"
-    color = 0x2ECC71 if outcome else 0xE74C3C
-    jackpot_announce = ""
-
-    if outcome == 0:
-        # THUA
-        odt_state["loss_streak"] += 1
-        odt_state["win_streak"] = 0
-
-        jp = _jp(data)
-        jp["pool"] = int(jp.get("pool", 0)) + int(amount_val * POOL_ON_LOSS_RATE)
-
-        text = random.choice(ODT_TEXTS_LOSE)
-        desc = (
-            f"**{ctx.author.display_name}** bỏ ra **{format_num(amount_val)}** "
-            f"**Ngân Phiếu**\n"
-            f"Để mua một viên đá {EMOJI_DOTHACHT} phát sáng tại thạch phường {map_name}.\n\n"
-            f"💬 {text}\n"
-            f"{EMOJI_DOTHACHTHUA} Trắng tay thu về **0 Ngân Phiếu**."
-        )
-
-        gain = _try_jackpot(data, ctx.author)
-        if gain > 0:
-            user["ngan_phi"] += gain
-
-            # log tiền nhận từ jackpot vào tổng earned
-            user["stats"]["odt_np_earned_total"] = int(user["stats"].get("odt_np_earned_total", 0)) + gain
-
-            jp = _jp(data)
-            jp["last_win"] = {
-                "user_id": ctx.author.id,
-                "name": ctx.author.display_name,
-                "amount": int(gain),
-                "ts": time.time(),
-            }
-            jackpot_announce = (
-                f"\n\n🎉 **Quỹ Thạch Phường NỔ HŨ!** "
-                f"{ctx.author.mention} nhận **{format_num(gain)}** Ngân Phiếu."
-            )
-            try:
-                await ctx.author.send(
-                    f"{NP_EMOJI} Chúc mừng! Bạn vừa trúng "
-                    f"**{format_num(gain)}** NP từ Quỹ Thạch Phường."
-                )
-            except Exception:
-                pass
-
-        save_data(data)
-
-    else:
-        # THẮNG
-        odt_state["win_streak"] += 1
-        odt_state["loss_streak"] = 0
-
-        reward = amount_val * outcome
-        user["ngan_phi"] += reward
-
-        # log tiền kiếm được từ odt
-        user["stats"]["odt_np_earned_total"] = int(user["stats"].get("odt_np_earned_total", 0)) + reward
-
-        text = random.choice(ODT_TEXTS_WIN)
-        if outcome == 5:
-            desc = (
-                f"**{ctx.author.display_name}** bỏ ra **{format_num(amount_val)}** "
-                f"**Ngân Phiếu**\n"
-                f"Để mua một viên đá {EMOJI_DOTHACHT} phát sáng tại thạch phường {map_name}.\n\n"
-                f"💬 {text}\n"
-                f"{EMOJI_DOTHACH} Thật bất ngờ, chủ thạch phường tổ chức đấu giá vật phẩm bạn mở!\n"
-                f"— Thu về x5 giá trị nhận **{format_num(reward)} Ngân Phiếu!**"
-            )
-        else:
-            desc = (
-                f"**{ctx.author.display_name}** bỏ ra **{format_num(amount_val)}** "
-                f"**Ngân Phiếu**\n"
-                f"Để mua một viên đá {EMOJI_DOTHACHT} phát sáng tại thạch phường {map_name}.\n\n"
-                f"💬 {text}\n"
-                f"{EMOJI_DOTHACH} Bất ngờ lãi lớn — thu về **{format_num(reward)} Ngân Phiếu**!"
-            )
-
-        _jp_open_window_if_needed(_jp(data), time.time())
-        save_data(data)
-
-    # footer hiển thị quỹ jackpot + người trúng gần nhất
-    jp_now = _jp(data)
-    pool_now = int(jp_now.get("pool", 0))
-    footer_lines = [
-        f"Số dư hiện tại: {format_num(user['ngan_phi'])} Ngân Phiếu",
-        f"Quỹ Thạch Phường: {format_num(pool_now)} Ngân Phiếu",
-    ]
-    last_win = jp_now.get("last_win")
-    if isinstance(last_win, dict) and last_win.get("name") and last_win.get("amount"):
-        footer_lines.append(
-            f"Gần nhất {last_win['name']} đã nhận {format_num(int(last_win['amount']))} Ngân Phiếu"
-        )
-
-    emb = make_embed(
-        title=title,
-        description=desc + jackpot_announce,
-        color=color,
-        footer="\n".join(footer_lines)
-    )
-    await ctx.send(
-        content=(ctx.author.mention if jackpot_announce else None),
-        embed=emb
-    )
-
-
-
-# ===============ODT======================
-
-
-
-
-
-
-
-#===========================NHAN THUONG===================
-#===========================NHAN THUONG===================
-#===========================NHAN THUONG===================
-#===========================NHAN THUONG===================
 
 
 
@@ -3469,6 +2545,12 @@ async def check_community_requirements(bot, user_id: int):
     # -> join server chính + react bài -> OK
     return (True, None)
 
+
+
+
+# ====================================================================================================================================
+# 🧍 
+# ====================================================================================================================================
 
 @bot.command(name="onhanthuong", aliases=["nhanthuong"])
 async def onhanthuong_cmd(ctx):
@@ -3698,7 +2780,9 @@ async def onhanthuong_cmd(ctx):
         )
     return
 
-
+# ====================================================================================================================================
+# 🧍 
+# ====================================================================================================================================
 
 
 # -----------------------
@@ -3796,886 +2880,9 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     """
     await _remove_sub_role(payload)
 
-
-
-
-
-
-
-
-#===========================NHAN THUONG===================
-#===========================NHAN THUONG===================
-#===========================NHAN THUONG===================
-#===========================NHAN THUONG===================
-
-
-
-
-
-
-
-
-
-
-
-@bot.command(name="pingg")
-async def cmd_opingg(ctx):
-    t0 = time.perf_counter()
-    msg = await ctx.send("⏱️ Đang đo...")
-    t1 = time.perf_counter()
-    gateway_ms = int(bot.latency * 1000)
-    send_ms = int((t1 - t0) * 1000)
-    await msg.edit(
-        content=f"🏓 Gateway: {gateway_ms} ms • Send/edit: {send_ms} ms"
-    )
-
-
-
-
-
-# ===============================================
-# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
-# ===============================================
-from discord.ext import tasks
-import time
-
-# 🧭 Kênh Discord để gửi thông báo
-AUTO_BACKUP_CHANNEL_ID = 1433207596898193479  
-
-# ⏱ Thời gian mặc định (có thể thay đổi lúc chạy bằng lệnh othoigiansaoluu)
-AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
-AUTO_REPORT_INTERVAL_MINUTES = 60    # báo lên kênh tối đa 1 lần mỗi Y phút
-
-# Bộ nhớ runtime
-_last_report_ts = 0  # timestamp giây lần cuối đã báo
-_auto_backup_started = False  # để đảm bảo chỉ start loop 1 lần
-
-@tasks.loop(minutes=1)
-async def auto_backup_task():
-    """
-    Vòng lặp chạy mỗi 1 phút.
-    - Tự đếm phút để biết khi nào cần backup.
-    - Backup xong thì quyết định có báo vào kênh hay không.
-    """
-    global _last_report_ts
-    global AUTO_BACKUP_INTERVAL_MINUTES
-    global AUTO_REPORT_INTERVAL_MINUTES
-
-    # setup biến đếm phút từ lần backup gần nhất
-    if not hasattr(auto_backup_task, "_minutes_since_backup"):
-        auto_backup_task._minutes_since_backup = 0
-
-    auto_backup_task._minutes_since_backup += 1
-
-    # chưa đủ thời gian -> thôi
-    if auto_backup_task._minutes_since_backup < AUTO_BACKUP_INTERVAL_MINUTES:
-        return
-
-    # reset đếm vì sắp backup
-    auto_backup_task._minutes_since_backup = 0
-
-    # Thực hiện backup
-    try:
-        data_now = load_data()
-        filename = snapshot_data_v16(data_now, tag="auto", subkey="manual")
-
-        # Dọn backup cũ (giữ lại 10 bản manual mới nhất)
-        try:
-            _cleanup_old_backups_limit()
-        except Exception as e:
-            print(f"[AUTO-BACKUP] ⚠️ Lỗi dọn backup cũ: {e}")
-
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = (
-            f"✅ **Tự động sao lưu dữ liệu thành công!**\n"
-            f"📦 File: `{os.path.basename(filename)}`\n"
-            f"🕐 Thời gian backup: {current_time}\n"
-            f"⏱️ Chu kỳ backup hiện tại: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
-            f"📣 Chu kỳ báo cáo hiện tại: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần"
-        )
-
-        print(f"[AUTO-BACKUP] {msg}")
-
-        # Có nên báo vào kênh không?
-        now_ts = time.time()
-        elapsed_since_report_min = (now_ts - _last_report_ts) / 60.0
-
-        if elapsed_since_report_min >= AUTO_REPORT_INTERVAL_MINUTES:
-            try:
-                channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
-                if channel:
-                    await channel.send(msg)
-                else:
-                    print("[AUTO-BACKUP] ⚠️ Không tìm thấy kênh Discord để gửi thông báo.")
-            except Exception as e:
-                print(f"[AUTO-BACKUP] ⚠️ Lỗi gửi thông báo Discord: {e}")
-
-            _last_report_ts = now_ts  # đánh dấu lần báo gần nhất
-
-    except Exception as e:
-        print(f"[AUTO-BACKUP] ❌ Lỗi khi tạo backup tự động: {e}")
-
-
-@auto_backup_task.before_loop
-async def before_auto_backup():
-    # đợi bot kết nối xong discord
-    await bot.wait_until_ready()
-    # khởi tạo lại bộ đếm phút
-    auto_backup_task._minutes_since_backup = 0
-    # lần đầu start thì cho phép báo ngay
-    global _last_report_ts
-    _last_report_ts = 0
-    print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
-
-
-
-
-
-
-
-# ================== /CHUYỂN TIỀN GIỮA NGƯỜI CHƠI ==================
-@bot.command(name="otang")
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
-    """
-    Chuyển Ngân Phiếu cho người chơi khác.
-    Cú pháp:
-        otang @nguoi_nhan <số_ngan_phieu>
-    Ví dụ:
-        otang @Nam 1,000
-        otang @Linh 50000
-    """
-
-    # 1. Kiểm tra input
-    if member is None or so is None:
-        await ctx.reply(
-            f"📝 Cách dùng: `otang @nguoichoi <số>`\n"
-            f"Ví dụ: `otang {ctx.author.mention} 1,000`",
-            mention_author=False
-        )
-        return
-
-    # 2. Không cho tự chuyển cho chính mình
-    if member.id == ctx.author.id:
-        await ctx.reply(
-            "😅 Bạn không thể tự tặng cho chính mình.",
-            mention_author=False
-        )
-        return
-
-    # 3. Parse số tiền
-    try:
-        amount = int(str(so).replace(",", "").strip())
-    except Exception:
-        await ctx.reply(
-            "⚠️ Số không hợp lệ. Ví dụ: `otang @abc 1,000`",
-            mention_author=False
-        )
-        return
-
-    if amount <= 0:
-        await ctx.reply(
-            "⚠️ Số phải > 0.",
-            mention_author=False
-        )
-        return
-
-    # 4. Lấy data 2 người
-    giver_id = str(ctx.author.id)
-    recv_id  = str(member.id)
-
-    data = ensure_user(giver_id)
-    data = ensure_user(recv_id)  # ensure_user() load + save lại, ok
-
-    data = load_data()  # load bản mới nhất sau ensure_user
-    giver = data["users"][giver_id]
-    recv  = data["users"][recv_id]
-
-    # cập nhật hoạt động để log thống kê
-    touch_user_activity(ctx, giver)
-    touch_user_activity(ctx, recv)
-
-    # 5. Check tiền người gửi
-    bal = int(giver.get("ngan_phi", 0))
-    if bal < amount:
-        await ctx.reply(
-            f"❗ Bạn không đủ Ngân Phiếu. (Hiện có: {bal:,})",
-            mention_author=False
-        )
-        return
-
-    # 6. Trừ người gửi
-    giver["ngan_phi"] = bal - amount
-
-    # log: người gửi đã chi NP -> coi như tiêu ra (không cộng earn)
-    giver_stats = giver.setdefault("stats", {})
-    giver_stats.setdefault("ngan_phi_earned_total", 0)
-    giver_stats.setdefault("odt_np_spent_total", 0)
-    giver_stats.setdefault("odt_np_earned_total", 0)
-    giver_stats.setdefault("ol_count", 0)
-    giver_stats.setdefault("odt_count", 0)
-    giver_stats.setdefault("opened", 0)
-    giver_stats.setdefault("sold_count", 0)
-    giver_stats.setdefault("sold_value_total", 0)
-    # không cộng gì thêm cho giver ở đây vì đây là tiền đi ra
-
-    # 7. Cộng người nhận
-    recv_bal = int(recv.get("ngan_phi", 0))
-    recv["ngan_phi"] = recv_bal + amount
-
-    # log: người nhận được tiền -> tính vào tổng kiếm được
-    recv_stats = recv.setdefault("stats", {})
-    recv_stats.setdefault("ngan_phi_earned_total", 0)
-    recv_stats.setdefault("odt_np_spent_total", 0)
-    recv_stats.setdefault("odt_np_earned_total", 0)
-    recv_stats.setdefault("ol_count", 0)
-    recv_stats.setdefault("odt_count", 0)
-    recv_stats.setdefault("opened", 0)
-    recv_stats.setdefault("sold_count", 0)
-    recv_stats.setdefault("sold_value_total", 0)
-
-    recv_stats["ngan_phi_earned_total"] = int(
-        recv_stats.get("ngan_phi_earned_total", 0)
-    ) + amount
-
-    # 8. Lưu lại
-    save_data(data)
-
-         #5. Gửi embed thông báo
-    emb = make_embed(
-        title=f"{NP_EMOJI} Chuyển Ngân Phiếu thành công!",
-        description=(
-            f"**{ctx.author.display_name}** ➜ {member.mention}\n"
-            f"Đã tặng: **{format_num(amount)}** Ngân Phiếu\n\n"
-            f"Số dư còn lại của bạn: **{format_num(sender['ngan_phi'])}** NP"
-        ),
-        color=0x2ECC71,
-        footer=f"Giao dịch bởi {ctx.author.display_name}"
-    )
-    await ctx.send(embed=emb)
-
-    # 6. Thử báo riêng cho người nhận (không bắt buộc)
-    try:
-        await member.send(
-            f"{NP_EMOJI} Bạn vừa được nhận **{format_num(amount)}** Ngân Phiếu "
-            f"từ **{ctx.author.display_name}**!\n"
-            f"Số dư hiện tại của bạn: {format_num(receiver['ngan_phi'])} NP"
-        )
-    except Exception:
-        # Có thể DM khóa, ignore
-        pass
-# ================== /CHUYỂN TIỀN GIỮA NGƯỜI CHƠI ==================
-
-###############################################
-# 📅 NHIỆM VỤ NGÀY (onhiemvu)
-# - Hiển thị tiến độ nhiệm vụ ngày
-# - Cho biết phần thưởng tổng nếu hoàn thành 5/5
-###############################################
-
-import math
-from datetime import datetime, timezone
-
-# Cấu hình nhiệm vụ mặc định mỗi ngày
-# Mỗi mission có:
-#   key         -> định danh nội bộ
-#   title       -> mô tả cho player
-#   stat_field  -> đọc từ đâu để tính tiến độ
-#   target      -> mốc cần đạt
-#   reward_np   -> thưởng khi hoàn thành nhiệm vụ này
-DAILY_MISSION_TEMPLATES = [
-    {
-        "key": "ol_10",
-        "title": "Đi thám hiểm 10 lần (ol)",
-        "stat_field": ("stats", "ol_count"),
-        "target": 10,
-        "reward_np": 5_000,
-    },
-    {
-        "key": "odt_10",
-        "title": "Đổ thạch 10 lần (odt)",
-        "stat_field": ("stats", "odt_count"),
-        "target": 10,
-        "reward_np": 4_000,
-    },
-    {
-        "key": "omo_5",
-        "title": "Mở 5 rương (omo)",
-        # Nhiệm vụ mở rương = tổng rương đã mở trong ngày.
-        # Ta sẽ log qua stats["opened"] nhưng TÍNH THEO NGÀY RIÊNG.
-        # Vì stats["opened"] là lifetime, nên ta cần counter riêng theo ngày.
-        # -> ta sẽ dùng "opened_today" trong quest_state,
-        "stat_field": ("quest_runtime", "opened_today"),
-        "target": 5,
-        "reward_np": 2_000,
-    },
-    {
-        "key": "chat_50",
-        "title": "Gửi 50 tin nhắn trong server",
-        "stat_field": ("quest_runtime", "messages_today"),
-        "target": 50,
-        "reward_np": 2_000,
-    },
-    {
-        "key": "cmd_30",
-        "title": "Gõ 30 lệnh bot",
-        "stat_field": ("quest_runtime", "commands_today"),
-        "target": 30,
-        "reward_np": 3_000,
-    },
-]
-
-# Thưởng tổng khi full 5/5
-DAILY_FULL_REWARD_NP = 100_000
-DAILY_FULL_REWARD_RUONG = {
-    "S": 1  # Rương S x1
-}
-DAILY_FULL_REWARD_EMOJI = "<a:rs_d:1432101376699269364>"  # emoji rương S của bạn
-
-
-def _today_key_str():
-    """Trả về chuỗi ngày dạng YYYY-MM-DD (theo giờ hệ thống)."""
-    return datetime.now().strftime("%Y-%m-%d")
-
-
-def _ensure_daily_quest_block(user: dict) -> dict:
-    """
-    Đảm bảo user có khối daily_quests.
-    Cấu trúc:
-    user["daily_quests"] = {
-        "date": "2025-11-01",
-        "missions": {
-            "<key>": {
-                "target": int,
-                "progress_start": int,  # mốc ban đầu trong stat tại thời điểm tạo nhiệm vụ
-                "reward_np": int,
-                "done": False,
-                "claimed": False
-            },
-            ...
-        },
-        "full_done": False,      # đã hoàn thành 5/5?
-        "full_claimed": False,  # đã nhận thưởng tổng chưa?
-        "quest_runtime": {      # các counter trong ngày không thể lấy từ stats lifetime
-            "opened_today": 0,
-            "messages_today": 0,
-            "commands_today": 0,
-        }
-    }
-    """
-    today_key = _today_key_str()
-
-    dq = user.setdefault("daily_quests", {})
-    dq_date = dq.get("date")
-
-    # Nếu chưa có nhiệm vụ ngày hôm nay -> tạo mới
-    if dq_date != today_key:
-        dq.clear()
-        dq["date"] = today_key
-        dq["missions"] = {}
-        dq["full_done"] = False
-        dq["full_claimed"] = False
-        dq["quest_runtime"] = {
-            "opened_today": 0,
-            "messages_today": 0,
-            "commands_today": 0,
-        }
-
-        # snapshot stat ban đầu để tính tiến độ kiểu "đi ol 10 lần trong ngày"
-        # Ta lưu giá trị gốc ở thời điểm khởi tạo để biết hôm nay đã làm bao nhiêu.
-        for tpl in DAILY_MISSION_TEMPLATES:
-            key = tpl["key"]
-            target = tpl["target"]
-            reward_np = tpl["reward_np"]
-
-            # Đọc giá trị khởi đầu từ user
-            # stat_field có dạng ("stats","ol_count") nghĩa là user["stats"]["ol_count"]
-            start_val = 0
-            sf_root, sf_key = tpl["stat_field"]
-
-            if sf_root == "stats":
-                start_val = int(user.get("stats", {}).get(sf_key, 0))
-            elif sf_root == "quest_runtime":
-                # quest_runtime reset mỗi ngày, nên start_val=0
-                start_val = 0
-            else:
-                start_val = 0
-
-            dq["missions"][key] = {
-                "target": target,
-                "progress_start": start_val,
-                "reward_np": reward_np,
-                "done": False,
-                "claimed": False,
-                "title": tpl["title"],
-                "sf_root": sf_root,
-                "sf_key": sf_key,
-            }
-
-    else:
-        # đảm bảo các field luôn tồn tại (phòng code cũ chưa có)
-        dq.setdefault("missions", {})
-        dq.setdefault("full_done", False)
-        dq.setdefault("full_claimed", False)
-        qr = dq.setdefault("quest_runtime", {})
-        qr.setdefault("opened_today", 0)
-        qr.setdefault("messages_today", 0)
-        qr.setdefault("commands_today", 0)
-
-        # đảm bảo tất cả mission template đều tồn tại trong ngày hiện tại
-        for tpl in DAILY_MISSION_TEMPLATES:
-            key = tpl["key"]
-            if key not in dq["missions"]:
-                # tạo mission mới giữa ngày nếu thiếu
-                start_val = 0
-                sf_root, sf_key = tpl["stat_field"]
-                if sf_root == "stats":
-                    start_val = int(user.get("stats", {}).get(sf_key, 0))
-                elif sf_root == "quest_runtime":
-                    start_val = 0
-
-                dq["missions"][key] = {
-                    "target": tpl["target"],
-                    "progress_start": start_val,
-                    "reward_np": tpl["reward_np"],
-                    "done": False,
-                    "claimed": False,
-                    "title": tpl["title"],
-                    "sf_root": sf_root,
-                    "sf_key": sf_key,
-                }
-
-    return dq
-
-
-def _calc_progress_for_mission(user: dict, dq: dict, mdata: dict) -> int:
-    """
-    Tính tiến độ hiện tại cho 1 nhiệm vụ.
-    progress = (giá trị hiện tại) - progress_start    (đối với stats...)
-            hoặc = quest_runtime[field]               (đối với quest_runtime...)
-    """
-    sf_root = mdata["sf_root"]
-    sf_key  = mdata["sf_key"]
-    base    = int(mdata.get("progress_start", 0))
-    target  = int(mdata.get("target", 0))
-
-    if sf_root == "stats":
-        current_val = int(user.get("stats", {}).get(sf_key, 0))
-        delta = current_val - base
-    elif sf_root == "quest_runtime":
-        current_val = int(dq.get("quest_runtime", {}).get(sf_key, 0))
-        delta = current_val  # vì quest_runtime reset daily
-    else:
-        delta = 0
-
-    if delta < 0:
-        delta = 0
-    if delta > target:
-        delta = target
-    return delta
-
-
-def _refresh_daily_quest_completion(user: dict):
-    """
-    Cập nhật trạng thái hoàn thành từng nhiệm vụ + trạng thái full_done.
-    Không chi trả thưởng ở đây, chỉ đánh dấu logic.
-    """
-    dq = _ensure_daily_quest_block(user)
-    all_done = True
-    for key, m in dq["missions"].items():
-        prog = _calc_progress_for_mission(user, dq, m)
-        if prog >= m["target"]:
-            m["done"] = True
-        else:
-            m["done"] = False
-            all_done = False
-    dq["full_done"] = all_done
-    return dq
-
-
-def _format_daily_header_block(dq: dict) -> tuple[str, int]:
-    """
-    Tạo text phần đầu embed:
-    - Nếu chưa full_done => hiển thị mục tiêu tổng & phần thưởng tổng
-    - Nếu đã full_done => hiển thị đã hoàn thành, và nếu chưa nhận full_claimed thì nói rõ
-    Trả về (header_text, done_count)
-    """
-    missions = dq.get("missions", {})
-    done_count = sum(1 for m in missions.values() if m.get("done"))
-    total = len(missions)
-
-    date_label = dq.get("date", _today_key_str())
-
-    if not dq.get("full_done", False):
-        # chưa full
-        header_lines = [
-            f"📅 Nhiệm vụ ngày {date_label}",
-            f"🎯 Hoàn thành tất cả {total} nhiệm vụ để nhận:",
-            f"   {NP_EMOJI} {format_num(DAILY_FULL_REWARD_NP)} Ngân Phiếu + {DAILY_FULL_REWARD_EMOJI} Rương S x1",
-            f"──────────────────────────────",
-        ]
-    else:
-        # đã full
-        if dq.get("full_claimed", False):
-            claim_txt = "✅ Bạn đã nhận thưởng lớn hôm nay."
-        else:
-            claim_txt = (
-                "🏆 Bạn đã hoàn thành tất cả nhiệm vụ hôm nay!\n"
-                f"🎁 Sẵn sàng nhận: {NP_EMOJI} +{format_num(DAILY_FULL_REWARD_NP)} "
-                f"& {DAILY_FULL_REWARD_EMOJI} +1 Rương S"
-            )
-
-        header_lines = [
-            f"📅 Nhiệm vụ ngày {date_label}",
-            claim_txt,
-            f"──────────────────────────────",
-        ]
-
-    header_text = "\n".join(header_lines)
-    return header_text, done_count
-
-
-def _format_single_mission_line(idx: int, m: dict, progress_now: int) -> str:
-    """
-    Hiển thị 1 nhiệm vụ dạng:
-
-    :white_check_mark: 1️⃣ Đi thám hiểm 10 lần (ol)
-    • Tiến độ: 7 / 10 → Phần thưởng: 5,000 Ngân Phiếu
-    """
-    box = "✅" if m.get("done") else "⬛"
-    title = m.get("title", f"Nhiệm vụ #{idx}")
-    target = int(m.get("target", 0))
-    reward_np = int(m.get("reward_np", 0))
-
-    return (
-        f"{box} {idx}️⃣ {title}\n"
-        f"• Tiến độ: {progress_now} / {target} → Phần thưởng: {format_num(reward_np)} Ngân Phiếu"
-    )
-
-
-###############################################
-# 📅 NHIỆM VỤ NGÀY (onhiemvu)
-# - Hiển thị tiến độ nhiệm vụ ngày
-# - Cho biết phần thưởng tổng nếu hoàn thành 5/5
-###############################################
-
-from datetime import datetime
-
-# Danh sách 5 nhiệm vụ mỗi ngày
-DAILY_MISSION_TEMPLATES = [
-    {
-        "key": "ol_10",
-        "title": "Đi thám hiểm 10 lần (ol)",
-        "stat_field": ("stats", "ol_count"),
-        "target": 10,
-        "reward_np": 5_000,
-    },
-    {
-        "key": "odt_10",
-        "title": "Đổ thạch 10 lần (odt)",
-        "stat_field": ("stats", "odt_count"),
-        "target": 10,
-        "reward_np": 4_000,
-    },
-    {
-        "key": "omo_5",
-        "title": "Mở 5 rương (omo)",
-        # cái này dùng bộ đếm riêng trong ngày
-        "stat_field": ("quest_runtime", "opened_today"),
-        "target": 5,
-        "reward_np": 2_000,
-    },
-    {
-        "key": "chat_50",
-        "title": "Gửi 50 tin nhắn trong server",
-        "stat_field": ("quest_runtime", "messages_today"),
-        "target": 50,
-        "reward_np": 2_000,
-    },
-    {
-        "key": "cmd_30",
-        "title": "Gõ 30 lệnh bot",
-        "stat_field": ("quest_runtime", "commands_today"),
-        "target": 30,
-        "reward_np": 3_000,
-    },
-]
-
-# Thưởng lớn khi hoàn thành cả 5 nhiệm vụ
-DAILY_FULL_REWARD_NP = 100_000
-DAILY_FULL_REWARD_RUONG = {
-    "S": 1  # Rương S x1
-}
-DAILY_FULL_REWARD_EMOJI = "<a:rs_d:1432101376699269364>"  # emoji rương S của bạn
-
-def _today_key_str():
-    """Ví dụ '2025-11-01' (reset theo ngày)."""
-    return datetime.now().strftime("%Y-%m-%d")
-
-def _ensure_daily_quest_block(user: dict) -> dict:
-    """
-    Tạo / bảo đảm khối daily_quests của user có dạng:
-
-    user["daily_quests"] = {
-        "date": "2025-11-01",
-        "missions": {
-            "ol_10": {
-                "target": 10,
-                "progress_start": <snapshot stat ban đầu>,
-                "reward_np": 5000,
-                "done": False,
-                "claimed": False,
-                "title": "Đi thám hiểm 10 lần (ol)",
-                "sf_root": "stats",
-                "sf_key": "ol_count"
-            },
-            ... (5 nhiệm vụ)
-        },
-        "full_done": False,
-        "full_claimed": False,
-        "quest_runtime": {
-            "opened_today": 0,
-            "messages_today": 0,
-            "commands_today": 0
-        }
-    }
-    """
-    today_key = _today_key_str()
-
-    dq = user.setdefault("daily_quests", {})
-    dq_date = dq.get("date")
-
-    # Nếu qua ngày mới -> reset nhiệm vụ
-    if dq_date != today_key:
-        dq.clear()
-        dq["date"] = today_key
-        dq["missions"] = {}
-        dq["full_done"] = False
-        dq["full_claimed"] = False
-        dq["quest_runtime"] = {
-            "opened_today": 0,
-            "messages_today": 0,
-            "commands_today": 0,
-        }
-
-        # tạo 5 mission
-        for tpl in DAILY_MISSION_TEMPLATES:
-            key = tpl["key"]
-            sf_root, sf_key = tpl["stat_field"]
-
-            if sf_root == "stats":
-                start_val = int(user.get("stats", {}).get(sf_key, 0))
-            elif sf_root == "quest_runtime":
-                start_val = 0
-            else:
-                start_val = 0
-
-            dq["missions"][key] = {
-                "target": tpl["target"],
-                "progress_start": start_val,
-                "reward_np": tpl["reward_np"],
-                "done": False,
-                "claimed": False,
-                "title": tpl["title"],
-                "sf_root": sf_root,
-                "sf_key": sf_key,
-            }
-
-    else:
-        # đảm bảo các field luôn tồn tại
-        dq.setdefault("missions", {})
-        dq.setdefault("full_done", False)
-        dq.setdefault("full_claimed", False)
-        qr = dq.setdefault("quest_runtime", {})
-        qr.setdefault("opened_today", 0)
-        qr.setdefault("messages_today", 0)
-        qr.setdefault("commands_today", 0)
-
-        # nếu giữa chừng bạn thêm mission mới, thì thêm nó vào
-        for tpl in DAILY_MISSION_TEMPLATES:
-            key = tpl["key"]
-            if key not in dq["missions"]:
-                sf_root, sf_key = tpl["stat_field"]
-                if sf_root == "stats":
-                    start_val = int(user.get("stats", {}).get(sf_key, 0))
-                elif sf_root == "quest_runtime":
-                    start_val = 0
-                else:
-                    start_val = 0
-                dq["missions"][key] = {
-                    "target": tpl["target"],
-                    "progress_start": start_val,
-                    "reward_np": tpl["reward_np"],
-                    "done": False,
-                    "claimed": False,
-                    "title": tpl["title"],
-                    "sf_root": sf_root,
-                    "sf_key": sf_key,
-                }
-
-    return dq
-
-def _calc_progress_for_mission(user: dict, dq: dict, mdata: dict) -> int:
-    """
-    Tính tiến độ hiện tại cho nhiệm vụ:
-    - Nếu nhiệm vụ dựa trên stats (ví dụ ol_count), tính (stats_now - progress_start)
-    - Nếu nhiệm vụ dựa trên quest_runtime (ví dụ opened_today), lấy trực tiếp counter trong ngày
-    Kết quả luôn clamp trong [0, target]
-    """
-    sf_root = mdata["sf_root"]
-    sf_key  = mdata["sf_key"]
-    base    = int(mdata.get("progress_start", 0))
-    target  = int(mdata.get("target", 0))
-
-    if sf_root == "stats":
-        current_val = int(user.get("stats", {}).get(sf_key, 0))
-        delta = current_val - base
-    elif sf_root == "quest_runtime":
-        current_val = int(dq.get("quest_runtime", {}).get(sf_key, 0))
-        delta = current_val
-    else:
-        delta = 0
-
-    if delta < 0:
-        delta = 0
-    if delta > target:
-        delta = target
-    return delta
-
-def _refresh_daily_quest_completion(user: dict):
-    """
-    - Đảm bảo daily_quests tồn tại cho hôm nay
-    - Cập nhật m["done"] cho từng nhiệm vụ
-    - Đánh dấu full_done = True nếu 5/5 đều done
-    """
-    dq = _ensure_daily_quest_block(user)
-    all_done = True
-    for key, m in dq["missions"].items():
-        prog = _calc_progress_for_mission(user, dq, m)
-        m["done"] = (prog >= m["target"])
-        if not m["done"]:
-            all_done = False
-    dq["full_done"] = all_done
-    return dq
-
-def _format_daily_header_block(dq: dict) -> tuple[str, int]:
-    """
-    Phần mở đầu embed:
-    - Cho biết phần thưởng tổng nếu chưa xong
-    - Nếu đã xong hết 5/5 thì show thông báo khác
-    Trả về (text_header, số_nhiệm_vụ_đã_hoàn_thành)
-    """
-    missions = dq.get("missions", {})
-    done_count = sum(1 for m in missions.values() if m.get("done"))
-    total = len(missions)
-
-    date_label = dq.get("date", _today_key_str())
-
-    if not dq.get("full_done", False):
-        # chưa hoàn thành 5/5
-        header_lines = [
-            f"📅 Nhiệm vụ ngày {date_label}",
-            f"🎯 Hoàn thành tất cả {total} nhiệm vụ để nhận:",
-            f"   {NP_EMOJI} {format_num(DAILY_FULL_REWARD_NP)} Ngân Phiếu + {DAILY_FULL_REWARD_EMOJI} Rương S x1",
-            f"──────────────────────────────",
-        ]
-    else:
-        # đã xong hết 5/5
-        if dq.get("full_claimed", False):
-            claim_txt = "✅ Bạn đã nhận thưởng lớn hôm nay."
-        else:
-            claim_txt = (
-                "🏆 Bạn đã hoàn thành tất cả nhiệm vụ hôm nay!\n"
-                f"🎁 Sẵn sàng nhận: {NP_EMOJI} +{format_num(DAILY_FULL_REWARD_NP)} "
-                f"& {DAILY_FULL_REWARD_EMOJI} +1 Rương S"
-            )
-
-        header_lines = [
-            f"📅 Nhiệm vụ ngày {date_label}",
-            claim_txt,
-            f"──────────────────────────────",
-        ]
-
-    header_text = "\n".join(header_lines)
-    return header_text, done_count
-
-def _format_single_mission_line(idx: int, m: dict, progress_now: int) -> str:
-    """
-    Ví dụ output:
-    ✅ 1️⃣ Đi thám hiểm 10 lần (ol)
-    • Tiến độ: 7 / 10 → Phần thưởng: 5,000 Ngân Phiếu
-    """
-    box = "✅" if m.get("done") else "⬛"
-    title = m.get("title", f"Nhiệm vụ #{idx}")
-    target = int(m.get("target", 0))
-    reward_np = int(m.get("reward_np", 0))
-
-    return (
-        f"{box} {idx}️⃣ {title}\n"
-        f"• Tiến độ: {progress_now} / {target} → Phần thưởng: {format_num(reward_np)} Ngân Phiếu"
-    )
-
-def quest_runtime_increment(user: dict, field: str, amount: int = 1):
-    """
-    Gọi hàm này ở các chỗ tương ứng để tăng counter trong ngày:
-        quest_runtime_increment(user, "opened_today", so_ruong_mo)
-        quest_runtime_increment(user, "messages_today", 1)
-        quest_runtime_increment(user, "commands_today", 1)
-    Sau đó nhớ save_data(data).
-    """
-    dq = _ensure_daily_quest_block(user)
-    qr = dq["quest_runtime"]
-    qr[field] = int(qr.get(field, 0)) + amount
-    return dq
-
-@bot.command(name="onhiemvu", aliases=["nhiemvu"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_onhiemvu(ctx: commands.Context):
-    """
-    Hiển thị tình trạng nhiệm vụ ngày (tiến độ từng nhiệm vụ + thưởng lớn 5/5).
-    Không trả thưởng ở đây, chỉ show.
-    """
-    user_id = str(ctx.author.id)
-
-    # tạo user nếu chưa có
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-
-    # log hoạt động gần nhất
-    touch_user_activity(ctx, user)
-
-    # cập nhật trạng thái done / full_done
-    dq = _refresh_daily_quest_completion(user)
-
-    # header (thưởng tổng, vv.)
-    header_text, done_count = _format_daily_header_block(dq)
-
-    # build list từng nhiệm vụ
-    body_lines = []
-    missions_sorted = list(dq["missions"].items())
-
-    # đảm bảo thứ tự 1..5 luôn cố định theo DAILY_MISSION_TEMPLATES
-    order_map = {tpl["key"]: i for i, tpl in enumerate(DAILY_MISSION_TEMPLATES, start=1)}
-    missions_sorted.sort(key=lambda kv: order_map.get(kv[0], 999))
-
-    for key, m in missions_sorted:
-        prog_now = _calc_progress_for_mission(user, dq, m)
-        idx_display = order_map.get(key, 0)
-        body_lines.append(_format_single_mission_line(idx_display, m, prog_now))
-
-    desc_text = (
-        f"{header_text}\n" +
-        "\n\n".join(body_lines) +
-        f"\n\n📌 Tiến độ tổng: {done_count}/{len(dq['missions'])} nhiệm vụ đã hoàn thành hôm nay."
-    )
-
-    emb = make_embed(
-        title="📜 NHIỆM VỤ HÀNG NGÀY",
-        description=desc_text,
-        color=0x00B894,
-        footer=f"Yêu cầu bởi {ctx.author.display_name}"
-    )
-
-    await ctx.reply(embed=emb, mention_author=False)
+# ====================================================================================================================================
+# 🧍 
+# ====================================================================================================================================
 
 
 # ==========================================================
@@ -5054,10 +3261,1167 @@ async def cmd_obxh(ctx: commands.Context):
 # ================================
 
 
-# ================== /CHUYỂN TIỀN MỚI  GIỮA NGƯỜI CHƠI ==================
-@bot.command(name="tang")
+
+
+
+
+
+
+
+
+# ====================================================================================================================================
+# 🧍 BẮT ĐẦU KHU VỰC GAME PLAY      BẮT ĐẦU KHU VỰC GAME PLAY      BẮT ĐẦU KHU VỰC GAME PLAY     BẮT ĐẦU KHU VỰC GAME PLAY
+# ====================================================================================================================================
+# 🧍 BẮT ĐẦU KHU VỰC GAME PLAY      BẮT ĐẦU KHU VỰC GAME PLAY      BẮT ĐẦU KHU VỰC GAME PLAY     BẮT ĐẦU KHU VỰC GAME PLAY
+# ====================================================================================================================================
+
+
+
+
+
+# ====================================================================================================================================
+# 🧍 NHÂN VẬT BẮT ĐẦU
+# ====================================================================================================================================
+@bot.command(name="nhanvat", aliases=["onhanvat"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_onhanvat(ctx, member: discord.Member=None):
+    target = member or ctx.author
+    user_id = str(target.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+
+    equip_lines=[]
+    for slot, iid in user["equipped"].items():
+        if iid:
+            it = next((x for x in user["items"] if x["id"]==iid), None)
+            if it:
+                equip_lines.append(
+                    f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
+                )
+
+    emb = make_embed(
+        f"🧭 Nhân vật — {target.display_name}",
+        color=0x9B59B6,
+        footer=f"Yêu cầu bởi {ctx.author.display_name}"
+    )
+    emb.add_field(
+        name=f"{NP_EMOJI} Ngân Phiếu",
+        value=format_num(user.get('ngan_phi',0)),
+        inline=True
+    )
+    emb.add_field(
+        name="Trang bị đang mặc",
+        value="\n".join(equip_lines) if equip_lines else "Không có",
+        inline=False
+    )
+
+    if images_enabled_global():
+        try:
+            file = await file_from_url_cached(IMG_NHAN_VAT, "nhanvat.png")
+            emb.set_image(url="attachment://nhanvat.png")
+            await ctx.send(embed=emb, file=file)
+            return
+        except Exception:
+            pass
+    await ctx.send(embed=emb)
+
+# ====================================================================================================================================
+# 🧍 NHÂN VẬT KẾT THÚC
+# ====================================================================================================================================
+
+# ====================================================================================================================================
+# 🧍 TRANG BỊ BẮT ĐẦU
+# ====================================================================================================================================
+def slot_of(item_type: str):
+    return "slot_aogiap" if item_type == "Áo Giáp" else "slot_vukhi"
+
+class KhoView(discord.ui.View):
+    def __init__(self, author_id:int, items:list, page:int=0, per_page:int=10, timeout:float=180.0):
+        super().__init__(timeout=timeout)
+        self.author_id = author_id
+        self.items = items
+        self.page = page
+        self.per_page = per_page
+        self.max_page = max(0, (len(items)-1)//per_page)
+        self.children[0].disabled = (self.page==0)
+        self.children[1].disabled = (self.page==self.max_page)
+
+    def slice(self):
+        a = self.page*self.per_page
+        b = a+self.per_page
+        return self.items[a:b]
+
+    async def update_msg(self, interaction: discord.Interaction):
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❗ Chỉ chủ kho mới thao tác được.",
+                ephemeral=True
+            )
+            return
+        content = "\n".join([
+            f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
+            for it in self.slice()
+        ]) or "Không có vật phẩm"
+        emb = interaction.message.embeds[0]
+        emb.set_field_at(2, name="Trang bị", value=content, inline=False)
+        emb.set_footer(text=f"Trang {self.page+1}/{self.max_page+1}")
+        self.children[0].disabled = (self.page==0)
+        self.children[1].disabled = (self.page==self.max_page)
+        await interaction.response.edit_message(embed=emb, view=self)
+
+    @discord.ui.button(label="◀ Trước", style=discord.ButtonStyle.secondary)
+    async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page>0:
+            self.page -= 1
+        await self.update_msg(interaction)
+
+    @discord.ui.button(label="Tiếp ▶", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page<self.max_page:
+            self.page += 1
+        await self.update_msg(interaction)
+
+# ====================================================================================================================================
+# 🧍 TRANG BỊ KẾT THÚC
+# ====================================================================================================================================
+
+# ====================================================================================================================================
+# 🧍 KHO BẮT ĐẦU
+# ====================================================================================================================================
+
+@bot.command(name="kho", aliases=["okho"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_okho(ctx):
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+
+    items_show = [it for it in user["items"] if not it["equipped"]]
+    page_items = items_show[:10]
+    content = "\n".join([
+        f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
+        for it in page_items
+    ]) or "Không có vật phẩm"
+    page_total = max(1, (len(items_show) - 1)//10 + 1)
+
+    emb = make_embed(
+        f"📦 {ctx.author.display_name} — Kho nhân vật",
+        color=0x3498DB,
+        footer=f"Trang 1/{page_total}"
+    )
+    total_r = sum(int(user["rungs"][k]) for k in ["D","C","B","A","S"])
+    rtext = (
+        f"{RARITY_CHEST_EMOJI['D']} {format_num(user['rungs']['D'])}   "
+        f"{RARITY_CHEST_EMOJI['C']} {format_num(user['rungs']['C'])}   "
+        f"{RARITY_CHEST_EMOJI['B']} {format_num(user['rungs']['B'])}   "
+        f"{RARITY_CHEST_EMOJI['A']} {format_num(user['rungs']['A'])}   "
+        f"{RARITY_CHEST_EMOJI['S']} {format_num(user['rungs']['S'])}"
+    )
+    emb.add_field(
+        name=f"Rương hiện có — {format_num(total_r)}",
+        value=rtext,
+        inline=False
+    )
+    emb.add_field(
+        name=f"{NP_EMOJI} Ngân phiếu hiện có: {format_num(user['ngan_phi'])}",
+        value="\u200b",
+        inline=True
+    )
+    emb.add_field(name="Trang bị", value=content, inline=False)
+
+    stats_text = (
+        f"Rương đã mở: {format_num(user['stats']['opened'])}\n"
+        f"Số lần thám hiểm: {format_num(user['stats']['ol_count'])}\n"
+        f"{NP_EMOJI}Tổng NP đã kiếm được: {format_num(user['stats']['ngan_phi_earned_total'])}"
+    )
+    emb.add_field(name="📊 Thống kê", value=stats_text, inline=False)
+
+    if images_enabled_global():
+        try:
+            file = await file_from_url_cached(IMG_KHO_DO, "khodo.png")
+            emb.set_image(url="attachment://khodo.png")
+            view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
+            view.children[0].disabled = True
+            view.children[1].disabled = (len(items_show) <= 10)
+            msg = await ctx.send(embed=emb, file=file, view=view)
+            try:
+                await asyncio.sleep(3)
+                emb.set_image(url=discord.Embed.Empty)
+                try:
+                    await msg.edit(embed=emb, attachments=[], view=view)
+                except TypeError:
+                    await msg.edit(embed=emb, view=view)
+            except Exception:
+                pass
+            return
+        except Exception:
+            pass
+
+    view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
+    view.children[0].disabled = True
+    view.children[1].disabled = (len(items_show) <= 10)
+    await ctx.send(embed=emb, view=view)
+
+# ====================================================================================================================================
+# 🧍 KHO KẾT THÚC
+# ====================================================================================================================================
+
+# ====================================================================================================================================
+# 🧍 MẶC BẮT ĐẦU
+# ====================================================================================================================================
+
+@bot.command(name="mac", aliases=["omac"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_omac(ctx, item_id: str = None):
+    if item_id is None:
+        await ctx.reply(
+            "📝 Cách dùng: `mac <ID>` (Xem ID trong `okho`).",
+            mention_author=False
+        )
+        return
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+    target = next((it for it in user["items"] if it["id"] == item_id), None)
+    if not target:
+        await ctx.reply(
+            "❗ Không tìm thấy vật phẩm với ID đó.",
+            mention_author=False
+        )
+        return
+    if target["equipped"]:
+        await ctx.reply(
+            "Vật phẩm đang được mặc.",
+            mention_author=False
+        )
+        return
+
+    slot = slot_of(target["type"])
+    if user["equipped"][slot]:
+        cur_id = user["equipped"][slot]
+        cur_item = next((it for it in user["items"] if it["id"] == cur_id), None)
+        await ctx.reply(
+            f"🔧 Slot đang bận bởi **{cur_item['name']}** (ID {cur_item['id']}). "
+            f"Hãy dùng `othao {cur_item['id']}` để tháo.",
+            mention_author=False
+        )
+        return
+
+    target["equipped"] = True
+    user["equipped"][slot] = target["id"]
+    save_data(data)
+
+    emoji = RARITY_EMOJI[target["rarity"]]
+    emb = make_embed(
+        title="🪄 Mặc trang bị",
+        description=f"Bạn mặc {emoji} **{target['name']}** (ID `{target['id']}`)",
+        color=RARITY_COLOR[target["rarity"]],
+        footer=f"{ctx.author.display_name}"
+    )
+    await ctx.send(embed=emb)
+
+# ====================================================================================================================================
+# 🧍 MẶC KẾT THÚC
+# ====================================================================================================================================
+
+# ====================================================================================================================================
+# 🧍 THÁO BẮT ĐẦU
+# ====================================================================================================================================
+
+@bot.command(name="thao", aliases=["othao"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_othao(ctx, item_id: str = None):
+    if item_id is None:
+        await ctx.reply(
+            "📝 Cách dùng: `thao <ID>` (Xem ID trong `okho`).",
+            mention_author=False
+        )
+        return
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+    target = next((it for it in user["items"] if it["id"] == item_id), None)
+    if not target:
+        await ctx.reply(
+            "❗ Không tìm thấy vật phẩm với ID đó.",
+            mention_author=False
+        )
+        return
+    if not target["equipped"]:
+        await ctx.reply(
+            "Vật phẩm không đang mặc.",
+            mention_author=False
+        )
+        return
+
+    slot = slot_of(target["type"])
+    user["equipped"][slot] = None
+    target["equipped"] = False
+    save_data(data)
+
+    emoji = RARITY_EMOJI[target["rarity"]]
+    emb = make_embed(
+        title="🪶 Tháo trang bị",
+        description=(
+            f"Đã tháo {emoji} **{target['name']}** "
+            f"(ID `{target['id']}`) → kiểm tra lại Kho."
+        ),
+        color=0x95A5A6,
+        footer=f"{ctx.author.display_name}"
+    )
+    await ctx.send(embed=emb)
+
+# ====================================================================================================================================
+# 🧍 THÁO BẮT ĐẦU
+# ====================================================================================================================================
+
+# ====================================================================================================================================
+# 🧍 XEM BẮT ĐẦU
+# ====================================================================================================================================
+
+@bot.command(name="xem", aliases=["oxem"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_oxem(ctx, item_id: str = None):
+    if item_id is None:
+        await ctx.reply(
+            "📝 Cách dùng: `xem <ID>` (Xem ID trong `okho`).",
+            mention_author=False
+        )
+        return
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+
+    it = next((x for x in user["items"] if x["id"] == item_id), None)
+    if not it:
+        await ctx.reply(
+            "❗ Không tìm thấy trang bị với ID đó.",
+            mention_author=False
+        )
+        return
+
+    state = "Đang mặc" if it["equipped"] else "Trong kho"
+    emoji = RARITY_EMOJI[it["rarity"]]
+    emb = make_embed(
+        title=f"{emoji} `{it['id']}` {it['name']}",
+        description=(
+            f"Loại: **{it['type']}** • Phẩm: {emoji} • "
+            f"Trạng thái: **{state}**"
+        ),
+        color=RARITY_COLOR[it["rarity"]],
+        footer=ctx.author.display_name
+    )
+
+    img_url = ITEM_IMAGE.get(it["type"], IMG_BANDO_DEFAULT)
+    if images_enabled_global():
+        try:
+            file = await file_from_url_cached(img_url, "item.png")
+            emb.set_image(url="attachment://item.png")
+            await ctx.send(embed=emb, file=file)
+            return
+        except Exception:
+            pass
+    await ctx.send(embed=emb)
+
+# ====================================================================================================================================
+# 🧍 XEM KẾT THÚC ĐẦU
+# ====================================================================================================================================
+
+# ====================================================================================================================================
+# 🧍 KINH TẾ BẮT ĐẦU
+# ====================================================================================================================================
+# ====================================================================================================================================
+# 🧍 KINH TẾ BẮT ĐẦU
+# ====================================================================================================================================
+# ====================================================================================================================================
+# 🧍 KINH TẾ BẮT ĐẦU
+# ====================================================================================================================================
+
+
+COOLDOWN_OL = 10
+
+def _rarity_order_index(r: str) -> int:
+    order = ["S","A","B","C","D"]
+    try:
+        return order.index(r)
+    except ValueError:
+        return 99
+
+def _pick_highest_available_rarity(user) -> str | None:
+    for r in ["S","A","B","C","D"]:
+        if int(user["rungs"].get(r, 0)) > 0:
+            return r
+    return None
+
+def _open_one_chest(user, r: str):
+    user["rungs"][r] = int(user["rungs"].get(r, 0)) - 1
+    gp = get_nganphieu(r)
+    user["ngan_phi"] = int(user.get("ngan_phi", 0)) + gp
+    user.setdefault("stats", {})
+    user["stats"]["ngan_phi_earned_total"] = int(
+        user["stats"].get("ngan_phi_earned_total", 0)
+    ) + gp
+    user["stats"]["opened"] = int(user["stats"].get("opened", 0)) + 1
+
+    item = None
+    try:
+        if PROB_ITEM_IN_RUONG and (random.random() < PROB_ITEM_IN_RUONG):
+            item = generate_item(r, user["items"])
+            user["items"].append(item)
+    except Exception:
+        pass
+    return gp, item
+
+def _fmt_item_line(it) -> str:
+    return (
+        f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} "
+        f"— Giá trị: {format_num(it['value'])}"
+    )
+
+# ====================================================================================================================================
+# 🧍 KHÁM PHÁ BẮT ĐẦU
+# ====================================================================================================================================
+
+#==========OL========================
+
+@bot.command(name="l", aliases=["ol"])
+async def cmd_ol(ctx):
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+
+    # cập nhật danh tính / hoạt động
+    touch_user_activity(ctx, user)
+
+    now = time.time()
+    if now < user["cooldowns"]["ol"]:
+        await ctx.reply(
+            f"⏳ Hãy chờ {int(user['cooldowns']['ol'] - now)} giây nữa.",
+            mention_author=False
+        )
+        return
+
+    rarity = choose_rarity()
+    map_loc = random.choice(MAP_POOL)
+
+    # user loot được rương
+    user["rungs"][rarity] += 1
+    # đếm số lần đi thám hiểm
+    user["stats"]["ol_count"] = int(user["stats"].get("ol_count", 0)) + 1
+
+    # cooldown
+    user["cooldowns"]["ol"] = now + COOLDOWN_OL
+
+    save_data(data)
+
+    rarity_name = {
+        "D":"Phổ Thông",
+        "C":"Hiếm",
+        "B":"Tuyệt Phẩm",
+        "A":"Sử Thi",
+        "S":"Truyền Thuyết"
+    }[rarity]
+
+    title = (
+        f"**[{map_loc}]** **{ctx.author.display_name}** Thu được Rương "
+        f"trang bị {rarity_name} {RARITY_CHEST_EMOJI[rarity]} x1"
+    )
+    desc = get_loot_description(map_loc, rarity)
+    emb = make_embed(
+        title=title,
+        description=desc,
+        color=RARITY_COLOR[rarity],
+        footer=ctx.author.display_name
+    )
+
+    if images_enabled_global():
+        try:
+            emb.set_image(url=MAP_IMAGES.get(rarity, IMG_BANDO_DEFAULT))
+        except Exception:
+            pass
+
+    msg = await ctx.send(embed=emb)
+
+    try:
+        await asyncio.sleep(3)
+        if emb.image:
+            emb.set_image(url=discord.Embed.Empty)
+            await msg.edit(embed=emb)
+    except Exception:
+        pass
+# ====================================================================================================================================
+# 🧍 KHÁM PHÁ BẮT ĐẦU
+# ====================================================================================================================================
+
+
+
+# ====================================================================================================================================
+# 🧍 MỞ RƯƠNG BẮT ĐẦU
+# ====================================================================================================================================
+
+@bot.command(name="mo", aliases=["omo"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_omo(ctx, *args):
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+    argv = [a.strip().lower() for a in args]
+
+    def _open_many_for_rarity(user, r: str, limit: int = 50):
+        opened = 0
+        total_np = 0
+        items = []
+        while (opened < limit) and (int(user["rungs"].get(r, 0)) > 0):
+            gp, it = _open_one_chest(user, r)
+            opened += 1
+            total_np += gp
+            if it:
+                items.append(it)
+        return opened, total_np, items
+
+    # omo all
+    if len(argv) == 1 and argv[0] == "all":
+        LIMIT = 50
+        opened = 0
+        total_np = 0
+        items = []
+        per_rarity = {"S":0,"A":0,"B":0,"C":0,"D":0}
+        highest_seen = None
+
+        for r in ["S","A","B","C","D"]:
+            while (opened < LIMIT) and (int(user["rungs"].get(r, 0)) > 0):
+                gp, it = _open_one_chest(user, r)
+                opened += 1
+                total_np += gp
+                per_rarity[r] += 1
+                if it:
+                    items.append(it)
+                    if (
+                        (highest_seen is None)
+                        or (_rarity_order_index(it["rarity"]) < _rarity_order_index(highest_seen))
+                    ):
+                        highest_seen = it["rarity"]
+
+        if opened == 0:
+            await ctx.reply(
+                "❗ Bạn không có rương để mở.",
+                mention_author=False
+            )
+            return
+
+        # ✅ Ghi log nhiệm vụ ngày: mở rương
+        quest_runtime_increment(user, "opened_today", opened)
+        save_data(data)
+
+        highest_for_title = highest_seen
+        if not highest_for_title:
+            for r in ["S","A","B","C","D"]:
+                if per_rarity[r] > 0:
+                    highest_for_title = r
+                    break
+
+        title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title or "D", "🎁")
+        title = f"{title_emoji} **{ctx.author.display_name}** đã mở x{opened} rương"
+        emb = make_embed(
+            title=title,
+            color=0x2ECC71,
+            footer=ctx.author.display_name
+        )
+
+        rewards_block = (
+            f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(total_np)}**\n"
+            f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{len(items)}**"
+        )
+        emb.add_field(
+            name="Phần thưởng nhận được",
+            value=rewards_block,
+            inline=False
+        )
+
+        breakdown_lines = [
+            f"{RARITY_EMOJI[r]} x{per_rarity[r]}"
+            for r in ["S","A","B","C","D"]
+            if per_rarity[r] > 0
+        ]
+        if breakdown_lines:
+            emb.add_field(
+                name="Đã mở",
+                value="  ".join(breakdown_lines),
+                inline=False
+            )
+
+        if items:
+            lines = [_fmt_item_line(it) for it in items]
+            if len(lines) > 10:
+                extra = len(lines) - 10
+                lines = lines[:10] + [f"... và {extra} món khác"]
+            emb.add_field(
+                name="Vật phẩm nhận được",
+                value="\n".join(lines),
+                inline=False
+            )
+
+        remaining = sum(
+            int(user["rungs"].get(r, 0))
+            for r in ["S","A","B","C","D"]
+        )
+        if remaining > 0:
+            emb.set_footer(
+                text=(
+                    f"Còn {remaining} rương — dùng omo all hoặc "
+                    f"omo <phẩm> all để mở tiếp"
+                )
+            )
+
+        await ctx.send(embed=emb)
+        return
+
+    # omo <rarity> [all / num]
+    if (len(argv) >= 1) and (argv[0] in {"d","c","b","a","s"}):
+        r = argv[0].upper()
+        available = int(user["rungs"].get(r, 0))
+        if available <= 0:
+            await ctx.reply(
+                f"❗ Bạn không có rương phẩm {r}.",
+                mention_author=False
+            )
+            return
+
+        req = 1
+        if len(argv) >= 2:
+            if argv[1] == "all":
+                req = min(50, available)
+            else:
+                try:
+                    req = int(argv[1].replace(",", ""))
+                except Exception:
+                    await ctx.reply(
+                        "⚠️ Số lượng không hợp lệ. Ví dụ: `omo d 3` hoặc `omo d all`.",
+                        mention_author=False
+                    )
+                    return
+                if req <= 0:
+                    await ctx.reply(
+                        "⚠️ Số lượng phải > 0.",
+                        mention_author=False
+                    )
+                    return
+                if req > 50:
+                    await ctx.reply(
+                        "⚠️ Mỗi lần chỉ mở tối đa **50** rương.",
+                        mention_author=False
+                    )
+                    return
+                if req > available:
+                    await ctx.reply(
+                        f"⚠️ Bạn chỉ có **{available}** rương {r}.",
+                        mention_author=False
+                    )
+                    return
+
+        opened, total_np, items = _open_many_for_rarity(user, r, limit=req)
+        if opened == 0:
+            await ctx.reply(
+                "❗ Không mở được rương nào.",
+                mention_author=False
+            )
+            return
+
+        # ✅ Ghi log nhiệm vụ ngày: mở rương
+        quest_runtime_increment(user, "opened_today", opened)
+        save_data(data)
+
+        title_emoji = RARITY_CHEST_OPENED_EMOJI.get(r, "🎁")
+        title = f"{title_emoji} **{ctx.author.display_name}** đã mở x{opened} rương"
+        emb = make_embed(
+            title=title,
+            color=RARITY_COLOR.get(r, 0x95A5A6),
+            footer=ctx.author.display_name
+        )
+
+        rewards_block = (
+            f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(total_np)}**\n"
+            f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{len(items)}**"
+        )
+        emb.add_field(
+            name="Phần thưởng nhận được",
+            value=rewards_block,
+            inline=False
+        )
+
+        if items:
+            lines = [_fmt_item_line(it) for it in items]
+            if len(lines) > 10:
+                extra = len(lines) - 10
+                lines = lines[:10] + [f"... và {extra} món khác"]
+            emb.add_field(
+                name="Vật phẩm nhận được",
+                value="\n".join(lines),
+                inline=False
+            )
+
+        remaining_r = int(user["rungs"].get(r, 0))
+        if remaining_r > 0:
+            emb.set_footer(
+                text=(
+                    f"Còn {remaining_r} rương {r} — dùng "
+                    f"omo {r.lower()} all để mở tiếp"
+                )
+            )
+
+        await ctx.send(embed=emb)
+        return
+
+    # omo (không tham số): mở 1 rương tốt nhất
+    r_found = _pick_highest_available_rarity(user)
+    if not r_found:
+        await ctx.reply(
+            "❗ Bạn không có rương để mở.",
+            mention_author=False
+        )
+        return
+
+    gp, item = _open_one_chest(user, r_found)
+
+    # ✅ Ghi log nhiệm vụ ngày: mở rương
+    quest_runtime_increment(user, "opened_today", 1)
+    save_data(data)
+
+    highest_for_title = item["rarity"] if item else r_found
+    title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title, "🎁")
+    title = f"{title_emoji} **{ctx.author.display_name}** đã mở 1 rương"
+
+    emb = make_embed(
+        title=title,
+        color=RARITY_COLOR.get(highest_for_title, 0x95A5A6),
+        footer=ctx.author.display_name
+    )
+
+    rewards_block = (
+        f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(gp)}**\n"
+        f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{1 if item else 0}**"
+    )
+    emb.add_field(
+        name="Phần thưởng nhận được",
+        value=rewards_block,
+        inline=False
+    )
+
+    if item:
+        emb.add_field(
+            name="Vật phẩm nhận được",
+            value=_fmt_item_line(item),
+            inline=False
+        )
+
+    await ctx.send(embed=emb)
+
+# ====================================================================================================================================
+# 🧍 MỞ RƯƠNG KẾT THÚC
+# ====================================================================================================================================
+
+
+# ====================================================================================================================================
+# 🧍 BÁN ĐỒ BẮT ĐẦU
+# ====================================================================================================================================
+
+@bot.command(name="ban", aliases=["oban"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_oban(ctx, *args):
+    user_id=str(ctx.author.id)
+    data=ensure_user(user_id)
+    user=data["users"][user_id]
+    args=list(args)
+
+    def settle(lst):
+        total=sum(it["value"] for it in lst)
+        user["ngan_phi"]+=total
+        user["stats"]["sold_count"]+=len(lst)
+        user["stats"]["sold_value_total"]+=total
+        return total
+
+    if not args:
+        await ctx.reply(
+            "Cú pháp: `oban all` hoặc `oban <D|C|B|A|S> all`",
+            mention_author=False
+        )
+        return
+
+    if args[0].lower()=="all":
+        sell=[it for it in user["items"] if not it["equipped"]]
+        if not sell:
+            await ctx.reply(
+                "Không có trang bị rảnh để bán.",
+                mention_author=False
+            )
+            return
+        total=settle(sell)
+        user["items"]=[it for it in user["items"] if it["equipped"]]
+        save_data(data)
+        await ctx.send(embed=make_embed(
+            "🧾 Bán vật phẩm",
+            f"Đã bán **{len(sell)}** món — Nhận **{NP_EMOJI} {format_num(total)}**",
+            color=0xE67E22,
+            footer=ctx.author.display_name
+        ))
+        return
+
+    if len(args)>=2 and args[1].lower()=="all":
+        rar=args[0].upper()
+        if rar not in ["D","C","B","A","S"]:
+            await ctx.reply(
+                "Phẩm chất không hợp lệ (D/C/B/A/S).",
+                mention_author=False
+            )
+            return
+        sell=[it for it in user["items"] if (it["rarity"]==rar and not it["equipped"])]
+        if not sell:
+            await ctx.reply(
+                f"Không có vật phẩm phẩm chất {rar} để bán.",
+                mention_author=False
+            )
+            return
+        total=settle(sell)
+        user["items"]=[
+            it for it in user["items"]
+            if not (it["rarity"]==rar and not it["equipped"])
+        ]
+        save_data(data)
+        await ctx.send(embed=make_embed(
+            "🧾 Bán vật phẩm",
+            f"Đã bán **{len(sell)}** món {rar} — Nhận **{NP_EMOJI} {format_num(total)}**",
+            color=RARITY_COLOR.get(rar,0x95A5A6),
+            footer=ctx.author.display_name
+        ))
+        return
+
+    await ctx.reply(
+        "Cú pháp không hợp lệ. Ví dụ: `oban all` hoặc `oban D all`.",
+        mention_author=False
+    )
+
+# ====================================================================================================================================
+# 🧍 BÁN ĐỒ KẾT THÚC
+# ====================================================================================================================================
+
+
+# ====================================================================================================================================
+# 🧍 ĐỔ THẠCH BẮT ĐẦU
+# ====================================================================================================================================
+
+# ----- Đổ thạch (odt/dt) + Jackpot (module-style) -----
+ODT_MAX_BET        = 250_000
+POOL_ON_LOSS_RATE  = 1.0
+
+JACKPOT_PCT         = 0.10
+JACKPOT_GATE        = 0.05
+JACKPOT_BASE        = 0.02
+JACKPOT_HOT_BOOST   = 0.01
+JACKPOT_HOT_CAP     = 5.0
+JACKPOT_WINDOW_SEC  = 5 * 60
+JACKPOT_THRESH_MIN  = 10_000_000
+JACKPOT_THRESH_MAX  = 12_000_000
+JACKPOT_THRESH_STEP = 1_000_000
+
+ODT_TEXTS_WIN = [
+    "Viên đá nổ sáng, kim quang lấp lánh!",
+    "Bụi vỡ tung, lộ bảo thạch thượng cổ!",
+    "Có kẻ trả giá gấp mười muốn thu mua ngay!",
+    "Một tia sáng vụt lên, linh khí cuồn cuộn!",
+    "Long ngâm mơ hồ, bảo vật hiện thân!",
+    "Khảm trận khởi động, linh thạch hóa kim!",
+]
+
+ODT_TEXTS_LOSE = [
+    "Mở ra... bụi là bụi.",
+    "Hóa tro tàn trước khi kịp vui.",
+    "Viên đá vỡ vụn, lòng bạn cũng vậy.",
+    "Đá bay mất. Không kịp nhìn.",
+    "Bạn chưa đập, nó đã nổ!",
+    "Mọi người đang chờ... rồi thất vọng.",
+    "Quạ đen cắp đá, bay mất tiêu.",
+    "Bạn run tay, đá rơi vỡ luôn.",
+    "Có cô nương xinh đẹp xin viên đá. Bạn cho luôn.",
+    "Khói trắng bốc lên... đá giả rồi.",
+]
+
+def _odt_init_state(user: dict):
+    mg = user.setdefault("minigames", {})
+    odt = mg.setdefault("odt", {"win_streak": 0, "loss_streak": 0})
+    return odt
+
+def _odt_pick_outcome(odt_state: dict) -> int:
+    w = int(odt_state.get("win_streak", 0))
+    l = int(odt_state.get("loss_streak", 0))
+    base_p5, base_win = 0.005, 0.49
+    delta = max(-0.04, min(0.04, (l - w) * 0.02))
+    win_p = max(0.05, min(0.95, base_win + delta))
+    p5 = min(base_p5, win_p)
+    p2 = max(0.0, win_p - p5)
+    r = random.random()
+    if r < p5:
+        return 5
+    if r < p5 + p2:
+        return 2
+    return 0
+
+def _jp(data: dict) -> dict:
+    jp = data.setdefault("jackpot", {})
+    jp.setdefault("pool", 0)
+    jp.setdefault("hidden_threshold", 0)
+    jp.setdefault("window_start", 0.0)
+    jp.setdefault("hot_log", [])
+    return jp
+
+def _jp_next_threshold() -> int:
+    return random.randint(JACKPOT_THRESH_MIN, JACKPOT_THRESH_MAX)
+
+def _jp_is_window_open(jp: dict, now: float) -> bool:
+    ws = float(jp.get("window_start", 0))
+    return ws > 0 and (now - ws) <= JACKPOT_WINDOW_SEC
+
+def _jp_open_window_if_needed(jp: dict, now: float):
+    thr = int(jp.get("hidden_threshold", 0))
+    if thr <= 0:
+        thr = _jp_next_threshold()
+        jp["hidden_threshold"] = thr
+    if jp["pool"] >= thr and not _jp_is_window_open(jp, now):
+        jp["window_start"] = now
+
+def _jp_shift_threshold_if_expired(jp: dict, now: float):
+    if jp.get("window_start", 0) and not _jp_is_window_open(jp, now):
+        jp["hidden_threshold"] = int(jp.get("hidden_threshold", 0)) + JACKPOT_THRESH_STEP
+        jp["window_start"] = 0
+
+def _jp_record_hot(jp: dict, now: float):
+    jp["hot_log"] = [t for t in jp.get("hot_log", []) if now - t <= 180.0]
+    jp["hot_log"].append(now)
+
+def _jp_hot_factor(jp: dict) -> float:
+    recent = [t for t in jp.get("hot_log", []) if time.time() - t <= 180.0]
+    return min(JACKPOT_HOT_CAP, len(recent) / 10.0)
+
+def _try_jackpot(data: dict, member: discord.Member) -> int:
+    now = time.time()
+    jp = _jp(data)
+    _jp_open_window_if_needed(jp, now)
+    _jp_shift_threshold_if_expired(jp, now)
+    _jp_record_hot(jp, now)
+
+    pool = int(jp.get("pool", 0))
+    thr  = int(jp.get("hidden_threshold", 0))
+
+    if pool <= 0 or thr <= 0 or pool < thr or not _jp_is_window_open(jp, now):
+        return 0
+
+    if random.random() >= JACKPOT_GATE:
+        return 0
+
+    hot = _jp_hot_factor(jp)
+    trigger = JACKPOT_BASE + min(JACKPOT_HOT_CAP * JACKPOT_HOT_BOOST, hot * JACKPOT_HOT_BOOST)
+
+    if random.random() >= trigger:
+        return 0
+
+    gain = max(1, int(pool * JACKPOT_PCT))
+    jp["pool"] = 0
+    jp["hidden_threshold"] = _jp_next_threshold()
+    jp["window_start"] = 0
+
+    return gain
+
+
+
+#==============ODT======================
+
+@bot.command(name="odt", aliases=["dt"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_odt(ctx, amount: str = None):
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+    odt_state = _odt_init_state(user)
+
+    # cập nhật log hoạt động
+    touch_user_activity(ctx, user)
+
+    if amount is None:
+        await ctx.reply(
+            "💬 Dùng: `odt <số tiền>` hoặc `odt all`. Ví dụ: `odt 1,000`.",
+            mention_author=False
+        )
+        return
+
+    a = str(amount).strip().lower()
+    if a == "all":
+        amount_val = min(int(user.get("ngan_phi", 0)), ODT_MAX_BET)
+        if amount_val <= 0:
+            await ctx.reply(
+                "❗ Số dư bằng 0 — không thể `odt all`.",
+                mention_author=False
+            )
+            return
+    else:
+        try:
+            amount_val = int(a.replace(",", ""))
+            if amount_val <= 0:
+                raise ValueError()
+        except Exception:
+            await ctx.reply(
+                "⚠️ Số tiền không hợp lệ. Ví dụ: `odt 500`, `odt 1,000` hoặc `odt all`.",
+                mention_author=False
+            )
+            return
+        if amount_val > ODT_MAX_BET:
+            await ctx.reply(
+                f"⚠️ Mỗi ván tối đa {format_num(ODT_MAX_BET)} Ngân Phiếu.",
+                mention_author=False
+            )
+            return
+
+    bal = int(user.get("ngan_phi", 0))
+    if bal < amount_val:
+        await ctx.reply(
+            f"❗ Bạn không đủ Ngân Phiếu. (Hiện có: {format_num(bal)})",
+            mention_author=False
+        )
+        return
+
+    # log: người này vừa chơi thêm 1 lần
+    user["stats"]["odt_count"] = int(user["stats"].get("odt_count", 0)) + 1
+    # log: đã chi bao nhiêu NP vào odt
+    user["stats"]["odt_np_spent_total"] = int(user["stats"].get("odt_np_spent_total", 0)) + amount_val
+
+    # trừ tiền trước khi biết kết quả
+    user["ngan_phi"] = bal - amount_val
+    save_data(data)
+
+    outcome = _odt_pick_outcome(odt_state)
+    try:
+        map_name = random.choice(MAP_POOL)
+    except Exception:
+        map_name = random.choice([
+            "Biện Kinh","Đào Khê Thôn","Tam Thanh Sơn",
+            "Hàng Châu","Từ Châu","Nhạn Môn Quan"
+        ])
+
+    title = f"Đổ Thạch — {map_name}"
+    color = 0x2ECC71 if outcome else 0xE74C3C
+    jackpot_announce = ""
+
+    if outcome == 0:
+        # THUA
+        odt_state["loss_streak"] += 1
+        odt_state["win_streak"] = 0
+
+        jp = _jp(data)
+        jp["pool"] = int(jp.get("pool", 0)) + int(amount_val * POOL_ON_LOSS_RATE)
+
+        text = random.choice(ODT_TEXTS_LOSE)
+        desc = (
+            f"**{ctx.author.display_name}** bỏ ra **{format_num(amount_val)}** "
+            f"**Ngân Phiếu**\n"
+            f"Để mua một viên đá {EMOJI_DOTHACHT} phát sáng tại thạch phường {map_name}.\n\n"
+            f"💬 {text}\n"
+            f"{EMOJI_DOTHACHTHUA} Trắng tay thu về **0 Ngân Phiếu**."
+        )
+
+        gain = _try_jackpot(data, ctx.author)
+        if gain > 0:
+            user["ngan_phi"] += gain
+
+            # log tiền nhận từ jackpot vào tổng earned
+            user["stats"]["odt_np_earned_total"] = int(user["stats"].get("odt_np_earned_total", 0)) + gain
+
+            jp = _jp(data)
+            jp["last_win"] = {
+                "user_id": ctx.author.id,
+                "name": ctx.author.display_name,
+                "amount": int(gain),
+                "ts": time.time(),
+            }
+            jackpot_announce = (
+                f"\n\n🎉 **Quỹ Thạch Phường NỔ HŨ!** "
+                f"{ctx.author.mention} nhận **{format_num(gain)}** Ngân Phiếu."
+            )
+            try:
+                await ctx.author.send(
+                    f"{NP_EMOJI} Chúc mừng! Bạn vừa trúng "
+                    f"**{format_num(gain)}** NP từ Quỹ Thạch Phường."
+                )
+            except Exception:
+                pass
+
+        save_data(data)
+
+    else:
+        # THẮNG
+        odt_state["win_streak"] += 1
+        odt_state["loss_streak"] = 0
+
+        reward = amount_val * outcome
+        user["ngan_phi"] += reward
+
+        # log tiền kiếm được từ odt
+        user["stats"]["odt_np_earned_total"] = int(user["stats"].get("odt_np_earned_total", 0)) + reward
+
+        text = random.choice(ODT_TEXTS_WIN)
+        if outcome == 5:
+            desc = (
+                f"**{ctx.author.display_name}** bỏ ra **{format_num(amount_val)}** "
+                f"**Ngân Phiếu**\n"
+                f"Để mua một viên đá {EMOJI_DOTHACHT} phát sáng tại thạch phường {map_name}.\n\n"
+                f"💬 {text}\n"
+                f"{EMOJI_DOTHACH} Thật bất ngờ, chủ thạch phường tổ chức đấu giá vật phẩm bạn mở!\n"
+                f"— Thu về x5 giá trị nhận **{format_num(reward)} Ngân Phiếu!**"
+            )
+        else:
+            desc = (
+                f"**{ctx.author.display_name}** bỏ ra **{format_num(amount_val)}** "
+                f"**Ngân Phiếu**\n"
+                f"Để mua một viên đá {EMOJI_DOTHACHT} phát sáng tại thạch phường {map_name}.\n\n"
+                f"💬 {text}\n"
+                f"{EMOJI_DOTHACH} Bất ngờ lãi lớn — thu về **{format_num(reward)} Ngân Phiếu**!"
+            )
+
+        _jp_open_window_if_needed(_jp(data), time.time())
+        save_data(data)
+
+    # footer hiển thị quỹ jackpot + người trúng gần nhất
+    jp_now = _jp(data)
+    pool_now = int(jp_now.get("pool", 0))
+    footer_lines = [
+        f"Số dư hiện tại: {format_num(user['ngan_phi'])} Ngân Phiếu",
+        f"Quỹ Thạch Phường: {format_num(pool_now)} Ngân Phiếu",
+    ]
+    last_win = jp_now.get("last_win")
+    if isinstance(last_win, dict) and last_win.get("name") and last_win.get("amount"):
+        footer_lines.append(
+            f"Gần nhất {last_win['name']} đã nhận {format_num(int(last_win['amount']))} Ngân Phiếu"
+        )
+
+    emb = make_embed(
+        title=title,
+        description=desc + jackpot_announce,
+        color=color,
+        footer="\n".join(footer_lines)
+    )
+    await ctx.send(
+        content=(ctx.author.mention if jackpot_announce else None),
+        embed=emb
+    )
+
+# ====================================================================================================================================
+# 🧍 ĐỔ THẠCH KẾT THÚC
+# ====================================================================================================================================
+
+# ====================================================================================================================================
+# 🧍 TẶNG TIỀN BẮT ĐẦU
+# ====================================================================================================================================
+@bot.command(name="otang", aliases=["tang"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
+
     """
     Chuyển Ngân Phiếu cho người chơi khác.
     Cú pháp:
@@ -5066,94 +4430,537 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
         otang @Nam 1,000
         otang @Linh 50000
     """
-
-    # 1️⃣ Kiểm tra input
+    # 1. Kiểm tra target và số tiền
     if member is None or so is None:
         await ctx.reply(
-            "📝 Cách dùng: `otang @nguoichoi <số>`\nVí dụ: `otang @Nam 1,000`",
+            f"📝 Cách dùng: `otang @nguoichoi <số>`\n"
+            f"Ví dụ: `otang {ctx.author.mention} 1,000`",
             mention_author=False
         )
         return
 
-    # 2️⃣ Không cho chuyển cho chính mình
     if member.id == ctx.author.id:
-        await ctx.reply("❗ Bạn không thể tự chuyển Ngân Phiếu cho chính mình.", mention_author=False)
+        await ctx.reply(
+            "❗ Bạn không thể tự chuyển tiền cho chính mình.",
+            mention_author=False
+        )
         return
 
-    # 3️⃣ Xử lý số tiền
+    # 2. Parse số tiền
     try:
-        amount = int(str(so).replace(",", "").strip())
-        if amount <= 0:
-            raise ValueError
+        raw = so.replace(",", "")
+        amount = int(raw)
     except Exception:
-        await ctx.reply("⚠️ Số tiền không hợp lệ. Ví dụ: `otang @Nam 1,000`", mention_author=False)
+        await ctx.reply(
+            "⚠️ Số tiền không hợp lệ. Ví dụ: `otang @user 1,000`.",
+            mention_author=False
+        )
+        return
+    if amount <= 0:
+        await ctx.reply(
+            "⚠️ Số tiền phải lớn hơn 0.",
+            mention_author=False
+        )
         return
 
-    # 4️⃣ Load data người gửi / người nhận
+    # 3. Lấy data 2 thằng (người gửi + người nhận)
     sender_id = str(ctx.author.id)
-    receiver_id = str(member.id)
+    recv_id   = str(member.id)
 
     data = ensure_user(sender_id)
-    data = ensure_user(receiver_id)
-    users = data["users"]
+    # ensure_user chỉ đảm bảo sender tồn tại
+    # ta vẫn phải đảm bảo nhận cũng tồn tại nếu chưa từng chơi
+    ensure_user(recv_id)
 
-    sender = users[sender_id]
-    receiver = users[receiver_id]
+    sender = data["users"][sender_id]
+    receiver_data = data["users"][recv_id]
 
-    # 5️⃣ Kiểm tra số dư
+    # 4. Check đủ tiền
     bal = int(sender.get("ngan_phi", 0))
     if bal < amount:
         await ctx.reply(
-            f"💰 Bạn không đủ Ngân Phiếu. (Hiện có: {format_num(bal)})",
+            f"❗ Bạn không đủ tiền. Bạn hiện có {format_num(bal)} Ngân Phiếu.",
             mention_author=False
         )
         return
 
-    # 6️⃣ Cập nhật số dư
-    sender["ngan_phi"] -= amount
-    receiver["ngan_phi"] = int(receiver.get("ngan_phi", 0)) + amount
+    # 5. Thực hiện chuyển
+    sender["ngan_phi"]   = bal - amount
+    receiver_data["ngan_phi"] = int(receiver_data.get("ngan_phi", 0)) + amount
 
-    # 7️⃣ Ghi log stats
-    s_stats = sender.setdefault("stats", {})
-    s_stats["ngan_phi_sent_total"] = int(s_stats.get("ngan_phi_sent_total", 0)) + amount
+    # 6. Ghi log thống kê người gửi
+    st_s = sender.setdefault("stats", {})
+    st_s["np_given_total"] = int(st_s.get("np_given_total", 0)) + amount
+    st_s["np_given_count"] = int(st_s.get("np_given_count", 0)) + 1
 
-    r_stats = receiver.setdefault("stats", {})
-    r_stats["ngan_phi_received_total"] = int(r_stats.get("ngan_phi_received_total", 0)) + amount
+    # 7. Ghi log thống kê người nhận
+    st_r = receiver_data.setdefault("stats", {})
+    st_r["np_received_total"] = int(st_r.get("np_received_total", 0)) + amount
+    st_r["np_received_count"] = int(st_r.get("np_received_count", 0)) + 1
 
-    # 8️⃣ Cập nhật hoạt động
-    touch_user_activity(ctx, sender)
-    touch_user_activity(ctx, receiver)
+    # 8. Ghi nhận nhiệm vụ ngày "tặng tiền cho người khác"
+    quest_runtime_increment(sender, "give_today", 1)
+
+    # Lưu lại sau khi cập nhật hết
     save_data(data)
 
-    # 9️⃣ Embed gửi cho người gửi
-    embed_sender = make_embed(
+
+    # ==================================================================
+    # 📊 Ghi log nhiệm vụ ngày: "Tặng tiền cho người chơi khác"
+    # Người được tính là NGƯỜI GỬI (ctx.author)
+    # ==================================================================
+    sender_id = str(ctx.author.id)
+    data = ensure_user(sender_id)
+    sender_user = data["users"][sender_id]
+
+    # tăng biến đếm nhiệm vụ "tang_today"
+    quest_runtime_increment(sender_user, "tang_today", 1)
+    save_data(data)
+    # ==================================================================
+
+
+    # 9. Thông báo cho người gửi (public reply)
+    emb_sender = make_embed(
         title=f"{NP_EMOJI} CHUYỂN NGÂN PHIẾU",
         description=(
-            f"✅ Bạn đã chuyển **{format_num(amount)}** {NP_EMOJI} cho **{member.display_name}** thành công!\n\n"
-            f"Số dư còn lại: **{format_num(sender['ngan_phi'])}** {NP_EMOJI}."
+            f"Bạn đã chuyển {NP_EMOJI} **{format_num(amount)}** cho **{member.display_name}** thành công!\n"
+            f"Số dư còn lại: **{format_num(sender['ngan_phi'])}** NP."
         ),
         color=0x2ECC71,
-        footer=f"{ctx.author.display_name}"
+        footer=ctx.author.display_name
     )
-    await ctx.reply(embed=embed_sender, mention_author=False)
+    await ctx.reply(embed=emb_sender, mention_author=False)
 
-    # 🔔 Embed riêng gửi cho người nhận
+    # 🔔 Gửi DM riêng cho người nhận
     try:
-        embed_receiver = make_embed(
-            title=f"{NP_EMOJI} NHẬN NGÂN PHIẾU",
+        emb_recv = make_embed(
+            title=f"{NP_EMOJI} NHẬN TIỀN THÀNH CÔNG",
             description=(
-                f"💌 Bạn vừa nhận được **{format_num(amount)}** {NP_EMOJI} "
-                f"từ **{ctx.author.display_name}**!\n\n"
-                f"Số dư hiện tại: **{format_num(receiver['ngan_phi'])}** {NP_EMOJI}."
+                f"Bạn vừa nhận {NP_EMOJI} **{format_num(amount)}** từ **{ctx.author.display_name}**.\n"
+                f"Số dư hiện tại: **{format_num(receiver_data['ngan_phi'])}** NP."
             ),
-            color=0xF1C40F,
-            footer="BOT TU TIÊN — Giao dịch thành công"
+            color=0x3498DB,
+            footer="Chuyển khoản giữa người chơi"
         )
-        await member.send(embed=embed_receiver)
+        await member.send(embed=emb_recv)
+    except Exception:
+        # Người nhận khóa DM, bỏ qua
+        pass
+
+# ====================================================================================================================================
+# 🧍 TẶNG TIỀN KẾT THÚC
+# ====================================================================================================================================
+
+
+
+# ====================================================================================================================================
+# 🧍 NHIỆM VỤ BẮT ĐẦU
+# ====================================================================================================================================
+
+from datetime import datetime, timedelta, timezone
+
+# múi giờ GMT+7
+TZ_GMT7 = timezone(timedelta(hours=7))
+
+# 🎯 Danh sách nhiệm vụ trong ngày
+DAILY_MISSION_TEMPLATES = [
+    {
+        "key": "ol_10",
+        "title": "Đi thám hiểm 10 lần (ol)",
+        "stat_field": ("stats", "ol_count"),
+        "target": 10,
+        "reward_np": 5_000,
+    },
+    {
+        "key": "odt_10",
+        "title": "Đổ thạch 10 lần (odt)",
+        "stat_field": ("stats", "odt_count"),
+        "target": 10,
+        "reward_np": 4_000,
+    },
+    {
+        "key": "omo_5",
+        "title": "Mở 5 rương (omo)",
+        "stat_field": ("quest_runtime", "opened_today"),
+        "target": 5,
+        "reward_np": 2_000,
+    },
+    {
+        "key": "chat_50",
+        "title": "Gửi 50 tin nhắn trong server",
+        "stat_field": ("quest_runtime", "messages_today"),
+        "target": 50,
+        "reward_np": 2_000,
+    },
+    {
+        "key": "tang_5",
+        "title": "`otang` {NP_EMOJI} cho người chơi khác 5 lần",
+        "stat_field": ("quest_runtime", "tang_today"),
+        "target": 5,
+        "reward_np": 3_000,
+    },
+]
+
+# 🎁 Thưởng lớn khi hoàn tất tất cả nhiệm vụ ngày
+DAILY_FULL_REWARD_NP = 100_000
+DAILY_FULL_REWARD_RUONG = {"S": 1}  # Rương S x1
+DAILY_FULL_REWARD_EMOJI = "<a:rs_d:1432101376699269364>"  # emoji rương S
+
+def _today_key_str():
+    """Chuỗi ngày hiện tại theo GMT+7 dạng YYYY-MM-DD (để reset nhiệm vụ theo ngày)."""
+    return datetime.now(TZ_GMT7).strftime("%Y-%m-%d")
+
+def _ensure_daily_quest_block(user: dict) -> dict:
+    """
+    Đảm bảo user có block daily_quests đúng ngày.
+    Nếu qua ngày mới -> reset toàn bộ.
+    Cấu trúc:
+    user["daily_quests"] = {
+        "date": "2025-11-02",
+        "missions": {...},
+        "full_done": False,
+        "full_claimed": False,
+        "completion_announced": False,
+        "quest_runtime": {
+            "opened_today": 0,
+            "messages_today": 0,
+            "tang_today": 0,
+        },
+        "dm_message_id": None
+    }
+    """
+    today_key = _today_key_str()
+    dq = user.setdefault("daily_quests", {})
+    dq_date = dq.get("date")
+
+    # sang ngày mới -> reset
+    if dq_date != today_key:
+        dq.clear()
+        dq["date"] = today_key
+        dq["missions"] = {}
+        dq["full_done"] = False
+        dq["full_claimed"] = False
+        dq["completion_announced"] = False
+        dq["dm_message_id"] = None
+        dq["quest_runtime"] = {
+            "opened_today": 0,
+            "messages_today": 0,
+            "tang_today": 0,
+        }
+
+        # snapshot stat ban đầu
+        for tpl in DAILY_MISSION_TEMPLATES:
+            key = tpl["key"]
+            sf_root, sf_key = tpl["stat_field"]
+            if sf_root == "stats":
+                start_val = int(user.get("stats", {}).get(sf_key, 0))
+            else:
+                start_val = 0  # quest_runtime reset mỗi ngày
+
+            dq["missions"][key] = {
+                "target": tpl["target"],
+                "progress_start": start_val,
+                "reward_np": tpl["reward_np"],
+                "done": False,
+                "claimed": False,
+                "title": tpl["title"],
+                "sf_root": sf_root,
+                "sf_key": sf_key,
+            }
+
+    else:
+        # bảo đảm đủ field nếu code cũ chưa có
+        dq.setdefault("missions", {})
+        dq.setdefault("full_done", False)
+        dq.setdefault("full_claimed", False)
+        dq.setdefault("completion_announced", False)
+        dq.setdefault("dm_message_id", None)
+        qr = dq.setdefault("quest_runtime", {})
+        qr.setdefault("opened_today", 0)
+        qr.setdefault("messages_today", 0)
+        qr.setdefault("tang_today", 0)
+
+        # bảo đảm đủ mission template
+        for tpl in DAILY_MISSION_TEMPLATES:
+            key = tpl["key"]
+            if key not in dq["missions"]:
+                sf_root, sf_key = tpl["stat_field"]
+                if sf_root == "stats":
+                    start_val = int(user.get("stats", {}).get(sf_key, 0))
+                else:
+                    start_val = 0
+                dq["missions"][key] = {
+                    "target": tpl["target"],
+                    "progress_start": start_val,
+                    "reward_np": tpl["reward_np"],
+                    "done": False,
+                    "claimed": False,
+                    "title": tpl["title"],
+                    "sf_root": sf_root,
+                    "sf_key": sf_key,
+                }
+
+    return dq
+
+def _calc_progress_for_mission(user: dict, dq: dict, mdata: dict) -> int:
+    """
+    Tiến độ hiện tại cho 1 nhiệm vụ.
+    stats -> (current_stat - progress_start)
+    quest_runtime -> giá trị trực tiếp trong dq["quest_runtime"]
+    """
+    sf_root = mdata["sf_root"]
+    sf_key = mdata["sf_key"]
+    base = int(mdata.get("progress_start", 0))
+    target = int(mdata.get("target", 0))
+
+    if sf_root == "stats":
+        current_val = int(user.get("stats", {}).get(sf_key, 0))
+        delta = current_val - base
+    else:  # quest_runtime
+        delta = int(dq.get("quest_runtime", {}).get(sf_key, 0))
+
+    if delta < 0:
+        delta = 0
+    if delta > target:
+        delta = target
+    return delta
+
+def _refresh_daily_quest_completion(user: dict):
+    """
+    Đánh dấu nhiệm vụ done / chưa done, và đánh dấu full_done nếu ALL done.
+    """
+    dq = _ensure_daily_quest_block(user)
+    all_done = True
+    for _key, m in dq["missions"].items():
+        prog = _calc_progress_for_mission(user, dq, m)
+        if prog >= m["target"]:
+            m["done"] = True
+        else:
+            m["done"] = False
+            all_done = False
+    dq["full_done"] = all_done
+    return dq
+
+def _format_single_mission_line(idx: int, m: dict, progress_now: int) -> str:
+    """
+    Ví dụ dòng:
+    ✅ 1️⃣ Đi thám hiểm 10 lần (ol)
+    • Tiến độ: 7 / 10 → Phần thưởng: 5,000 NP
+    """
+    box = "✅" if m.get("done") else "⬛"
+    title = m.get("title", f"Nhiệm vụ #{idx}")
+    target = int(m.get("target", 0))
+    reward_np = int(m.get("reward_np", 0))
+    return (
+        f"{box} {idx}️⃣ {title}\n"
+        f"• Tiến độ: {progress_now} / {target} → Phần thưởng: {format_num(reward_np)} {NP_EMOJI}"
+    )
+
+def _build_daily_text(user: dict, dq: dict) -> tuple[str, int]:
+    """
+    Tạo nội dung embed hiển thị nhiệm vụ ngày + thời gian GMT+7.
+    """
+    missions = dq.get("missions", {})
+    done_count = sum(1 for m in missions.values() if m.get("done"))
+    total = len(missions)
+
+    if not dq.get("full_done", False):
+        header_lines = [
+            f"📅 Nhiệm vụ ngày {datetime.now(TZ_GMT7).strftime('%d/%m/%Y')}",
+            f"⏰ Thời gian: {datetime.now(TZ_GMT7).strftime('%H:%M')}",
+            f"🎯 Hoàn thành tất cả {total} nhiệm vụ để nhận:",
+            f"   {NP_EMOJI} {format_num(DAILY_FULL_REWARD_NP)} Ngân Phiếu "
+            f"+ {DAILY_FULL_REWARD_EMOJI} Rương S x1",
+            "──────────────────────────────",
+        ]
+    else:
+        if dq.get("full_claimed", False):
+            claim_txt = "✅ Bạn đã nhận thưởng lớn hôm nay rồi."
+        else:
+            claim_txt = (
+                "🏆 Bạn đã hoàn thành tất cả nhiệm vụ hôm nay!\n"
+                f"🎁 Sẵn sàng nhận: {NP_EMOJI} +{format_num(DAILY_FULL_REWARD_NP)} "
+                f"& {DAILY_FULL_REWARD_EMOJI} +1 Rương S"
+            )
+        header_lines = [
+            f"📅 Nhiệm vụ ngày {datetime.now(TZ_GMT7).strftime('%d/%m/%Y')}",
+            f"⏰ Thời gian: {datetime.now(TZ_GMT7).strftime('%H:%M')} (GMT+7)",
+            claim_txt,
+            "──────────────────────────────",
+        ]
+
+    # sắp xếp nhiệm vụ theo template order
+    order_map = {tpl["key"]: i for i, tpl in enumerate(DAILY_MISSION_TEMPLATES, start=1)}
+    missions_sorted = list(dq["missions"].items())
+    missions_sorted.sort(key=lambda kv: order_map.get(kv[0], 999))
+
+    body_lines = []
+    for key, m in missions_sorted:
+        prog_now = _calc_progress_for_mission(user, dq, m)
+        idx_display = order_map.get(key, 0)
+        body_lines.append(_format_single_mission_line(idx_display, m, prog_now))
+
+    desc_text = (
+        "\n".join(header_lines)
+        + "\n\n"
+        + "\n\n".join(body_lines)
+        + "\n\n"
+        + f"📌 Tiến độ tổng: {done_count}/{total} nhiệm vụ đã hoàn thành hôm nay."
+    )
+    return desc_text, done_count
+
+async def _send_or_update_daily_dm(member: discord.Member, user: dict, dq: dict):
+    """
+    Gửi HOẶC sửa lại 1 tin nhắn DM duy nhất để không spam.
+    Lưu message_id vào user['daily_quests']['dm_message_id'].
+    """
+    desc_text, _ = _build_daily_text(user, dq)
+
+    dm_embed = make_embed(
+        title="📜 NHIỆM VỤ HÀNG NGÀY",
+        description=desc_text,
+        color=0x00B894,
+        footer=(
+            "Cập nhật lúc "
+            + datetime.now(TZ_GMT7).strftime('%H:%M:%S %d/%m/%Y')
+            + " (GMT+7)"
+        )
+    )
+
+    try:
+        dm_channel = await member.create_dm()
+    except Exception:
+        return
+
+    dm_msg_id = dq.get("dm_message_id")
+    if dm_msg_id:
+        try:
+            prev_msg = await dm_channel.fetch_message(int(dm_msg_id))
+            await prev_msg.edit(embed=dm_embed)
+            return
+        except Exception:
+            pass
+
+    try:
+        sent = await dm_channel.send(embed=dm_embed)
+        dq["dm_message_id"] = sent.id
+    except Exception:
+        dq["dm_message_id"] = None
+
+async def _check_and_announce_completion(member: discord.Member, dq: dict):
+    """
+    Nếu user đã hoàn thành toàn bộ nhiệm vụ ngày (full_done)
+    và chưa gửi lời chúc mừng -> gửi DM 1 lần.
+    """
+    if not dq.get("full_done", False):
+        return
+    if dq.get("completion_announced", False):
+        return
+
+    msg_txt = (
+        "🏆 Hoàn thành toàn bộ nhiệm vụ ngày!\n"
+        f"Bạn có thể nhận thưởng lớn hôm nay:\n"
+        f"- {NP_EMOJI} {format_num(DAILY_FULL_REWARD_NP)} Ngân Phiếu\n"
+        f"- {DAILY_FULL_REWARD_EMOJI} Rương S x{DAILY_FULL_REWARD_RUONG.get('S', 1)}\n\n"
+        f"⏰ {datetime.now(TZ_GMT7).strftime('%H:%M %d/%m/%Y')} (GMT+7)"
+    )
+    try:
+        await member.send(msg_txt)
     except Exception:
         pass
-###############################################
 
+    dq["completion_announced"] = True
+
+def quest_runtime_increment(user: dict, field: str, amount: int = 1):
+    """
+    Cộng dồn các chỉ số nhiệm vụ trong ngày (opened_today, messages_today, tang_today ...)
+    Sau đó nhớ save_data(data) ở chỗ bạn gọi.
+    """
+    dq = _ensure_daily_quest_block(user)
+    qr = dq["quest_runtime"]
+    qr[field] = int(qr.get(field, 0)) + amount
+    return dq
+
+@bot.command(name="onhiemvu", aliases=["nhiemvu"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_onhiemvu(ctx: commands.Context):
+    """
+    Hiển thị tình trạng nhiệm vụ ngày + cập nhật DM cá nhân theo dõi.
+    """
+    user_id = str(ctx.author.id)
+
+    # đảm bảo user tồn tại
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+
+    # log hoạt động
+    touch_user_activity(ctx, user)
+
+    # refresh trạng thái done / full_done
+    dq = _refresh_daily_quest_completion(user)
+
+    # update DM theo dõi
+    await _send_or_update_daily_dm(ctx.author, user, dq)
+    await _check_and_announce_completion(ctx.author, dq)
+
+    # lưu mọi thay đổi (dm_message_id, completion_announced, ...)
+    save_data(data)
+
+    # embed trả lời công khai trong kênh
+    desc_text, _ = _build_daily_text(user, dq)
+    emb = make_embed(
+        title="📜 NHIỆM VỤ HÀNG NGÀY",
+        description=desc_text,
+        color=0x00B894,
+        footer=(
+            f"Yêu cầu bởi {ctx.author.display_name} • "
+            + datetime.now(TZ_GMT7).strftime('%H:%M %d/%m/%Y')
+            + " (GMT+7)"
+        )
+    )
+    await ctx.reply(embed=emb, mention_author=False)
+# ====================================================================================================================================
+# 🧍 NHIỆM VỤ KẾT THÚC
+# ====================================================================================================================================
+# ====================================================================================================================================
+# 🧍 KẾT THÚC GAME PLAY      KẾT THÚC GAME PLAY      KẾT THÚC GAME PLAY     KẾT THÚC GAME PLAY        KẾT THÚC GAME PLAY
+# ====================================================================================================================================
+# 🧍 KẾT THÚC GAME PLAY      KẾT THÚC GAME PLAY      KẾT THÚC GAME PLAY     KẾT THÚC GAME PLAY        KẾT THÚC GAME PLAY
+# ====================================================================================================================================
+
+
+
+
+
+
+
+
+
+
+# ====================================================================================================================================
+# 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
+# ====================================================================================================================================
+@bot.event
+async def on_message(message):
+    # Bỏ qua tin nhắn của bot
+    if message.author.bot:
+        return
+
+    # Chỉ tính khi chat trong server (không tính DM)
+    if message.guild:
+        uid = str(message.author.id)
+        data = ensure_user(uid)
+        user = data["users"][uid]
+
+        # ✅ Ghi log nhiệm vụ "Gửi 50 tin nhắn trong server"
+        quest_runtime_increment(user, "messages_today", 1)
+        save_data(data)
+
+    # Cho phép các lệnh bot hoạt động bình thường
+    await bot.process_commands(message)
+# ====================================================================================================================================
+# 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
+# ====================================================================================================================================
 
 
 
