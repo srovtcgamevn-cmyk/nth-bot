@@ -1090,7 +1090,7 @@ async def cmd_olenh(ctx: commands.Context):
         "**⬆️ LỆNH MỚI UPDATE**\n\n"
         "**obxh** — Xem Bảng Xếp Hạng\n"
         "**otang** — `otang @nguoichoi <số>`\n"
-        "**onhanthuong** — Nhận thưởng 500K NP + 1 Rương S\n"
+        "**onhanthuong** — Nhận 500K NP + 1 Rương S\n"
         "**onhiemvu** — Nhiệm vụ hàng ngày\n\n"
 
 
@@ -1108,7 +1108,7 @@ async def cmd_olenh(ctx: commands.Context):
         description=desc,
         color=0xFFD700
     )
-    embed.set_footer(text="BOT GAME NGH OFFLINE | NTH3.7")
+    embed.set_footer(text="BOT GAME NGH OFFLINE | NTH4.5")
     await ctx.reply(embed=embed, mention_author=False)
 
 
@@ -3731,7 +3731,8 @@ async def cmd_ol(ctx):
         title=title,
         description=desc,
         color=RARITY_COLOR[rarity],
-        footer=ctx.author.display_name
+    footer=f"{ctx.author.display_name}\nĐã có nâng cấp phiên bản dùng lệnh olenh để xem!"
+
     )
 
     if images_enabled_global():
@@ -4557,6 +4558,8 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 # 🧍 NHIỆM VỤ BẮT ĐẦU
 # ====================================================================================================================================
 
+
+
 from datetime import datetime, timedelta, timezone
 
 # múi giờ GMT+7
@@ -4726,10 +4729,12 @@ def _calc_progress_for_mission(user: dict, dq: dict, mdata: dict) -> int:
     return delta
 
 def _refresh_daily_quest_completion(user: dict):
+
     """
     Đánh dấu nhiệm vụ done / chưa done, và đánh dấu full_done nếu ALL done.
     """
     dq = _ensure_daily_quest_block(user)
+
     all_done = True
     for _key, m in dq["missions"].items():
         prog = _calc_progress_for_mission(user, dq, m)
@@ -4898,6 +4903,8 @@ async def cmd_onhiemvu(ctx: commands.Context):
 
     # refresh trạng thái done / full_done
     dq = _refresh_daily_quest_completion(user)
+    # --- Thêm 1 dòng: tự trả thưởng nếu có mission done chưa claimed ---
+    await _auto_claim_missions(ctx, data, user, dq)
 
     # update DM theo dõi
     await _send_or_update_daily_dm(ctx.author, user, dq)
@@ -4919,6 +4926,118 @@ async def cmd_onhiemvu(ctx: commands.Context):
         )
     )
     await ctx.reply(embed=emb, mention_author=False)
+
+
+#===========================================================
+# ======= AUTO-CLAIM / AUTO-REWARD FOR DAILY MISSIONS =======
+# - Giữ nguyên data structure hiện có; chỉ tự trả thưởng khi mission.done == True và claimed == False
+# - Không gửi DM khi hoàn thành nhiệm vụ con. Khi hoàn tất full (5/5) sẽ:
+#     1) trả thưởng lớn (NP + Rương S)
+#     2) gửi 1 DM chúc mừng cho user
+#     3) gửi 1 thông báo public ở cùng kênh (ctx) nơi user gọi onhiemvu
+# Usage:
+#  - Thêm 1 dòng vào đầu hàm cmd_onhiemvu (sau khi đã load data,user và dq):
+#       await _auto_claim_missions(ctx, data, user, dq)
+#===========================================================
+
+async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
+    """
+    Tự trả thưởng cho các nhiệm vụ con đã hoàn thành mà chưa claimed.
+    Nếu full_done và chưa full_claimed -> trả thưởng full + DM + public announce.
+    - ctx: commands.Context (bắt buộc để gửi DM / thông báo public)
+    - data: toàn bộ data (để save_data)
+    - user: object user (mutable)
+    - dq: daily_quests block của user (mutable)
+    """
+    claimed_any = False
+
+    # 1) trả thưởng cho từng mission con (chỉ tiền NP, không DM)
+    for key, m in dq.get("missions", {}).items():
+        try:
+            if m.get("done") and not m.get("claimed"):
+                reward_np = int(m.get("reward_np", 0))
+                # đảm bảo field stats.np tồn tại
+                user.setdefault("stats", {})
+                user["stats"]["np"] = int(user["stats"].get("np", 0)) + reward_np
+
+                # đánh dấu đã lấy phần thưởng nhiệm vụ con
+                m["claimed"] = True
+                claimed_any = True
+        except Exception:
+            # không để crash toàn bộ flow - log nếu bạn có hàm log
+            try:
+                print(f"[WARN] lỗi khi auto-claim mission {key} cho user {user.get('id','?')}")
+            except Exception:
+                pass
+
+    # Nếu có claim con thì lưu data (save once)
+    if claimed_any:
+        try:
+            save_data(data)
+        except Exception:
+            pass
+
+    # 2) nếu full_done và chưa full_claimed -> cấp thưởng lớn + DM + public announce
+    if dq.get("full_done", False) and not dq.get("full_claimed", False):
+        try:
+            # trả thưởng NP lớn
+            user.setdefault("stats", {})
+            user["stats"]["np"] = int(user["stats"].get("np", 0)) + int(DAILY_FULL_REWARD_NP)
+
+            # cộng rương S cho user (nếu data structure khác bạn thay vào chỗ này)
+            user.setdefault("ruong", {})
+            user["ruong"]["S"] = int(user["ruong"].get("S", 0)) + int(DAILY_FULL_REWARD_RUONG.get("S", 0))
+
+            # đánh dấu đã nhận phần thưởng lớn
+            dq["full_claimed"] = True
+
+            # save data
+            try:
+                save_data(data)
+            except Exception:
+                pass
+
+            # Gửi DM chúc mừng (1 lần)
+            dm_title = f"{NP_EMOJI} NHẬN TIỀN THÀNH CÔNG"
+            dm_body = (
+                f"Chúc mừng {ctx.author.display_name}!\n\n"
+                f"Bạn đã hoàn thành toàn bộ nhiệm vụ hôm nay ({dq.get('date','')}).\n\n"
+                f"Bạn nhận được: {NP_EMOJI} **{format_num(DAILY_FULL_REWARD_NP)}** Ngân Phiếu\n"
+                f"Và: {DAILY_FULL_REWARD_EMOJI} **Rương S x{DAILY_FULL_REWARD_RUONG.get('S',0)}**\n\n"
+                "Cảm ơn bạn đã chơi!"
+            )
+            try:
+                emb_dm = make_embed(title=dm_title, description=dm_body, footer=f"Yêu cầu bởi {ctx.author.display_name}")
+                await ctx.author.send(embed=emb_dm)
+            except Exception:
+                # DM failed (user closed DM) -> ignore
+                pass
+
+            # Thông báo public 1 lần ở channel gọi onhiemvu (nếu có quyền gửi)
+            try:
+                public_title = f"{NP_EMOJI} HOÀN THÀNH NHIỆM VỤ HÀNG NGÀY"
+                public_desc = (
+                    f"🎉 {ctx.author.mention} đã hoàn thành 5/5 nhiệm vụ ngày và nhận "
+                    f"{NP_EMOJI} **{format_num(DAILY_FULL_REWARD_NP)}** + {DAILY_FULL_REWARD_EMOJI} **Rương S x{DAILY_FULL_REWARD_RUONG.get('S',0)}**"
+                )
+                emb_public = make_embed(title=public_title, description=public_desc, footer=f"Yêu cầu bởi {ctx.author.display_name}")
+                await ctx.reply(embed=emb_public, mention_author=False)
+            except Exception:
+                # nếu reply fail, ignore
+                pass
+
+        except Exception as e:
+            try:
+                print(f"[ERROR] _auto_claim_missions error: {e}")
+            except Exception:
+                pass
+
+#===========================================================
+# ======= END AUTO-CLAIM BLOCK =======
+#===========================================================
+
+
+
 # ====================================================================================================================================
 # 🧍 NHIỆM VỤ KẾT THÚC
 # ====================================================================================================================================
