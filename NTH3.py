@@ -1091,7 +1091,7 @@ async def cmd_olenh(ctx: commands.Context):
         "**obxh** — Xem Bảng Xếp Hạng\n"
         "**otang** — `otang @nguoichoi <số>`\n"
         "**onhanthuong** — Nhận 500K NP + 1 Rương S\n"
-        "**onhiemvu** — Đang bảo trì lỗi\n\n"
+        "**onhiemvu** — Đã fix xong rồi\n\n"
 
 
         "**⚙️ THÔNG TIN NÂNG CẤP**\n\n"
@@ -4957,8 +4957,7 @@ async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
             if m.get("done") and not m.get("claimed"):
                 reward_np = int(m.get("reward_np", 0))
                 # đảm bảo field stats.np tồn tại
-                user.setdefault("stats", {})
-                user["stats"]["np"] = int(user["stats"].get("np", 0)) + reward_np
+                user["ngan_phi"] = int(user.get("ngan_phi", 0)) + reward_np
 
                 # đánh dấu đã lấy phần thưởng nhiệm vụ con
                 m["claimed"] = True
@@ -4981,12 +4980,11 @@ async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
     if dq.get("full_done", False) and not dq.get("full_claimed", False):
         try:
             # trả thưởng NP lớn
-            user.setdefault("stats", {})
-            user["stats"]["np"] = int(user["stats"].get("np", 0)) + int(DAILY_FULL_REWARD_NP)
+            user["ngan_phi"] = int(user.get("ngan_phi", 0)) + int(DAILY_FULL_REWARD_NP)
 
             # cộng rương S cho user (nếu data structure khác bạn thay vào chỗ này)
-            user.setdefault("ruong", {})
-            user["ruong"]["S"] = int(user["ruong"].get("S", 0)) + int(DAILY_FULL_REWARD_RUONG.get("S", 0))
+            user.setdefault("rungs", {})
+            user["rungs"]["S"] = int(user["rungs"].get("S", 0)) + int(DAILY_FULL_REWARD_RUONG.get("S", 0))
 
             # đánh dấu đã nhận phần thưởng lớn
             dq["full_claimed"] = True
@@ -5036,6 +5034,29 @@ async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
 # ======= END AUTO-CLAIM BLOCK =======
 #===========================================================
 
+
+@bot.command(name="testnhiemvusos")
+@commands.is_owner()
+async def testnhiemvusos(ctx):
+    uid = str(ctx.author.id)
+    data = ensure_user(uid)
+    user = data["users"][uid]
+    dq = _ensure_daily_quest_block(user)
+    # ép tất cả done & chưa claimed
+    for m in dq["missions"].values():
+        m["done"] = True
+        m["claimed"] = False
+    dq["full_done"] = True
+    save_data(data)
+    await _auto_claim_missions(ctx, data, user, dq)
+    save_data(data)
+    await ctx.reply("Đã ép 5/5 và chạy auto-claim. Dùng `oncheck_tien` để xem số dư.", mention_author=False)
+
+
+
+# ====================================================================================================================================
+# 🧍 NHIỆM VỤ KẾT THÚC
+# ====================================================================================================================================
 
 
 # ====================================================================================================================================
