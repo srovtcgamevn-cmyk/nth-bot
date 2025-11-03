@@ -4535,7 +4535,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
     # 🔔 Gửi DM riêng cho người nhận
     try:
         emb_recv = make_embed(
-            title=f"{NP_EMOJI} NHẬN TIỀN THÀNH CÔNG",
+            title=f"{NP_EMOJI} NHẬN THƯỞNG THÀNH CÔNG",
             description=(
                 f"Bạn vừa nhận {NP_EMOJI} **{format_num(amount)}** từ **{ctx.author.display_name}**.\n"
                 f"Số dư hiện tại: **{format_num(receiver_data['ngan_phi'])}** NP."
