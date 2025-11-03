@@ -1091,7 +1091,7 @@ async def cmd_olenh(ctx: commands.Context):
         "**obxh** — Xem Bảng Xếp Hạng\n"
         "**otang** — `otang @nguoichoi <số>`\n"
         "**onhanthuong** — Nhận 500K NP + 1 Rương S\n"
-        "**onhiemvu** — Nhiệm vụ hàng ngày\n\n"
+        "**onhiemvu** — Đang bảo trì lỗi\n\n"
 
 
         "**⚙️ THÔNG TIN NÂNG CẤP**\n\n"
