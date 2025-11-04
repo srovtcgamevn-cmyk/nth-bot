@@ -1070,7 +1070,8 @@ GAMEPLAY_REQUIRE = {
     "otang",
     "onhiemvu",
     "obxh",
-
+    "omonphai",
+    "obantrangbi",
 
 
 }
@@ -1078,26 +1079,38 @@ GAMEPLAY_REQUIRE = {
 @bot.command(name="lenh", aliases=["olenh"])
 async def cmd_olenh(ctx: commands.Context):
     desc = (
-        "**⚔️ LỆNH GAMEPLAY**\n\n"
+        "**⚔️ LỆNH SPAM**\n"
         "**osetbot** — Kích hoạt BOT trong kênh *(Admin)*\n"
         "**ol** — Đi thám hiểm, tìm rương báu (CD 10s)\n"
-        "**omo** — Mở rương (VD: omo D / omo all)\n"
         "**odt** — Đổ thạch (hỗ trợ `odt all`)\n"
+        "**opk** — Sắp ra mắt\n"
+        "**opb** — Sắp ra mắt\n\n"
+
+
+        "**👤 LỆNH NHÂN VẬT**\n"
         "**okho** — Xem kho đồ\n"
-        "**oban all** — Bán tất cả chưa mặc\n"
-        "**omac** `<ID>` / `othao <ID>` / `oxem <ID>`\n"
-        "**onhanvat** — Thông tin nhân vật\n\n"
-        "**⬆️ LỆNH MỚI UPDATE**\n\n"
+        "**oban all** — Bán tất tạp vật\n"
+        "**obantrangbi** — Bán trang bị lấy tiền xu\n"
+        "**omac** `<ID>` / `othao <ID>`\n"
+        "**oxem** `<ID>` / `oxem all`\n"
+        "**onhanvat** — Thông tin nhân vật\n"
+        "**omo** — Mở rương (VD: omo D / omo all)\n"
+        "**omonphai** — Gia nhập môn phái\n\n"
+
+        "**💼 LỆNH TƯƠNG TÁC**\n"
         "**obxh** — Xem Bảng Xếp Hạng\n"
         "**otang** — `otang @nguoichoi <số>`\n"
         "**onhanthuong** — Nhận 500K NP + 1 Rương S\n"
-        "**onhiemvu** — Đã fix xong rồi\n\n"
+        "**onhiemvu** — Nhiệm vụ hàng ngày\n\n"
+
+        "**⬆️ LỆNH MỚI UPDATE**\n\n"
+        "**omonphai** — Gia nhập môn phái\n\n"
 
 
         "**⚙️ THÔNG TIN NÂNG CẤP**\n\n"
         "• Lưu trữ dữ liệu vĩnh viễn\n"
-        "• Sao lưu dữ liệu tự động\n"
-        "• BOT hoạt động ổn định, sẽ không bị ngắt kết nối giữa chừng\n"
+        "• Thêm Tiền Xu, môn phái để mở tính năng pvp - pve\n"
+        "• Thêm Tạp Vật bán NP, Trang Bị sẽ có chỉ số và hiếm ra hơn\n"
         "• BOT đang trong giai đoạn phát triển, mong các bạn thông cảm\n"
 
 
@@ -2145,7 +2158,7 @@ async def cmd_addruong(ctx, member: discord.Member, pham: str, so: str):
             mention_author=False
         )
         return
-    if amount > 10:
+    if amount > 100:
         await ctx.reply(
             "⚠️ Tối đa **10 rương** mỗi lần.",
             mention_author=False
@@ -2474,14 +2487,6 @@ async def cmd_xuatdata(ctx):
 # ====================================================================================================================================
 # 🧍 KẾT TRÚC KHU VỰC CẤU HÌNH BOT CÁC THỨ Ở BÊN DƯỚI LÀ CÁC LỆNH TÍNH NĂNG
 # ====================================================================================================================================
-
-
-
-
-
-
-
-
 
 
 # -----------------------
@@ -2884,7 +2889,6 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 # 🧍 
 # ====================================================================================================================================
 
-
 # ==========================================================
 # 🏆 BẢNG XẾP HẠNG (obxh / bxh)
 # ==========================================================
@@ -3279,410 +3283,2207 @@ async def cmd_obxh(ctx: commands.Context):
 
 
 
-# ====================================================================================================================================
-# 🧍 NHÂN VẬT BẮT ĐẦU
-# ====================================================================================================================================
-@bot.command(name="nhanvat", aliases=["onhanvat"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_onhanvat(ctx, member: discord.Member=None):
-    target = member or ctx.author
-    user_id = str(target.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
+# =================================================================================================
+# 🧍 BẮT ĐẦU KHU VỰC GAMEPLAY – GHÉP VÀO CUỐI FILE GỐC
+# =================================================================================================
+# Lưu ý:
+# - Dùng lại toàn bộ hàm/tên/emoji đã có trong file gốc (make_embed, ensure_user, save_data, ...)
+# - Chỉ bổ sung tính năng mới theo mô tả: ol, omo, okho, oban (bán tạp vật), obantrangbi (bán trang bị),
+#   oxem (xem chi tiết, có Hoàn mỹ + Lực chiến + thuộc tính), omac, othao.
+# - Có class-lock vũ khí theo môn phái.
+# - Có 70 tên + lore để random khi rơi trang bị.
+# - Có 2 pool chỉ số: vũ khí và áo giáp.
+# - Có dòng 💫 Hoàn Hảo cho phẩm S (5%).
+# =================================================================================================
 
-    equip_lines=[]
-    for slot, iid in user["equipped"].items():
-        if iid:
-            it = next((x for x in user["items"] if x["id"]==iid), None)
-            if it:
-                equip_lines.append(
-                    f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
-                )
+import random
+import string
 
-    emb = make_embed(
-        f"🧭 Nhân vật — {target.display_name}",
-        color=0x9B59B6,
-        footer=f"Yêu cầu bởi {ctx.author.display_name}"
-    )
-    emb.add_field(
-        name=f"{NP_EMOJI} Ngân Phiếu",
-        value=format_num(user.get('ngan_phi',0)),
-        inline=True
-    )
-    emb.add_field(
-        name="Trang bị đang mặc",
-        value="\n".join(equip_lines) if equip_lines else "Không có",
-        inline=False
-    )
+# ---------------------------------------------------------------------------------
+# A. CHỐT EMOJI & PREFIX (để bạn dễ đổi sau này)
+# ---------------------------------------------------------------------------------
+EMOJI_PREFIX = ""  # muốn thêm tiền tố cho toàn bộ emoji → sửa ở đây
 
-    if images_enabled_global():
-        try:
-            file = await file_from_url_cached(IMG_NHAN_VAT, "nhanvat.png")
-            emb.set_image(url="attachment://nhanvat.png")
-            await ctx.send(embed=emb, file=file)
-            return
-        except Exception:
-            pass
-    await ctx.send(embed=emb)
+def _emj(v: str) -> str:
+    return f"{EMOJI_PREFIX}{v}"
 
-# ====================================================================================================================================
-# 🧍 NHÂN VẬT KẾT THÚC
-# ====================================================================================================================================
+# emoji gốc của bạn (giữ nguyên, chỉ bọc qua _emj nếu cần)
+NP_EMOJI = _emj("<a:np:1431713164277448888>")
+XU_EMOJI = _emj("<a:tienxu:1431717943980589347>")
 
-# ====================================================================================================================================
-# 🧍 TRANG BỊ BẮT ĐẦU
-# ====================================================================================================================================
-def slot_of(item_type: str):
-    return "slot_aogiap" if item_type == "Áo Giáp" else "slot_vukhi"
+# emoji phẩm trang bị như trong file gốc bạn nói:
+RARITY_EMOJI = {
+    "S": _emj("<a:S11:1432467644761509948>"),
+    "A": _emj("<a:S10:1432467640858323076>"),
+    "B": _emj("<a:S9:1432467637478897724>"),
+    "C": _emj("<a:S8:1432467634355697714>"),
+    "D": _emj("<a:S12:1432467648951560253>"),
+}
 
-class KhoView(discord.ui.View):
-    def __init__(self, author_id:int, items:list, page:int=0, per_page:int=10, timeout:float=180.0):
-        super().__init__(timeout=timeout)
-        self.author_id = author_id
-        self.items = items
-        self.page = page
-        self.per_page = per_page
-        self.max_page = max(0, (len(items)-1)//per_page)
-        self.children[0].disabled = (self.page==0)
-        self.children[1].disabled = (self.page==self.max_page)
+# emoji rương (có thể bạn đã có – nếu đã có thì giữ cái của bạn, đoạn này chỉ để đủ code)
+RARITY_CHEST_EMOJI = globals().get("RARITY_CHEST_EMOJI", {
+    "S": "🎁",
+    "A": "🎁",
+    "B": "🎁",
+    "C": "🎁",
+    "D": "🎁",
+})
+RARITY_CHEST_OPENED_EMOJI = globals().get("RARITY_CHEST_OPENED_EMOJI", RARITY_CHEST_EMOJI)
+RARITY_COLOR = globals().get("RARITY_COLOR", {
+    "S": 0xF1C40F,
+    "A": 0x9B59B6,
+    "B": 0x3498DB,
+    "C": 0x2ECC71,
+    "D": 0x95A5A6,
+})
 
-    def slice(self):
-        a = self.page*self.per_page
-        b = a+self.per_page
-        return self.items[a:b]
+# emoji tạp vật theo phẩm
+TAP_VAT_EMOJI = {
+    "S": _emj("💎"),
+    "A": _emj("💍"),
+    "B": _emj("🐚"),
+    "C": _emj("🪨"),
+    "D": _emj("🪵"),
+}
 
-    async def update_msg(self, interaction: discord.Interaction):
-        if interaction.user.id != self.author_id:
-            await interaction.response.send_message(
-                "❗ Chỉ chủ kho mới thao tác được.",
-                ephemeral=True
-            )
-            return
-        content = "\n".join([
-            f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
-            for it in self.slice()
-        ]) or "Không có vật phẩm"
-        emb = interaction.message.embeds[0]
-        emb.set_field_at(2, name="Trang bị", value=content, inline=False)
-        emb.set_footer(text=f"Trang {self.page+1}/{self.max_page+1}")
-        self.children[0].disabled = (self.page==0)
-        self.children[1].disabled = (self.page==self.max_page)
-        await interaction.response.edit_message(embed=emb, view=self)
+# emoji HOÀN MỸ (bạn bảo dùng :diamond_shape_with_a_dot_inside:)
+HOAN_MY_EMOJI = ":diamond_shape_with_a_dot_inside:"
 
-    @discord.ui.button(label="◀ Trước", style=discord.ButtonStyle.secondary)
-    async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.page>0:
-            self.page -= 1
-        await self.update_msg(interaction)
+# emoji LỰC CHIẾN (bạn đưa)
+LC_EMOJI = "<:3444:1434780655794913362>"
 
-    @discord.ui.button(label="Tiếp ▶", style=discord.ButtonStyle.secondary)
-    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.page<self.max_page:
-            self.page += 1
-        await self.update_msg(interaction)
+# ---------------------------------------------------------------------------------
+# B. CẤU HÌNH TỈ LỆ – GIÁ TRỊ
+# ---------------------------------------------------------------------------------
+# tỉ lệ rơi trang bị khi mở rương
+ITEM_DROP_RATE_BY_CHEST = {
+    "D": 0.01,
+    "C": 0.03,
+    "B": 0.05,
+    "A": 0.10,
+    "S": 0.20,
+}
 
-# ====================================================================================================================================
-# 🧍 TRANG BỊ KẾT THÚC
-# ====================================================================================================================================
+# Xu rơi phụ khi mở rương
+XU_RANGE = {
+    "D": (0, 1),
+    "C": (1, 3),
+    "B": (2, 6),
+    "A": (5, 15),
+    "S": (10, 40),
+}
 
-# ====================================================================================================================================
-# 🧍 KHO BẮT ĐẦU
-# ====================================================================================================================================
+# Giá bán trang bị → Xu
+EQUIP_SELL_XU_RANGE = {
+    "D": (100, 300),
+    "C": (300, 900),
+    "B": (900, 2700),
+    "A": (2700, 6000),
+    "S": (6000, 12000),
+}
 
-@bot.command(name="kho", aliases=["okho"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_okho(ctx):
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
+# Giá bán tạp vật → NP
+TAP_VAT_SELL_NP_RANGE = {
+    "D": (20, 100),
+    "C": (100, 500),
+    "B": (500, 5000),
+    "A": (5000, 20000),
+    "S": (20000, 200000),
+}
 
-    items_show = [it for it in user["items"] if not it["equipped"]]
-    page_items = items_show[:10]
-    content = "\n".join([
-        f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {it['type']}"
-        for it in page_items
-    ]) or "Không có vật phẩm"
-    page_total = max(1, (len(items_show) - 1)//10 + 1)
+# ---------------------------------------------------------------------------------
+# C. ĐẢM BẢO USER CÓ FIELD KINH TẾ MỚI
+# ---------------------------------------------------------------------------------
+def _ensure_economy_fields(user: dict):
+    user.setdefault("xu", 0)
+    tv = user.setdefault("tap_vat", {})
+    for r in ["D", "C", "B", "A", "S"]:
+        tv.setdefault(r, 0)
 
-    emb = make_embed(
-        f"📦 {ctx.author.display_name} — Kho nhân vật",
-        color=0x3498DB,
-        footer=f"Trang 1/{page_total}"
-    )
-    total_r = sum(int(user["rungs"][k]) for k in ["D","C","B","A","S"])
-    rtext = (
-        f"{RARITY_CHEST_EMOJI['D']} {format_num(user['rungs']['D'])}   "
-        f"{RARITY_CHEST_EMOJI['C']} {format_num(user['rungs']['C'])}   "
-        f"{RARITY_CHEST_EMOJI['B']} {format_num(user['rungs']['B'])}   "
-        f"{RARITY_CHEST_EMOJI['A']} {format_num(user['rungs']['A'])}   "
-        f"{RARITY_CHEST_EMOJI['S']} {format_num(user['rungs']['S'])}"
-    )
-    emb.add_field(
-        name=f"Rương hiện có — {format_num(total_r)}",
-        value=rtext,
-        inline=False
-    )
-    emb.add_field(
-        name=f"{NP_EMOJI} Ngân phiếu hiện có: {format_num(user['ngan_phi'])}",
-        value="\u200b",
-        inline=True
-    )
-    emb.add_field(name="Trang bị", value=content, inline=False)
+# nếu trong file gốc chưa có quest_runtime_increment thì tạo no-op để khỏi lỗi
+if "quest_runtime_increment" not in globals():
+    def quest_runtime_increment(user: dict, field: str, amount: int = 1):
+        # no-op
+        pass
 
-    stats_text = (
-        f"Rương đã mở: {format_num(user['stats']['opened'])}\n"
-        f"Số lần thám hiểm: {format_num(user['stats']['ol_count'])}\n"
-        f"{NP_EMOJI}Tổng NP đã kiếm được: {format_num(user['stats']['ngan_phi_earned_total'])}"
-    )
-    emb.add_field(name="📊 Thống kê", value=stats_text, inline=False)
+# ---------------------------------------------------------------------------------
+# D. DANH SÁCH TÊN + LORE (70 món) – rút gọn nhóm theo phái
+# ---------------------------------------------------------------------------------
+ITEM_NAME_POOLS = {
+    "kiem_toai_mong": [
+        ("Kiếm Bóng Nguyệt", "Lưỡi kiếm phản chiếu ánh trăng cuối mùa, chém cả niềm hối tiếc."),
+        ("Ảnh Kiếm Vô Tâm", "Đâm ra không ý niệm, chém xuống không nhân từ."),
+        ("Nguyệt Ảnh Tàn Hồn", "Mỗi nhát vung là một kiếp hồn tan."),
+        ("Kiếm U Ảnh", "Ẩn mình trong bóng tối, chỉ thấy tia sáng cuối."),
+        ("Huyết Ảnh Kiếm", "Tắm máu trăm trận, rỉ sét bằng ký ức."),
+        ("Kiếm Trảm Không", "Chém cả không gian, để lại vết rách trong hư vô."),
+        ("Kiếm Thiên Mệnh", "Kẻ định đoạt số phận chính là lưỡi này."),
+        ("Kiếm Tĩnh Dạ", "Lặng im như đêm, nhưng giết người không tiếng."),
+        ("Kiếm Sát Hồn", "Một khi đã rút ra, hồn người không thể trở lại."),
+        ("Kiếm Lưu Quang", "Tia sáng cuối cùng của kiếm khách thất lạc."),
+    ],
+    "thuong_huyet_ha": [
+        ("Thương Huyết Hà", "Thấm đẫm máu thù, nhuộm đỏ cả sông trời."),
+        ("Thương Long Tước", "Hơi thở rồng ẩn trong đầu thương."),
+        ("Thương Phá Quân", "Vì nó, vạn quân tan rã."),
+        ("Thương Hàn Ảnh", "Lạnh hơn cả gió Bắc, sắc bén như ý chí chết."),
+        ("Thương Liệt Diễm", "Bốc cháy như ngọn lửa báo thù."),
+        ("Thương Vân Hà", "Truyền thuyết kể nó từng đâm xuyên trời."),
+        ("Thương Bạch Cốt", "Cắm xuống nơi nào, nơi đó trắng xóa xương tàn."),
+        ("Thương Huyết Ảnh", "Hồn thương nhập máu, kẻ cầm bị nuốt dần."),
+        ("Thương Tuyệt Vong", "Tồn tại chỉ để kết thúc."),
+        ("Thương Phong Lôi", "Khi vung lên, trời nổi sấm."),
+    ],
+    "dan_than_tuong": [
+        ("Cầm Vân Tương", "Giai điệu ngân dài, dẫn linh hồn lạc về mây."),
+        ("Cầm Bích Nguyệt", "Mỗi phím đàn là vết nứt của trăng xanh."),
+        ("Cầm Huyễn Âm", "Âm điệu mê hoặc, khiến cả ma thần ngủ quên."),
+        ("Cầm Tịch Dương", "Âm cuối tan cùng hoàng hôn."),
+        ("Cầm Trầm Không", "Không gian cũng run rẩy theo tiếng đàn."),
+        ("Cầm Huyễn Ảnh", "Đàn có hình, âm không thật."),
+        ("Cầm Lưu Sa", "Âm thanh như cát rơi giữa sa mạc."),
+        ("Cầm Thanh Lãnh", "Lạnh lẽo mà thanh khiết, gột linh hồn."),
+        ("Cầm Vọng Hải", "Nghe khúc cuối là quên cả đời."),
+        ("Cầm Nguyệt Huyền", "Dây đàn buộc vào ánh trăng, ngân mãi không tắt."),
+    ],
+    "truong_cuu_linh": [
+        ("Trượng Cửu Linh", "Giam hồn của chín linh thú, chỉ người mạnh mới giữ nổi."),
+        ("Trượng U Minh", "Từ địa ngục mang về, cháy bằng linh hồn."),
+        ("Trượng Hoang Vân", "Hơi thở trời đất ngưng tụ."),
+        ("Trượng Phong Ấn", "Niêm phong cả ký ức, mở ra là diệt vong."),
+        ("Trượng Mệnh Chi", "Định mệnh bị bẻ cong dưới đầu trượng."),
+        ("Trượng Lôi Phệ", "Sấm sét quỳ gối khi nó giáng xuống."),
+        ("Trượng Ánh Nguyệt", "Tỏa sáng trong đêm dài như linh hồn vĩnh cửu."),
+        ("Trượng Huyền Ma", "Ma lực trào dâng, cuốn phăng cả núi sông."),
+        ("Trượng Linh Tế", "Cầu thông âm dương, nghe tiếng khóc của người chết."),
+        ("Trượng Tàn Nguyệt", "Nguyệt tàn – nhân diệt."),
+    ],
+    "lua_to_van": [
+        ("Lụa Tố Vấn", "Mềm như mây, nhưng ràng cả định mệnh."),
+        ("Lụa Bách Hoa", "Thêu bằng hương của ngàn đóa hoa tàn."),
+        ("Lụa Thanh Tâm", "Chạm vào là tan mọi oán hận."),
+        ("Lụa Huyền Ảnh", "Ẩn giấu chủ nhân khỏi mọi ánh nhìn."),
+        ("Lụa Vân Tiêu", "Bay cao cùng khói trời, tan giữa gió."),
+        ("Lụa Yên Sương", "Sương mờ ôm lấy, hư ảo như mộng."),
+        ("Lụa Hồng Trần", "Dính một hạt bụi trần, vạn kiếp không sạch."),
+        ("Lụa Linh Quang", "Lấp lánh linh khí, bảo hộ người mang."),
+        ("Lụa Phù Không", "Nhẹ đến mức gió cũng không chạm được."),
+        ("Lụa Nguyệt Hoa", "Nhuộm ánh trăng, thơm mùi đêm."),
+    ],
+    "gang_thiet_y": [
+        ("Quyền Thiết Y", "Nắm đấm rèn trong chiến hỏa, chịu được vảy rồng."),
+        ("Hộ Thủ Hắc Thiết", "Đỡ trăm nhát mà không mẻ."),
+        ("Huyết Quyền Chi Ảnh", "Mỗi cú đấm là một linh hồn mất."),
+        ("Quyền Phá Sơn", "Đập vỡ cả tường núi."),
+        ("Hộ Thủ Trấn Hồn", "Giữ tâm không loạn giữa chiến trường."),
+        ("Hắc Thiết Chi Thủ", "Nặng như lời thề."),
+        ("Quyền Lưu Tinh", "Vung lên như sao rơi."),
+        ("Hộ Thủ Hoàng Thiết", "Mạ vàng của vua xưa, truyền lại cho võ giả."),
+        ("Quyền Sư Tử Hống", "Tiếng gầm dồn trong nắm đấm."),
+        ("Hộ Thủ Thần Vệ", "Che chở cho bằng hữu ở phía sau."),
+    ],
+    "ao_giap_chung": [
+        ("Giáp Long Tinh", "Khảm vảy rồng hóa thạch, đao thương bất nhập."),
+        ("Áo Giáp Thanh Ô", "Phủ sương xanh, nhẹ mà bền."),
+        ("Y Thần Thạch", "May bằng tơ trời, đỡ được một kích của chân thần."),
+        ("Giáp Hộ Linh", "Bảo vệ linh hồn trước tà khí."),
+        ("Giáp Bạch Thiết", "Màu trắng bạc, dành cho kỵ sĩ chính đạo."),
+        ("Áo Lục Sam", "Giản dị mà linh động, ẩn vào rừng là mất dấu."),
+        ("Y Trầm Không", "Tối như vực sâu, che giấu khí tức."),
+        ("Giáp U Ảnh", "Ẩn hiện dưới ánh trăng, khó bị nhìn thấy."),
+        ("Áo Vệ Đạo", "Thánh quang gia trì, tà ma lùi bước."),
+        ("Giáp Thiên Hộ", "Được chúc phúc để bảo vệ chủ nhân đến phút cuối."),
+    ],
+}
 
-    if images_enabled_global():
-        try:
-            file = await file_from_url_cached(IMG_KHO_DO, "khodo.png")
-            emb.set_image(url="attachment://khodo.png")
-            view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
-            view.children[0].disabled = True
-            view.children[1].disabled = (len(items_show) <= 10)
-            msg = await ctx.send(embed=emb, file=file, view=view)
-            try:
-                await asyncio.sleep(3)
-                emb.set_image(url=discord.Embed.Empty)
-                try:
-                    await msg.edit(embed=emb, attachments=[], view=view)
-                except TypeError:
-                    await msg.edit(embed=emb, view=view)
-            except Exception:
-                pass
-            return
-        except Exception:
-            pass
+# mapping loại vũ khí → môn phái
+WEAPON_CLASS_LOCK = {
+    "Kiếm": "Toái Mộng",
+    "Thương": "Huyết Hà",
+    "Đàn": "Thần Tương",
+    "Trượng": "Cửu Linh",
+    "Dải Lụa": "Tố Vấn",
+    "Găng Tay": "Thiết Y",
+}
 
-    view = KhoView(ctx.author.id, items_show, page=0, per_page=10)
-    view.children[0].disabled = True
-    view.children[1].disabled = (len(items_show) <= 10)
-    await ctx.send(embed=emb, view=view)
+# ---------------------------------------------------------------------------------
+# E. POOL CHỈ SỐ – TÁCH HẲN
+# ---------------------------------------------------------------------------------
+WEAPON_STAT_POOL = [
+    ("atk_physical", "Tấn công vật lý"),
+    ("atk_magic", "Tấn công phép"),
+    ("atk_team", "Tấn công nhóm"),
+    ("crit", "Chí mạng"),
+    ("control", "Khống chế"),
+    ("agility", "Nhanh nhẹn"),
+    ("cast_speed", "Tốc độ ra chiêu"),
+    ("cdr", "Giảm hồi chiêu"),
+    ("lifesteal", "Hút máu"),
+    ("mana_regen", "Hồi năng lượng"),
+    ("damage_bonus", "Tăng sát thương tổng (%)"),
+    ("all_bonus", "Toàn diện"),
+]
 
-# ====================================================================================================================================
-# 🧍 KHO KẾT THÚC
-# ====================================================================================================================================
+ARMOR_STAT_POOL = [
+    ("defense", "Phòng thủ"),
+    ("res_magic", "Kháng phép"),
+    ("hp", "Máu tối đa"),
+    ("regen", "Phục hồi"),
+    ("damage_reduce", "Giảm sát thương nhận (%)"),
+    ("control", "Khống chế"),
+    ("agility", "Nhanh nhẹn"),
+    ("mana_regen", "Hồi năng lượng"),
+    ("all_bonus", "Toàn diện thủ"),
+]
 
-# ====================================================================================================================================
-# 🧍 MẶC BẮT ĐẦU
-# ====================================================================================================================================
+# ---------------------------------------------------------------------------------
+# F. HÀM TÍNH LỰC CHIẾN (đơn giản để dùng ngay)
+# ---------------------------------------------------------------------------------
+def calc_luc_chien(item: dict) -> int:
+    """
+    Tính lực chiến cơ bản từ các dòng thuộc tính.
+    Đây là bản đơn giản để xài ngay, sau này bạn muốn tinh hơn thì đổi hệ số ở đây.
+    """
+    base = 0
+    for st in item.get("stats", []):
+        key = st.get("key")
+        val = st.get("val", 0)
+        # hệ số đơn giản
+        if key in ("atk_physical", "atk_magic", "hp", "defense"):
+            base += int(val)
+        elif key in ("crit", "agility", "cast_speed", "cdr", "damage_bonus", "damage_reduce", "res_magic", "lifesteal", "mana_regen", "regen", "control"):
+            base += int(val * 50)  # % → quy đổi
+        elif key == "all_bonus":
+            base += 500
+    # bonus theo hoàn mỹ
+    perfect = int(item.get("perfect", 0))
+    base = int(base * (1 + perfect / 1000))  # nhẹ thôi
+    # bonus theo Hoàn Hảo
+    if item.get("hoan_hao"):
+        base = int(base * 1.1)
+    return max(base, 1)
 
-@bot.command(name="mac", aliases=["omac"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_omac(ctx, item_id: str = None):
-    if item_id is None:
-        await ctx.reply(
-            "📝 Cách dùng: `mac <ID>` (Xem ID trong `okho`).",
-            mention_author=False
-        )
-        return
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-    target = next((it for it in user["items"] if it["id"] == item_id), None)
-    if not target:
-        await ctx.reply(
-            "❗ Không tìm thấy vật phẩm với ID đó.",
-            mention_author=False
-        )
-        return
-    if target["equipped"]:
-        await ctx.reply(
-            "Vật phẩm đang được mặc.",
-            mention_author=False
-        )
-        return
+# ---------------------------------------------------------------------------------
+# G. HÀM SINH ITEM
+# ---------------------------------------------------------------------------------
+def _gen_item_id():
+    return "".join(random.choices("0123456789ABCDEF", k=4))
 
-    slot = slot_of(target["type"])
-    if user["equipped"][slot]:
-        cur_id = user["equipped"][slot]
-        cur_item = next((it for it in user["items"] if it["id"] == cur_id), None)
-        await ctx.reply(
-            f"🔧 Slot đang bận bởi **{cur_item['name']}** (ID {cur_item['id']}). "
-            f"Hãy dùng `othao {cur_item['id']}` để tháo.",
-            mention_author=False
-        )
-        return
+def generate_item_from_rarity(rarity: str) -> dict:
+    """
+    Sinh 1 trang bị mới từ phẩm rương.
+    - 70 tên + lore
+    - phân loại vũ khí/giáp
+    - roll stat từ pool đúng loại
+    - có Hoàn Hảo 5% nếu S
+    """
+    # 50% vũ khí, 50% giáp
+    is_weapon = random.random() < 0.5
 
-    target["equipped"] = True
-    user["equipped"][slot] = target["id"]
-    save_data(data)
+    if is_weapon:
+        # chọn 1 trong 6 dòng vũ khí
+        pool_key = random.choice([
+            "kiem_toai_mong",
+            "thuong_huyet_ha",
+            "dan_than_tuong",
+            "truong_cuu_linh",
+            "lua_to_van",
+            "gang_thiet_y",
+        ])
+        name, lore = random.choice(ITEM_NAME_POOLS[pool_key])
+        # suy ra loại vũ khí từ pool
+        if pool_key == "kiem_toai_mong":
+            item_type = "Kiếm"
+            phai = "Toái Mộng"
+        elif pool_key == "thuong_huyet_ha":
+            item_type = "Thương"
+            phai = "Huyết Hà"
+        elif pool_key == "dan_than_tuong":
+            item_type = "Đàn"
+            phai = "Thần Tương"
+        elif pool_key == "truong_cuu_linh":
+            item_type = "Trượng"
+            phai = "Cửu Linh"
+        elif pool_key == "lua_to_van":
+            item_type = "Dải Lụa"
+            phai = "Tố Vấn"
+        else:
+            item_type = "Găng Tay"
+            phai = "Thiết Y"
 
-    emoji = RARITY_EMOJI[target["rarity"]]
-    emb = make_embed(
-        title="🪄 Mặc trang bị",
-        description=f"Bạn mặc {emoji} **{target['name']}** (ID `{target['id']}`)",
-        color=RARITY_COLOR[target["rarity"]],
-        footer=f"{ctx.author.display_name}"
-    )
-    await ctx.send(embed=emb)
+        # số dòng theo phẩm
+        if rarity == "S":
+            stat_count = random.randint(4, 5)
+        elif rarity == "A":
+            stat_count = random.randint(2, 3)
+        else:
+            stat_count = 0  # B/C/D: không roll
 
-# ====================================================================================================================================
-# 🧍 MẶC KẾT THÚC
-# ====================================================================================================================================
+        stats = []
+        for _ in range(stat_count):
+            key, label = random.choice(WEAPON_STAT_POOL)
+            # giá trị demo
+            val = random.randint(5, 15) * 10  # số này bạn chỉnh tiếp
+            stats.append({"key": key, "label": label, "val": val})
 
-# ====================================================================================================================================
-# 🧍 THÁO BẮT ĐẦU
-# ====================================================================================================================================
+    else:
+        # áo giáp
+        name, lore = random.choice(ITEM_NAME_POOLS["ao_giap_chung"])
+        item_type = "Áo Giáp"
+        phai = None
+        if rarity == "S":
+            stat_count = random.randint(4, 5)
+        elif rarity == "A":
+            stat_count = random.randint(2, 3)
+        else:
+            stat_count = 0
+        stats = []
+        for _ in range(stat_count):
+            key, label = random.choice(ARMOR_STAT_POOL)
+            val = random.randint(5, 15) * 10
+            stats.append({"key": key, "label": label, "val": val})
 
-@bot.command(name="thao", aliases=["othao"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_othao(ctx, item_id: str = None):
-    if item_id is None:
-        await ctx.reply(
-            "📝 Cách dùng: `thao <ID>` (Xem ID trong `okho`).",
-            mention_author=False
-        )
-        return
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-    target = next((it for it in user["items"] if it["id"] == item_id), None)
-    if not target:
-        await ctx.reply(
-            "❗ Không tìm thấy vật phẩm với ID đó.",
-            mention_author=False
-        )
-        return
-    if not target["equipped"]:
-        await ctx.reply(
-            "Vật phẩm không đang mặc.",
-            mention_author=False
-        )
-        return
+    # hoàn mỹ
+    if rarity == "S":
+        perfect = random.randint(61, 100)
+    elif rarity == "A":
+        perfect = random.randint(1, 60)
+    else:
+        perfect = 0
 
-    slot = slot_of(target["type"])
-    user["equipped"][slot] = None
-    target["equipped"] = False
-    save_data(data)
+    # Hoàn Hảo 5%
+    hoan_hao = False
+    if rarity == "S" and random.random() < 0.05:
+        hoan_hao = True
+        # tăng các stat
+        for s in stats:
+            s["val"] = int(s["val"] * 1.1)
 
-    emoji = RARITY_EMOJI[target["rarity"]]
-    emb = make_embed(
-        title="🪶 Tháo trang bị",
-        description=(
-            f"Đã tháo {emoji} **{target['name']}** "
-            f"(ID `{target['id']}`) → kiểm tra lại Kho."
-        ),
-        color=0x95A5A6,
-        footer=f"{ctx.author.display_name}"
-    )
-    await ctx.send(embed=emb)
+    item = {
+        "id": _gen_item_id(),
+        "name": name,
+        "rarity": rarity,
+        "type": item_type,  # để omac kiểm tra slot + phái
+        "phai": phai,
+        "equipped": False,
+        "perfect": perfect,
+        "hoan_hao": hoan_hao,
+        "stats": stats,
+        "lore": lore,
+    }
 
-# ====================================================================================================================================
-# 🧍 THÁO BẮT ĐẦU
-# ====================================================================================================================================
+    # gắn giá bán Xu để obantrangbi dùng
+    lo_xu, hi_xu = EQUIP_SELL_XU_RANGE.get(rarity, (0, 0))
+    item["sell_xu"] = random.randint(lo_xu, hi_xu) if hi_xu >= lo_xu else 0
 
-# ====================================================================================================================================
-# 🧍 XEM BẮT ĐẦU
-# ====================================================================================================================================
+    # tính lực chiến
+    item["luc_chien"] = calc_luc_chien(item)
 
-@bot.command(name="xem", aliases=["oxem"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_oxem(ctx, item_id: str = None):
-    if item_id is None:
-        await ctx.reply(
-            "📝 Cách dùng: `xem <ID>` (Xem ID trong `okho`).",
-            mention_author=False
-        )
-        return
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
+    return item
 
-    it = next((x for x in user["items"] if x["id"] == item_id), None)
-    if not it:
-        await ctx.reply(
-            "❗ Không tìm thấy trang bị với ID đó.",
-            mention_author=False
-        )
-        return
-
-    state = "Đang mặc" if it["equipped"] else "Trong kho"
-    emoji = RARITY_EMOJI[it["rarity"]]
-    emb = make_embed(
-        title=f"{emoji} `{it['id']}` {it['name']}",
-        description=(
-            f"Loại: **{it['type']}** • Phẩm: {emoji} • "
-            f"Trạng thái: **{state}**"
-        ),
-        color=RARITY_COLOR[it["rarity"]],
-        footer=ctx.author.display_name
-    )
-
-    img_url = ITEM_IMAGE.get(it["type"], IMG_BANDO_DEFAULT)
-    if images_enabled_global():
-        try:
-            file = await file_from_url_cached(img_url, "item.png")
-            emb.set_image(url="attachment://item.png")
-            await ctx.send(embed=emb, file=file)
-            return
-        except Exception:
-            pass
-    await ctx.send(embed=emb)
-
-# ====================================================================================================================================
-# 🧍 XEM KẾT THÚC ĐẦU
-# ====================================================================================================================================
-
-# ====================================================================================================================================
-# 🧍 KINH TẾ BẮT ĐẦU
-# ====================================================================================================================================
-# ====================================================================================================================================
-# 🧍 KINH TẾ BẮT ĐẦU
-# ====================================================================================================================================
-# ====================================================================================================================================
-# 🧍 KINH TẾ BẮT ĐẦU
-# ====================================================================================================================================
-
-
-COOLDOWN_OL = 10
-
+# ---------------------------------------------------------------------------------
+# H. HỖ TRỢ MỞ RƯƠNG
+# ---------------------------------------------------------------------------------
 def _rarity_order_index(r: str) -> int:
-    order = ["S","A","B","C","D"]
+    order = ["S", "A", "B", "C", "D"]
     try:
         return order.index(r)
     except ValueError:
-        return 99
+        return 999
 
 def _pick_highest_available_rarity(user) -> str | None:
-    for r in ["S","A","B","C","D"]:
+    for r in ["S", "A", "B", "C", "D"]:
         if int(user["rungs"].get(r, 0)) > 0:
             return r
     return None
 
 def _open_one_chest(user, r: str):
+    # trừ rương
     user["rungs"][r] = int(user["rungs"].get(r, 0)) - 1
+
+    # cộng NP như cũ
     gp = get_nganphieu(r)
     user["ngan_phi"] = int(user.get("ngan_phi", 0)) + gp
+
+    # đảm bảo field mới
+    _ensure_economy_fields(user)
+
+    # +1 tạp vật theo phẩm
+    user["tap_vat"][r] = int(user["tap_vat"].get(r, 0)) + 1
+
+    # +Xu nhẹ
+    lo, hi = XU_RANGE.get(r, (0, 0))
+    xu_gain = random.randint(lo, hi) if hi >= lo else 0
+    user["xu"] = int(user.get("xu", 0)) + xu_gain
+
+    # log stats
     user.setdefault("stats", {})
-    user["stats"]["ngan_phi_earned_total"] = int(
-        user["stats"].get("ngan_phi_earned_total", 0)
-    ) + gp
+    user["stats"]["ngan_phi_earned_total"] = int(user["stats"].get("ngan_phi_earned_total", 0)) + gp
     user["stats"]["opened"] = int(user["stats"].get("opened", 0)) + 1
+    return gp, xu_gain, {"rarity": r, "count": 1}, item
 
-    item = None
-    try:
-        if PROB_ITEM_IN_RUONG and (random.random() < PROB_ITEM_IN_RUONG):
-            item = generate_item(r, user["items"])
-            user["items"].append(item)
-    except Exception:
-        pass
-    return gp, item
 
-def _fmt_item_line(it) -> str:
-    return (
-        f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} "
-        f"— Giá trị: {format_num(it['value'])}"
+# ---------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------
+# J. LỆNH OMO – MỞ RƯƠNG
+# ---------------------------------------------------------------------------------
+@bot.command(name="mo", aliases=["omo"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_omo(ctx, *args):
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+    _ensure_economy_fields(user)
+    argv = [a.strip().lower() for a in args]
+
+    def _open_many_for_rarity(user, r: str, limit: int = 50):
+        opened = 0
+        total_np = 0
+        total_xu = 0
+        tv_cnt = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0}
+        items = []
+        while opened < limit and int(user["rungs"].get(r, 0)) > 0:
+            gp, xu_gain, tv, it = _open_one_chest(user, r)
+            opened += 1
+            total_np += gp
+            total_xu += xu_gain
+            tv_cnt[tv["rarity"]] += tv["count"]
+            if it:
+                items.append(it)
+        return opened, total_np, total_xu, tv_cnt, items
+
+    # omo all
+    if len(argv) == 1 and argv[0] == "all":
+        LIMIT = 50
+        opened = 0
+        total_np = 0
+        total_xu = 0
+        tv_all = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0}
+        items = []
+        highest_seen = None
+
+        for r in ["S", "A", "B", "C", "D"]:
+            while opened < LIMIT and int(user["rungs"].get(r, 0)) > 0:
+                gp, xu_gain, tv, it = _open_one_chest(user, r)
+                opened += 1
+                total_np += gp
+                total_xu += xu_gain
+                tv_all[tv["rarity"]] += tv["count"]
+
+                if it:
+                    items.append(it)
+                    # tìm phẩm cao nhất để lấy emoji đẹp
+                    if (
+                        highest_seen is None
+                        or _rarity_order_index(it["rarity"]) < _rarity_order_index(highest_seen)
+                    ):
+                        highest_seen = it["rarity"]
+
+        if opened == 0:
+            await ctx.reply("❗ Bạn không có rương để mở.", mention_author=False)
+            return
+
+        # log nhiệm vụ ngày
+        quest_runtime_increment(user, "opened_today", opened)
+        save_data(data)
+
+        # nếu không rơi item nào thì lấy cái phẩm cao nhất đã mở
+        highest_for_title = highest_seen or "D"
+        title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title, "🎁")
+
+        emb = make_embed(
+            title=f"{title_emoji} **{ctx.author.display_name}** đã mở x{opened} rương",
+            color=0x2ECC71,
+            footer=ctx.author.display_name
+        )
+
+        # block phần thưởng
+        reward_lines = [
+            f"{NP_EMOJI} **{format_num(total_np)}**",
+            f"{XU_EMOJI} **{format_num(total_xu)}**",
+        ]
+
+        tv_lines = []
+        for rr in ["S", "A", "B", "C", "D"]:
+            if tv_all[rr] > 0:
+                tv_lines.append(f"{TAP_VAT_EMOJI[rr]} x{tv_all[rr]}")
+        if tv_lines:
+            reward_lines.append("🧩 " + "  ".join(tv_lines))
+
+        emb.add_field(name="Phần thưởng", value="\n".join(reward_lines), inline=False)
+
+        # trang bị rơi
+        if items:
+            lines = []
+            for it in items[:10]:
+                lines.append(
+                    f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} {HOAN_MY_EMOJI} {it.get('perfect', 0)}%{LC_EMOJI}{format_num(it.get('luc_chien', 0))}"
+                )
+            if len(items) > 10:
+                lines.append(f"... và {len(items) - 10} món khác")
+            emb.add_field(name="Trang bị rơi", value="\n".join(lines), inline=False)
+
+        # footer còn rương
+        remaining = sum(int(user["rungs"].get(r, 0)) for r in ["S", "A", "B", "C", "D"])
+        if remaining > 0:
+            emb.set_footer(text=f"Còn {remaining} rương — dùng `omo all` để mở tiếp")
+
+        await ctx.send(embed=emb)
+        return
+
+    # ====== omo <rarity> ... ======
+    if len(argv) >= 1 and argv[0] in {"d", "c", "b", "a", "s"}:
+        r = argv[0].upper()
+        available = int(user["rungs"].get(r, 0))
+        if available <= 0:
+            await ctx.reply(f"❗ Bạn không có rương phẩm {r}.", mention_author=False)
+            return
+
+        if len(argv) >= 2:
+            if argv[1] == "all":
+                req = min(50, available)
+            else:
+                try:
+                    req = int(argv[1].replace(",", ""))
+                except Exception:
+                    await ctx.reply("⚠️ Ví dụ: `omo d 3` hoặc `omo d all`.", mention_author=False)
+                    return
+                req = max(1, min(req, 50, available))
+        else:
+            req = 1
+
+        opened, total_np, total_xu, tv_cnt, items = _open_many_for_rarity(user, r, limit=req)
+        if opened == 0:
+            await ctx.reply("❗ Không mở được rương nào.", mention_author=False)
+            return
+
+        quest_runtime_increment(user, "opened_today", opened)
+        save_data(data)
+
+        title_emoji = RARITY_CHEST_OPENED_EMOJI.get(r, "🎁")
+        emb = make_embed(
+            title=f"{title_emoji} **{ctx.author.display_name}** đã mở x{opened} rương",
+            color=RARITY_COLOR.get(r, 0x95A5A6),
+            footer=ctx.author.display_name
+        )
+
+        reward_lines = [
+            f"{NP_EMOJI} **{format_num(total_np)}**",
+            f"{XU_EMOJI} **{format_num(total_xu)}**",
+        ]
+        tv_lines = [f"{TAP_VAT_EMOJI[rr]} x{tv_cnt[rr]}" for rr in ["S", "A", "B", "C", "D"] if tv_cnt[rr] > 0]
+        if tv_lines:
+            reward_lines.append("🧩 " + "  ".join(tv_lines))
+        emb.add_field(name="Phần thưởng", value="\n".join(reward_lines), inline=False)
+
+        if items:
+            lines = []
+            for it in items[:10]:
+                lines.append(
+                    f"{RARITY_EMOJI[it['rarity']]} `{it['id']}` {it['name']} — {HOAN_MY_EMOJI} {it.get('perfect',0)}% {LC_EMOJI} {format_num(it.get('luc_chien',0))}"
+                )
+            if len(items) > 10:
+                lines.append(f"... và {len(items) - 10} món khác")
+            emb.add_field(name="Trang bị rơi", value="\n".join(lines), inline=False)
+
+        remaining_r = int(user["rungs"].get(r, 0))
+        if remaining_r > 0:
+            emb.set_footer(text=f"Còn {remaining_r} rương {r} — `omo {r.lower()} all` để mở tiếp")
+
+        await ctx.send(embed=emb)
+        return
+
+    # ====== omo mặc định ======
+    r_found = _pick_highest_available_rarity(user)
+    if not r_found:
+        await ctx.reply("❗ Bạn không có rương để mở.", mention_author=False)
+        return
+
+    gp, xu_gain, tv, item = _open_one_chest(user, r_found)
+    quest_runtime_increment(user, "opened_today", 1)
+    save_data(data)
+
+    highest_for_title = item["rarity"] if item else r_found
+    title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title, "🎁")
+    emb = make_embed(
+        title=f"{title_emoji} **{ctx.author.display_name}** đã mở 1 rương",
+        color=RARITY_COLOR.get(highest_for_title, 0x95A5A6),
+        footer=ctx.author.display_name
     )
+    reward_lines = [
+        f"{NP_EMOJI} **{format_num(gp)}**",
+        f"{XU_EMOJI} **{format_num(xu_gain)}**",
+        f"🧩 {TAP_VAT_EMOJI[tv['rarity']]} x{tv['count']}",
+    ]
+    emb.add_field(name="Phần thưởng", value="\n".join(reward_lines), inline=False)
+
+    if item:
+        emb.add_field(
+            name="Trang bị rơi",
+            value=(
+                f"{RARITY_EMOJI[item['rarity']]} `{item['id']}` {item['name']} — "
+                f"{HOAN_MY_EMOJI} {item.get('perfect',0)}% {LC_EMOJI} {format_num(item.get('luc_chien',0))}"
+            ),
+            inline=False
+        )
+
+    await ctx.send(embed=emb)
+
+
+
+
+import random
+
+def _calc_item_luc_chien(it: dict) -> int:
+    """tạm thời: lực chiến = 1000 + perfect*50 + số dòng * 200"""
+    base = 1000
+    perfect = int(it.get("perfect", 0))
+    stats = it.get("stats", [])
+    lc = base + perfect * 50 + len(stats) * 200
+    # nếu có hoàn hảo thì +10%
+    if it.get("hoan_hao"):
+        lc = int(lc * 1.1)
+    return lc
+
+import random
+from datetime import datetime, timedelta
+
+# ===================================================================
+# 1) POOL CHỈ SỐ
+# ===================================================================
+
+WEAPON_STAT_POOL = {
+    "atk_physical": ("Tấn công vật lý", (420, 780)),
+    "atk_magic": ("Tấn công phép", (420, 780)),
+    "atk_team": ("Tấn công nhóm", (4, 10)),
+    "crit": ("Chí mạng", (6, 15)),
+    "agility": ("Nhanh nhẹn", (4, 12)),
+    "cast_speed": ("Tốc độ ra chiêu", (4, 12)),
+    "lifesteal": ("Hút máu", (3, 10)),
+    "mana_regen": ("Hồi năng lượng", (3, 9)),
+    "cdr": ("Giảm hồi chiêu", (4, 12)),
+    "damage_bonus": ("Tăng sát thương tổng (%)", (3, 8)),
+    "all_bonus": ("Toàn diện (+% tất cả chỉ số)", (3, 5)),
+}
+
+ARMOR_STAT_POOL = {
+    "defense": ("Phòng thủ", (220, 360)),
+    "res_magic": ("Kháng phép", (220, 360)),
+    "hp": ("Máu tối đa (HP)", (2800, 4200)),
+    "regen": ("Phục hồi", (80, 180)),
+    "damage_reduce": ("Giảm sát thương nhận (%)", (4, 10)),
+    "control": ("Kháng/khống chế", (4, 10)),
+    "agility": ("Nhanh nhẹn", (2, 6)),
+    "mana_regen": ("Hồi năng lượng", (3, 9)),
+    "all_bonus": ("Toàn diện thủ (+%)", (3, 5)),
+}
+
+# số dòng theo phẩm
+RARITY_STAT_ROLLS = {
+    "S": (4, 5),
+    "A": (2, 3),
+    "B": (0, 0),
+    "C": (0, 0),
+    "D": (0, 0),
+}
+
+# ưu tiên theo phái (key phải trùng phái mày đang lưu trong user["class"])
+CLASS_STAT_WEIGHT = {
+    "toai_mong": {
+        "atk_physical": 3,
+        "crit": 2,
+        "agility": 2,
+        "cdr": 1,
+    },
+    "huyet_ha": {
+        "atk_physical": 2,
+        "lifesteal": 3,
+        "damage_bonus": 2,
+        "regen": 1,
+    },
+    "than_tuong": {
+        "atk_magic": 3,
+        "cast_speed": 2,
+        "cdr": 2,
+        "mana_regen": 1,
+    },
+    "to_van": {
+        "atk_team": 3,
+        "mana_regen": 2,
+        "cdr": 1,
+        "control": 1,
+    },
+    "cuu_linh": {
+        "atk_magic": 2,
+        "control": 2,
+        "mana_regen": 2,
+    },
+    "thiet_y": {
+        "defense": 3,
+        "hp": 3,
+        "damage_reduce": 2,
+    },
+}
+
+
+def _choose_stat_keys_for_item(rarity: str, is_armor: bool, user_class: str | None):
+    low, high = RARITY_STAT_ROLLS.get(rarity, (0, 0))
+    if high == 0:
+        return []
+    count = random.randint(low, high)
+    pool = ARMOR_STAT_POOL if is_armor else WEAPON_STAT_POOL
+    keys = list(pool.keys())
+
+    weight = CLASS_STAT_WEIGHT.get(user_class or "", {})
+    weighted = []
+    for k in keys:
+        w = weight.get(k, 1)
+        weighted.extend([k] * w)
+
+    chosen = set()
+    # ưu tiên bằng weighted
+    while len(chosen) < count and weighted:
+        chosen.add(random.choice(weighted))
+    # nếu còn thiếu thì bốc thêm từ pool
+    while len(chosen) < count and keys:
+        chosen.add(random.choice(keys))
+    return list(chosen)
+
+
+def _roll_stat_value(code: str, is_armor: bool):
+    pool = ARMOR_STAT_POOL if is_armor else WEAPON_STAT_POOL
+    label, (mn, mx) = pool[code]
+    val = random.randint(mn, mx)
+    if code in (
+        "crit", "agility", "cast_speed", "lifesteal", "cdr",
+        "damage_bonus", "damage_reduce", "control", "atk_team", "all_bonus"
+    ):
+        return label, f"{val}%"
+    return label, val
+
+
+def build_item_stats(item: dict, user_class: str | None):
+    rarity = item.get("rarity", "D")
+    item_type = (item.get("type") or "").lower()
+    is_armor = item_type in ("áo giáp", "ao giap", "giáp", "giap", "armor")
+    stat_codes = _choose_stat_keys_for_item(rarity, is_armor, user_class)
+    stats = []
+    for code in stat_codes:
+        label, v = _roll_stat_value(code, is_armor)
+        stats.append({"code": code, "label": label, "val": v})
+    item["stats"] = stats
+    return item
+
+
+# ===================================================================
+# 2) TÍNH LỰC CHIẾN
+# ===================================================================
+def _calc_item_luc_chien(it: dict) -> int:
+    base = 800
+    perfect = int(it.get("perfect", 0))
+    stats = it.get("stats", [])
+    lc = base + perfect * 40 + len(stats) * 200
+    if it.get("hoan_hao"):
+        lc = int(lc * 1.1)
+    return lc
+
+
+# ===================================================================
+# 3) SINH ITEM ĐẦY ĐỦ
+# ===================================================================
+def generate_item_full(rarity: str, user: dict, current_items: list):
+    """Sinh 1 item đầy đủ: đúng loại, đúng phái, có chỉ số, Hoàn mỹ, Lực chiến, Lore khớp."""
+    # 1️⃣ Gọi hàm gốc tạo khung
+    it = generate_item(rarity, current_items)  # hàm gốc của bạn
+
+    # 2️⃣ Xác định phái và loại
+    user_class = user.get("class")
+    item_type = (it.get("type") or "").lower()
+    is_armor = item_type in ("áo giáp", "ao giap", "giáp", "armor")
+
+    # 3️⃣ Chọn tên & lore đúng nhóm
+    if is_armor:
+        pool_key = "ao_giap_chung"
+        type_name = "Áo Giáp"
+    else:
+        # map phái → pool tương ứng
+        pool_map = {
+            "toai_mong": ("kiem_toai_mong", "Kiếm"),
+            "huyet_ha": ("thuong_huyet_ha", "Thương"),
+            "than_tuong": ("dan_than_tuong", "Đàn"),
+            "to_van": ("lua_to_van", "Dải Lụa"),
+            "cuu_linh": ("truong_cuu_linh", "Trượng"),
+            "thiet_y": ("gang_thiet_y", "Găng Tay"),
+        }
+        pool_key, type_name = pool_map.get(user_class, ("ao_giap_chung", "Áo Giáp"))
+
+        # Nếu chưa chọn phái → random 1 loại bất kỳ
+        if not user_class:
+            random_pool = random.choice(list({
+                "kiem_toai_mong": "Kiếm",
+                "thuong_huyet_ha": "Thương",
+                "dan_than_tuong": "Đàn",
+                "truong_cuu_linh": "Trượng",
+                "lua_to_van": "Dải Lụa",
+                "gang_thiet_y": "Găng Tay",
+            }.items()))
+            pool_key, type_name = random_pool
+
+    name, lore = random.choice(ITEM_NAME_POOLS[pool_key])
+    it["name"] = name
+    it["lore"] = lore
+    it["type"] = type_name
+
+    # 4️⃣ Độ hoàn mỹ & dòng Hoàn Hảo
+    if rarity == "S":
+        it["perfect"] = random.randint(61, 100)
+        it["hoan_hao"] = (random.random() < 0.05)
+    elif rarity == "A":
+        it["perfect"] = random.randint(1, 60)
+        it["hoan_hao"] = False
+    else:
+        it["perfect"] = 0
+        it["hoan_hao"] = False
+
+    # 5️⃣ Gán phái (vũ khí mới có, giáp để None)
+    if is_armor:
+        it["phai"] = None
+    else:
+        it["phai"] = user_class  # để dạng key như 'than_tuong', 'toai_mong'
+
+    # 6️⃣ Roll stats + tính lực chiến
+    build_item_stats(it, user_class)
+    it["luc_chien"] = _calc_item_luc_chien(it)
+
+    return it
+
+
+
+# ===================================================================
+# 4) MỞ 1 RƯƠNG
+# ===================================================================
+# =========================================================
+# HÀM MỞ 1 RƯƠNG (BẢN MỚI)
+# trả về: gp, xu_gain, tv_dict, item_or_None
+# =========================================================
+def _open_one_chest(user: dict, r: str):
+    # trừ rương
+    user["rungs"][r] = int(user["rungs"].get(r, 0)) - 1
+
+    # NP cố định theo phẩm
+    gp = NP_BY_CHEST.get(r, 0)
+    user["ngan_phi"] = int(user.get("ngan_phi", 0)) + gp
+
+    # Xu ngẫu nhiên theo phẩm
+    xr = XU_RANGE_BY_CHEST.get(r, (0, 0))
+    xu_gain = random.randint(xr[0], xr[1]) if xr[1] >= xr[0] else 0
+    user["xu"] = int(user.get("xu", 0)) + xu_gain
+
+    # tạp vật
+    tv = {"rarity": r, "count": 1}
+
+    # rơi trang bị hiếm
+    item = None
+    prob = ITEM_DROP_RATE_BY_CHEST.get(r, 0.0)
+    if prob > 0 and (random.random() < prob):
+        item = generate_item_full(r, user, user["items"])
+        user["items"].append(item)
+
+    return gp, xu_gain, tv, item
+
+
+# =========================================================
+# CÁC HẰNG SỐ PHỤ CHO MỞ RƯƠNG
+# =========================================================
+
+# emoji Ngân Phiếu bạn đang dùng
+NP_EMOJI = "<a:np:1431713164277448888>"
+# emoji Xu bạn đang dùng
+XU_EMOJI = "<a:tienxu:1431717943980589347>"
+# emoji Hoàn mỹ (nếu bạn có emoji riêng thì thay ở đây)
+HOAN_MY_EMOJI = "💠"
+# emoji Lực chiến (cái bạn gửi)
+LC_EMOJI = "<:3444:1434780655794913362>"
+
+# ====== PHÁI HIỂN THỊ CÓ DẤU ======
+PHAI_LABEL_FROM_KEY = {
+    "thiet_y": "Thiết Y",
+    "huyet_ha": "Huyết Hà",
+    "than_tuong": "Thần Tương",
+    "to_van": "Tố Vấn",
+    "cuu_linh": "Cửu Linh",
+    "toai_mong": "Toái Mộng",
+}
+
+
+# tạp vật theo phẩm rương
+TAP_VAT_EMOJI = {
+    "S": "💎",
+    "A": "💍",
+    "B": "🐚",
+    "C": "🪨",
+    "D": "🪵",
+}
+
+# tỉ lệ rơi TRANG BỊ khi mở rương theo phẩm
+ITEM_DROP_RATE_BY_CHEST = {
+    "S": 0.20,
+    "A": 0.10,
+    "B": 0.05,
+    "C": 0.03,
+    "D": 0.01,
+}
+
+# số Xu ngẫu nhiên khi mở rương theo phẩm
+XU_RANGE_BY_CHEST = {
+    "S": (10, 40),
+    "A": (5, 15),
+    "B": (2, 6),
+    "C": (1, 3),
+    "D": (0, 1),
+}
+
+# số NP nhận khi mở rương theo phẩm (giữ gần giống bản bạn đang dùng)
+NP_BY_CHEST = {
+    "S": 5000,
+    "A": 2000,
+    "B": 800,
+    "C": 300,
+    "D": 100,
+}
+
+
+# ---------------------------------------------------------------------------------
+
+def generate_item_for_user(rarity: str, user: dict, current_items: list):
+    """
+    Sinh 1 trang bị theo phẩm, nếu user chưa có phái thì để item['phai'] = None
+    để sau này gia nhập phái rồi vẫn dùng được.
+    """
+    it = generate_item(rarity, current_items)  # hàm cũ của bạn
+    # đảm bảo có field phai
+    user_class = user.get("class") or user.get("phai")
+    if not user_class:
+        # chưa có phái → để None
+        it["phai"] = None
+    else:
+        # đã có phái → gán phái của user vào vũ khí, giáp thì cho dùng chung
+        # nếu bạn có it["type"] để phân biệt thì làm kỹ hơn:
+        it_type = (it.get("type") or "").lower()
+        if it_type in ("áo giáp", "ao giap", "giáp", "armor"):
+            it["phai"] = None
+        else:
+            it["phai"] = user_class
+    return it
+
+# ---------------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------------
+# K. LỆNH OKHO – XEM KHO
+# ---------------------------------------------------------------------------------
+
+
+
+
+# ===================== KHO CÓ NÚT LẬT TRANG =====================
+
+# =========================================================
+# KHO + VIEW
+# =========================================================
+
+def build_kho_embed(owner_name: str, user: dict, items: list, page_idx: int,
+                    page_size: int = 10, total_pages: int = 1) -> discord.Embed:
+    start = page_idx * page_size
+    page_items = items[start:start + page_size]
+
+    emb = make_embed(
+        f"📦 {owner_name} — Kho Nhân Vật",
+        color=0x3498DB,
+        footer=f"Trang {page_idx+1}/{total_pages}"
+    )
+
+    # Rương
+    total_r = sum(int(user["rungs"].get(k, 0)) for k in ["D", "C", "B", "A", "S"])
+    rtext = (
+        f"{RARITY_CHEST_EMOJI['D']} {format_num(user['rungs'].get('D',0))}   "
+        f"{RARITY_CHEST_EMOJI['C']} {format_num(user['rungs'].get('C',0))}   "
+        f"{RARITY_CHEST_EMOJI['B']} {format_num(user['rungs'].get('B',0))}   "
+        f"{RARITY_CHEST_EMOJI['A']} {format_num(user['rungs'].get('A',0))}   "
+        f"{RARITY_CHEST_EMOJI['S']} {format_num(user['rungs'].get('S',0))}"
+    )
+    emb.add_field(name=f"Rương hiện có — {format_num(total_r)}", value=rtext, inline=False)
+
+    # Tài sản
+    emb.add_field(
+        name="Tài sản",
+        value=(
+            f"{NP_EMOJI} Ngân Phiếu: **{format_num(user.get('ngan_phi',0))}**\n"
+            f"{XU_EMOJI} Tiền Xu: **{format_num(user.get('xu',0))}**"
+        ),
+        inline=False
+    )
+
+    # Tạp vật
+    tv = user["tap_vat"]
+    tv_line = (
+        f"{TAP_VAT_EMOJI['D']} x{format_num(tv['D'])}   "
+        f"{TAP_VAT_EMOJI['C']} x{format_num(tv['C'])}   "
+        f"{TAP_VAT_EMOJI['B']} x{format_num(tv['B'])}   "
+        f"{TAP_VAT_EMOJI['A']} x{format_num(tv['A'])}   "
+        f"{TAP_VAT_EMOJI['S']} x{format_num(tv['S'])}"
+    )
+    emb.add_field(name="Tạp Vật", value=tv_line, inline=False)
+
+    # Trang bị (10 cái / trang)
+    if page_items:
+        lines = []
+        for it in page_items:
+            lines.append(
+                f"{RARITY_EMOJI.get(it['rarity'],'')} `{it['id']}` {it['name']} "
+                f"💠{it.get('perfect',0)}% {LC_EMOJI}{format_num(it.get('luc_chien',0))}"
+            )
+        emb.add_field(name="Trang bị", value="\n".join(lines), inline=False)
+    else:
+        emb.add_field(name="Trang bị", value="Không có vật phẩm", inline=False)
+
+    # Thống kê
+    st = user.get("stats", {})
+    stats_text = (
+        f"Rương đã mở: {format_num(st.get('opened',0))}\n"
+        f"Số lần thám hiểm: {format_num(st.get('ol_count',0))}\n"
+        f"{NP_EMOJI} Tổng NP kiếm được: {format_num(st.get('ngan_phi_earned_total',0))}"
+    )
+    emb.add_field(name="📊 Thống kê", value=stats_text, inline=False)
+
+    return emb
+
+
+class KhoView(discord.ui.View):
+    def __init__(self, owner_id: str, owner_name: str, user: dict, items: list, page_size: int = 10):
+        super().__init__(timeout=120)
+        self.owner_id = owner_id
+        self.owner_name = owner_name
+        self.user = user
+        self.items = items
+        self.page_size = page_size
+        self.page_idx = 0
+        self.total_pages = max(1, (len(items)-1)//page_size + 1)
+
+    async def update_message(self, interaction: discord.Interaction):
+        emb = build_kho_embed(
+            self.owner_name,
+            self.user,
+            self.items,
+            self.page_idx,
+            self.page_size,
+            self.total_pages,
+        )
+        await interaction.response.edit_message(embed=emb, view=self)
+
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
+    async def prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.owner_id:
+            await interaction.response.send_message("Không phải kho của bạn.", ephemeral=True)
+            return
+        if self.page_idx > 0:
+            self.page_idx -= 1
+        await self.update_message(interaction)
+
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.owner_id:
+            await interaction.response.send_message("Không phải kho của bạn.", ephemeral=True)
+            return
+        if self.page_idx < self.total_pages - 1:
+            self.page_idx += 1
+        await self.update_message(interaction)
+
+
+@bot.command(name="kho", aliases=["okho"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_okho(ctx):
+    uid = str(ctx.author.id)
+    data = ensure_user(uid)
+    user = data["users"][uid]
+    _ensure_economy_fields(user)
+
+    # chỉ lấy đồ chưa mặc
+    items_show = [it for it in user["items"] if not it.get("equipped")]
+    total_pages = max(1, (len(items_show)-1)//10 + 1)
+
+    emb = build_kho_embed(ctx.author.display_name, user, items_show, page_idx=0, page_size=10, total_pages=total_pages)
+    view = KhoView(uid, ctx.author.display_name, user, items_show, page_size=10)
+    await ctx.send(embed=emb, view=view)
+# ---------------------------------------------------------------------------------
+# L. LỆNH OBAN – BÁN TẠP VẬT → NP
+# ---------------------------------------------------------------------------------
+@bot.command(name="ban", aliases=["oban"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_oban(ctx, *args):
+    """
+    bán tạp vật lấy NP
+    - oban            → bán hết
+    - oban <d|c|b|a|s> all  → bán 1 phẩm
+    """
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+    _ensure_economy_fields(user)
+    args = [a.lower() for a in args]
+
+    def _sell_tv(r: str, qty: int) -> int:
+        lo, hi = TAP_VAT_SELL_NP_RANGE.get(r, (0, 0))
+        total = 0
+        for _ in range(qty):
+            total += random.randint(lo, hi) if hi >= lo else 0
+        user["tap_vat"][r] -= qty
+        user["ngan_phi"] = int(user.get("ngan_phi", 0)) + total
+        return total
+
+    # bán hết
+    if not args:
+        have = False
+        lines = []
+        total_np = 0
+        for r in ["S", "A", "B", "C", "D"]:
+            qty = int(user["tap_vat"].get(r, 0))
+            if qty > 0:
+                have = True
+                gain = _sell_tv(r, qty)
+                total_np += gain
+                lines.append(f"{TAP_VAT_EMOJI[r]} x{qty} → {NP_EMOJI} +{format_num(gain)}")
+        if not have:
+            await ctx.reply("Bạn không có Tạp Vật để bán.", mention_author=False)
+            return
+        save_data(data)
+        await ctx.send(embed=make_embed(
+            "🧾 Bán Tạp Vật",
+            " • " + "\n • ".join(lines) + f"\n\nTổng: {NP_EMOJI} **{format_num(total_np)}**",
+            color=0xE67E22,
+            footer=ctx.author.display_name
+        ))
+        return
+
+    # oban <r> all
+    if len(args) == 2 and args[1] == "all" and args[0] in {"d", "c", "b", "a", "s"}:
+        r = args[0].upper()
+        qty = int(user["tap_vat"].get(r, 0))
+        if qty <= 0:
+            await ctx.reply(f"Bạn không có Tạp Vật phẩm {r}.", mention_author=False)
+            return
+        gain = _sell_tv(r, qty)
+        save_data(data)
+        await ctx.send(embed=make_embed(
+            "🧾 Bán Tạp Vật",
+            f"{TAP_VAT_EMOJI[r]} x{qty} → {NP_EMOJI} **+{format_num(gain)}**",
+            color=RARITY_COLOR.get(r, 0x95A5A6),
+            footer=ctx.author.display_name
+        ))
+        return
+
+    await ctx.reply("Dùng: `oban` (bán hết) hoặc `oban <D|C|B|A|S> all`", mention_author=False)
+
+# ---------------------------------------------------------------------------------
+# M. LỆNH OBANTRANGBI – BÁN TRANG BỊ → XU
+# ---------------------------------------------------------------------------------
+@bot.command(name="bantrangbi", aliases=["obantrangbi"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_obantrangbi(ctx, *args):
+    """
+    bán trang bị rảnh để lấy Xu
+    - obantrangbi all
+    - obantrangbi <D|C|B|A|S> all
+    """
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+    _ensure_economy_fields(user)
+    args = [a.lower() for a in args]
+
+    def settle(lst):
+        total_xu = 0
+        for it in lst:
+            sx = int(it.get("sell_xu", 0))
+            if sx <= 0:
+                lo, hi = EQUIP_SELL_XU_RANGE.get(it["rarity"], (0, 0))
+                sx = random.randint(lo, hi) if hi >= lo else 0
+                it["sell_xu"] = sx
+            total_xu += sx
+        user["xu"] = int(user.get("xu", 0)) + total_xu
+        user.setdefault("stats", {})
+        user["stats"]["sold_count"] = int(user["stats"].get("sold_count", 0)) + len(lst)
+        user["stats"]["sold_value_total"] = int(user["stats"].get("sold_value_total", 0)) + total_xu
+        return total_xu
+
+    if not args:
+        await ctx.reply("Cú pháp: `obantrangbi all` hoặc `obantrangbi <D|C|B|A|S> all`", mention_author=False)
+        return
+
+    if args[0] == "all":
+        sell = [it for it in user["items"] if not it.get("equipped")]
+        if not sell:
+            await ctx.reply("Không có trang bị rảnh để bán.", mention_author=False)
+            return
+        total = settle(sell)
+        user["items"] = [it for it in user["items"] if it.get("equipped")]
+        save_data(data)
+        await ctx.send(embed=make_embed(
+            "🧾 Bán trang bị",
+            f"Đã bán **{len(sell)}** món — Nhận {XU_EMOJI} **{format_num(total)}**",
+            color=0xE67E22,
+            footer=ctx.author.display_name
+        ))
+        return
+
+    if len(args) == 2 and args[1] == "all" and args[0].upper() in ["D", "C", "B", "A", "S"]:
+        rar = args[0].upper()
+        sell = [it for it in user["items"] if (it["rarity"] == rar and not it.get("equipped"))]
+        if not sell:
+            await ctx.reply(f"Không có trang bị phẩm chất {rar} để bán.", mention_author=False)
+            return
+        total = settle(sell)
+        user["items"] = [it for it in user["items"] if not (it["rarity"] == rar and not it.get("equipped"))]
+        save_data(data)
+        await ctx.send(embed=make_embed(
+            "🧾 Bán trang bị",
+            f"Đã bán **{len(sell)}** món {rar} — Nhận {XU_EMOJI} **{format_num(total)}**",
+            color=RARITY_COLOR.get(rar, 0x95A5A6),
+            footer=ctx.author.display_name
+        ))
+        return
+
+    await ctx.reply("Cú pháp không hợp lệ. Ví dụ: `obantrangbi all` hoặc `obantrangbi D all`.", mention_author=False)
+# ====================================================================================================================================
+
+
+@bot.command(name="thao", aliases=["othao"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_othao(ctx, item_id: str = None):
+    if item_id is None:
+        await ctx.reply("📝 Cách dùng: `thao <ID>` (xem ID trong `okho`).", mention_author=False)
+        return
+
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+
+    # phòng dữ liệu cũ
+    if "equipped" not in user:
+        user["equipped"] = {"slot_vukhi": None, "slot_aogiap": None}
+    else:
+        user["equipped"].setdefault("slot_vukhi", None)
+        user["equipped"].setdefault("slot_aogiap", None)
+
+    # tìm item theo ID
+    items = user.get("items", [])
+    target = next((it for it in items if it.get("id") == item_id), None)
+    if not target:
+        await ctx.reply("❗ Không tìm thấy vật phẩm với ID đó.", mention_author=False)
+        return
+
+    if not target.get("equipped"):
+        await ctx.reply("⚠️ Vật phẩm này hiện không được mặc.", mention_author=False)
+        return
+
+    # xác định loại để map sang slot đúng
+    item_type = (target.get("type") or "").lower()
+    is_armor = item_type in ("áo giáp", "ao giap", "giáp", "giap", "armor")
+
+    # nếu mày có slot_of thì vẫn gọi, rồi map lại
+    raw_slot = slot_of(target["type"]) if "slot_of" in globals() else ("armor" if is_armor else "weapon")
+
+    if raw_slot in ("weapon", "vukhi"):
+        slot_key = "slot_vukhi"
+    elif raw_slot in ("armor", "aogiap", "giap"):
+        slot_key = "slot_aogiap"
+    else:
+        # fallback
+        slot_key = raw_slot
+
+    # tháo
+    user["equipped"][slot_key] = None
+    target["equipped"] = False
+    save_data(data)
+
+    emb = make_embed(
+        title="🪶 Tháo trang bị",
+        description=f"Đã tháo **{target['name']}** (ID `{target['id']}`). Kiểm tra lại `okho`.",
+        color=0x95A5A6,
+        footer=ctx.author.display_name
+    )
+    await ctx.send(embed=emb)
+
+
+
+
+
+
+# ================================================================
+# 🔽 ADD-ON GAMEPLAY BT-1727-KIM
+# (dán xuống cuối file bot hiện tại của bạn)
+# ================================================================
+import random
+import math
+import discord
+from discord.ext import commands
+
+# ------------------------------------------------
+# 1) BẢNG RANGE STAT THEO PHẨM & LOẠI ĐỒ
+# ------------------------------------------------
+# Đây là con số mẫu để bạn vặn sau. Ý tưởng:
+# - Vũ khí: chỉ công/tốc
+# - Giáp  : chỉ thủ/sống sót
+WEAPON_STAT_RANGE = {
+    "S": {
+        "atk_physical": (520, 720),
+        "atk_magic": (520, 720),
+        "atk_team": (120, 180),
+        "crit": (9, 15),           # %
+        "agility": (7, 12),        # %
+        "cast_speed": (7, 12),     # %
+        "lifesteal": (5, 10),      # %
+        "mana_regen": (6, 12),
+        "cdr": (6, 10),            # %
+        "damage_bonus": (6, 12),   # %
+        "control": (6, 10),        # %
+    },
+    "A": {
+        "atk_physical": (280, 400),
+        "atk_magic": (280, 400),
+        "atk_team": (70, 120),
+        "crit": (6, 10),
+        "agility": (4, 8),
+        "cast_speed": (4, 8),
+        "lifesteal": (3, 7),
+        "mana_regen": (4, 8),
+        "cdr": (3, 6),
+        "damage_bonus": (3, 6),
+        "control": (3, 5),
+    },
+}
+
+ARMOR_STAT_RANGE = {
+    "S": {
+        "defense": (180, 260),
+        "res_magic": (9, 15),      # %
+        "hp": (2800, 3500),
+        "regen": (5, 9),           # HP/5s
+        "damage_reduce": (4, 7),   # %
+        "control": (4, 7),         # kháng khống
+        "agility": (2, 4),
+        "mana_regen": (4, 8),
+    },
+    "A": {
+        "defense": (110, 170),
+        "res_magic": (5, 10),
+        "hp": (1600, 2300),
+        "regen": (3, 6),
+        "damage_reduce": (2, 4),
+        "control": (2, 4),
+        "agility": (1, 3),
+        "mana_regen": (2, 5),
+    },
+}
+
+# map mã stat -> text hiển thị
+STAT_LABEL = {
+    "atk_physical": "Tấn công vật lý",
+    "atk_magic": "Tấn công phép",
+    "atk_team": "Tấn công nhóm",
+    "crit": "Chí mạng",
+    "control": "Khống chế",
+    "defense": "Phòng thủ",
+    "res_magic": "Kháng phép",
+    "hp": "Máu tối đa",
+    "regen": "Phục hồi",
+    "damage_reduce": "Giảm sát thương nhận",
+    "lifesteal": "Hút máu",
+    "mana_regen": "Hồi năng lượng",
+    "agility": "Nhanh nhẹn",
+    "cast_speed": "Tốc độ ra chiêu",
+    "cdr": "Giảm hồi chiêu",
+    "damage_bonus": "Tăng sát thương tổng",
+    "all_bonus": "Dòng Toàn Diện",
+}
+
+# ------------------------------------------------
+# 2) BẢNG WEIGHT THEO MÔN PHÁI
+# ------------------------------------------------
+CLASS_STAT_WEIGHT = {
+    # sát thủ kiếm
+    "Toái Mộng": {
+        "atk_physical": 3,
+        "crit": 3,
+        "agility": 2,
+        "cdr": 1,
+    },
+    # thương đấu sĩ hút máu
+    "Huyết Hà": {
+        "atk_physical": 2,
+        "lifesteal": 3,
+        "damage_bonus": 2,
+        "control": 1,
+    },
+    # đàn phép
+    "Thần Tương": {
+        "atk_magic": 3,
+        "crit": 2,
+        "cast_speed": 2,
+        "mana_regen": 1,
+    },
+    # trượng khống chế
+    "Cửu Linh": {
+        "atk_magic": 2,
+        "control": 3,
+        "mana_regen": 2,
+        "cdr": 1,
+    },
+    # dải lụa support
+    "Tố Vấn": {
+        "atk_team": 3,
+        "mana_regen": 2,
+        "cdr": 1,
+        "regen": 1,
+    },
+    # găng tay tanker
+    "Thiết Y": {
+        # vũ khí vẫn công, nhưng giáp ưu tiên thủ
+        "defense": 3,
+        "hp": 3,
+        "damage_reduce": 2,
+        "control": 1,
+    },
+}
+
+
+# ------------------------------------------------
+# 4) HÀM SINH CHỈ SỐ CHO ITEM
+# (gọi chỗ bạn generate_item(...))
+# ------------------------------------------------
+def _rand_from_range(rng):
+    return random.randint(rng[0], rng[1])
+
+def fill_stats_for_item(item: dict):
+    """
+    Bổ sung stats + lực chiến + lore cho item mới sinh.
+    item phải có:
+        rarity, type, name, phai (có thể None)
+    """
+    rarity = item.get("rarity", "D")
+    it_type = item.get("type", "")
+    phai = item.get("phai")  # môn phái dùng
+
+    # xác định là vũ khí hay giáp
+    is_weapon = it_type not in ("Áo Giáp", "Giáp", "Giáp chung")
+
+    stats = []
+    # xác định pool theo loại + phẩm
+    if is_weapon and rarity in WEAPON_STAT_RANGE:
+        pool = WEAPON_STAT_RANGE[rarity]
+        # số dòng theo phẩm
+        line_count = 5 if rarity == "S" else 3
+        # lấy weight theo phái để ưu tiên
+        weights = CLASS_STAT_WEIGHT.get(phai, {})
+        # chọn random stat có ưu tiên
+        possible = list(pool.keys())
+        chosen = []
+        for _ in range(line_count):
+            stat = random.choices(
+                population=possible,
+                weights=[weights.get(s, 1) for s in possible],
+                k=1
+            )[0]
+            if stat in chosen:
+                continue
+            rng = pool[stat]
+            val = _rand_from_range(rng)
+            stats.append({"code": stat, "label": STAT_LABEL.get(stat, stat), "val": val})
+            chosen.append(stat)
+
+    elif (not is_weapon) and rarity in ARMOR_STAT_RANGE:
+        pool = ARMOR_STAT_RANGE[rarity]
+        line_count = 5 if rarity == "S" else 3
+        possible = list(pool.keys())
+        chosen = []
+        # giáp chung thì coi như không ưu tiên phái
+        for _ in range(line_count):
+            stat = random.choice(possible)
+            if stat in chosen:
+                continue
+            rng = pool[stat]
+            val = _rand_from_range(rng)
+            stats.append({"code": stat, "label": STAT_LABEL.get(stat, stat), "val": val})
+            chosen.append(stat)
+
+    item["stats"] = stats
+
+    # 💫 5% chance Hoàn Hảo cho S
+    item["hoan_hao"] = False
+    if rarity == "S" and random.random() < 0.05:
+        item["hoan_hao"] = True
+
+    # LORE: ưu tiên theo tên
+    lore = ITEM_LORE_BY_NAME.get(item.get("name", ""), None)
+    if lore:
+        item["lore"] = lore
+
+    # tính lực chiến
+    item["luc_chien"] = calc_luc_chien(item)
+    return item
+
+
+# ------------------------------------------------
+# 5) HÀM TÍNH LỰC CHIẾN
+# ------------------------------------------------
+STAT_LC_WEIGHT = {
+    # công
+    "atk_physical": 1.0,
+    "atk_magic": 1.0,
+    "atk_team": 0.6,
+    "crit": 35,
+    "agility": 25,
+    "cast_speed": 25,
+    "cdr": 30,
+    "damage_bonus": 40,
+    "lifesteal": 35,
+    # thủ
+    "defense": 2.0,
+    "hp": 0.9,
+    "res_magic": 40,
+    "damage_reduce": 50,
+    "regen": 15,
+    "control": 30,
+    "mana_regen": 15,
+    "all_bonus": 80,
+}
+
+def calc_luc_chien(item: dict) -> int:
+    base = 0
+    for st in item.get("stats", []):
+        code = st["code"]
+        val = st["val"]
+        w = STAT_LC_WEIGHT.get(code, 1)
+        base += val * w
+
+    # bonus từ hoàn mỹ
+    perfect = int(item.get("perfect", item.get("hoan_my", 50)))
+    base = int(base * (1 + perfect / 200.0))  # perfect 100% → x1.5
+
+    # bonus dòng Hoàn Hảo
+    if item.get("hoan_hao"):
+        base = int(base * 1.10)
+
+    return max(1, base)
+# ------------------------------------------------
+# ------------------------------------------------
+# ------------------------------------------------
+# ------------------------------------------------
+
+# đảm bảo có bảng tên phái hiển thị
+PHAI_LABEL_FROM_KEY = {
+    "thiet_y": "Thiết Y",
+    "huyet_ha": "Huyết Hà",
+    "than_tuong": "Thần Tương",
+    "to_van": "Tố Vấn",
+    "cuu_linh": "Cửu Linh",
+    "toai_mong": "Toái Mộng",
+}
+
+@bot.command(name="mac", aliases=["omac"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_omac(ctx, item_id: str = None):
+    if not item_id:
+        await ctx.reply("📝 Cách dùng: `mac <ID>` (xem ID trong `okho`).", mention_author=False)
+        return
+
+    uid = str(ctx.author.id)
+    data = ensure_user(uid)
+    user = data["users"][uid]
+    _ensure_economy_fields(user)
+
+    # luôn có 2 slot này
+    user.setdefault("equipped", {
+        "slot_vukhi": None,
+        "slot_aogiap": None,
+    })
+
+    # tìm item trong kho
+    items = user.get("items", [])
+    item = next((it for it in items if it.get("id") == item_id), None)
+    if not item:
+        await ctx.reply("❗ Không tìm thấy vật phẩm với ID đó.", mention_author=False)
+        return
+
+    # xác định loại để tự chọn slot (KHÔNG dùng slot_of nữa)
+    it_type = (item.get("type") or "").lower()
+    is_armor = it_type in ("áo giáp", "ao giap", "giáp", "giap", "armor")
+
+    # ===== chặn theo môn phái =====
+    user_phai = user.get("class")
+    item_phai = item.get("phai") or item.get("class")
+
+    if not is_armor:
+        # đây là vũ khí
+        if item_phai and not user_phai:
+            await ctx.reply(
+                "⚠️ Bạn chưa gia nhập môn phái nên không thể mặc vũ khí này.\n"
+                "Dùng `omonphai` để gia nhập trước.",
+                mention_author=False,
+            )
+            return
+        if item_phai and user_phai and item_phai != user_phai:
+            nice_user = PHAI_LABEL_FROM_KEY.get(user_phai, user_phai)
+            nice_item = PHAI_LABEL_FROM_KEY.get(item_phai, item_phai)
+            await ctx.reply(
+                f"🚫 Vũ khí này dành cho phái **{nice_item}**, bạn đang là **{nice_user}**.",
+                mention_author=False,
+            )
+            return
+
+    # ===== chọn slot =====
+    if is_armor:
+        slot = "slot_aogiap"
+    else:
+        slot = "slot_vukhi"
+
+    # slot đang bận thì báo
+    cur_id = user["equipped"].get(slot)
+    if cur_id:
+        cur_item = next((it for it in items if it.get("id") == cur_id), None)
+        if cur_item:
+            await ctx.reply(
+                f"🔧 Slot này đang mặc **{cur_item['name']}** (ID `{cur_item['id']}`).\n"
+                f"Dùng `othao {cur_item['id']}` để tháo trước.",
+                mention_author=False,
+            )
+            return
+
+    # ===== mặc =====
+    item["equipped"] = True
+    user["equipped"][slot] = item["id"]
+    save_data(data)
+
+    emo = RARITY_EMOJI.get(item.get("rarity", "D"), "🔸")
+    emb = make_embed(
+        title="🪄 Mặc trang bị",
+        description=f"Bạn đã mặc {emo} **{item['name']}** (ID `{item['id']}`)",
+        color=RARITY_COLOR.get(item.get("rarity", "D"), 0x00FFFF),
+        footer=ctx.author.display_name,
+    )
+    await ctx.send(embed=emb)
+# ------------------------------------------------
+
+# ------------------------------------------------
+# 7) LỆNH XEM ONHANVAT
+# ------------------------------------------------
+
+
+# map key → tên phái có dấu (dùng chung với oxem)
+PHAI_LABELS = {
+    "thiet_y": "Thiết Y",
+    "huyet_ha": "Huyết Hà",
+    "than_tuong": "Thần Tương",
+    "to_van": "Tố Vấn",
+    "cuu_linh": "Cửu Linh",
+    "toai_mong": "Toái Mộng",
+}
+
+@bot.command(name="nhanvat", aliases=["onhanvat"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_onhanvat(ctx):
+    uid = str(ctx.author.id)
+    data = ensure_user(uid)
+    user = data["users"][uid]
+    _ensure_economy_fields(user)
+
+    # lực chiến tổng từ đồ đang mặc
+    lc = calc_user_luc_chien(user)
+
+    # phái hiển thị có dấu
+    user_class_key = user.get("class")
+    user_class_label = PHAI_LABELS.get(user_class_key, "Chưa chọn")
+
+    # tạo embed
+    emb = make_embed(
+        f"👤 Nhân vật — {ctx.author.display_name}",
+        color=0x9B59B6,
+        footer=f"Yêu cầu bởi {ctx.author.display_name}",
+    )
+
+    # thêm field thông tin
+    emb.add_field(
+        name="Thông tin",
+        value=f"**Môn phái:** {user_class_label} Lực chiến<:3444:1434780655794913362> **{lc:,}**",
+        inline=True,
+    )
+
+    await ctx.reply(embed=emb, mention_author=False)
+
+
+
+    eq = user.get("equipped", {})
+
+    # ===== vũ khí =====
+    weapon_val = "— Chưa mặc —"
+    if eq.get("slot_vukhi"):
+        it = next((x for x in user["items"] if x["id"] == eq["slot_vukhi"]), None)
+        if it:
+            lines = []
+            # dòng tên
+            lines.append(
+                f"{RARITY_EMOJI.get(it['rarity'], '🔸')} {it['name']} (ID {it['id']})"
+            )
+            # hoàn mỹ + lực chiến
+            hm = int(it.get("perfect", it.get("hoan_my", 0)))
+            lc_item = int(it.get("luc_chien", 0))
+            lines.append(f"Hoàn mỹ: 💠 {hm}%   <:3444:1434780655794913362> {lc_item:,}")
+
+            # thuộc tính
+            stats = it.get("stats", [])
+            if stats:
+                for st in stats:
+                    label = st.get("label") or st.get("code")
+                    val = st.get("val")
+                    lines.append(f"+ {label} {val}")
+            # dòng hoàn hảo
+            if it.get("hoan_hao"):
+                lines.append("💫 Hoàn Hảo: +10% tất cả chỉ số")
+
+            weapon_val = "\n".join(lines)
+
+    emb.add_field(name="Trang bị: Vũ khí", value=weapon_val, inline=False)
+
+    # ===== áo giáp =====
+    armor_val = "— Chưa mặc —"
+    if eq.get("slot_aogiap"):
+        it = next((x for x in user["items"] if x["id"] == eq["slot_aogiap"]), None)
+        if it:
+            lines = []
+            lines.append(
+                f"{RARITY_EMOJI.get(it['rarity'], '🔸')} {it['name']} (ID {it['id']})"
+            )
+            hm = int(it.get("perfect", it.get("hoan_my", 0)))
+            lc_item = int(it.get("luc_chien", 0))
+            lines.append(f"Hoàn mỹ: 💠 {hm}%   <:3444:1434780655794913362> {lc_item:,}")
+
+            stats = it.get("stats", [])
+            if stats:
+                for st in stats:
+                    label = st.get("label") or st.get("code")
+                    val = st.get("val")
+                    lines.append(f"+ {label} {val}")
+            if it.get("hoan_hao"):
+                lines.append("💫 Hoàn Hảo: +10% tất cả chỉ số")
+
+            armor_val = "\n".join(lines)
+
+    emb.add_field(name="Trang bị: Giáp", value=armor_val, inline=False)
+
+    await ctx.reply(embed=emb, mention_author=False)
+
+
+def calc_user_luc_chien(user: dict) -> int:
+    """Cộng lực chiến từ các món đang mặc."""
+    total = 0
+    eq = user.get("equipped", {})
+    if not eq:
+        return 0
+    for slot in ("slot_vukhi", "slot_aogiap"):
+        iid = eq.get(slot)
+        if not iid:
+            continue
+        it = next((x for x in user.get("items", []) if x.get("id") == iid), None)
+        if it:
+            total += int(it.get("luc_chien", 0))
+    return total
+
+
+# ====================================================================================================================================
+# 🧍 XEM BẮT ĐẦU
+# ====================================================================================================================================
+
+# emoji phẩm chất giữ nguyên như file gốc
+RARITY_EMOJI = {
+    "D": "<a:D12:1432473477616505023>",
+    "C": "<a:C11:1432467636943454315>",
+    "B": "<a:B11:1432467633932075139>",
+    "A": "<a:A11:1432467623051919390>",
+    "S": "<a:S11:1432467644761509948>",
+}
+
+LC_EMOJI = "<:3444:1434780655794913362>"
+
+# emoji Xu nếu bạn chưa có ở trên thì thêm
+XU_EMOJI = "<a:tienxu:1431717943980589347>"
+
+# giá bán mặc định theo phẩm
+DEFAULT_SELL_XU_BY_RARITY = {
+    "S": 12_000,
+    "A": 6_800,
+    "B": 2_400,
+    "C": 900,
+    "D": 300,
+}
+
+# map key -> tên có dấu để hiển thị đẹp
+PHAI_LABELS = {
+    "thiet_y": "Thiết Y",
+    "huyet_ha": "Huyết Hà",
+    "than_tuong": "Thần Tương",
+    "to_van": "Tố Vấn",
+    "cuu_linh": "Cửu Linh",
+    "toai_mong": "Toái Mộng",
+}
+
+
+def _build_item_embed(ctx: commands.Context, item: dict, user_display_name: str = None) -> discord.Embed:
+    """Tạo 1 embed xem chi tiết 1 trang bị (dùng cho cả oxem ID và oxem all)."""
+    rarity = item.get("rarity", "D")
+    re = RARITY_EMOJI.get(rarity, "🟦")
+    name = item.get("name", "Vật phẩm không tên")
+    iid = item.get("id", "????")
+    perfect = int(item.get("perfect", 0))
+    luc_chien = int(item.get("luc_chien", 0))
+    it_type = item.get("type", "Trang bị")
+
+    # phái hiển thị có dấu
+    raw_phai = item.get("phai")
+    phai_hien = PHAI_LABELS.get(raw_phai, "Dùng chung") if raw_phai else "Dùng chung"
+
+    # lấy giá bán: ưu tiên trong item, không có thì lấy theo phẩm
+    raw_sell = item.get("sell_xu")
+    if raw_sell is None:
+        sell_xu = DEFAULT_SELL_XU_BY_RARITY.get(rarity, 0)
+    else:
+        sell_xu = int(raw_sell)
+
+    lore = item.get("lore")
+    hoan_hao = bool(item.get("hoan_hao", False))
+    stats = item.get("stats", [])
+
+    emb = make_embed(
+        title=f"{re} {name}",
+        description=(
+            f"ID: `{iid}`\n"
+            f"Hoàn mỹ: 💠 **{perfect}%**\n"
+            f"Lực chiến: {LC_EMOJI} **{format_num(luc_chien)}**"
+        ),
+        color=0x9B59B6,
+        footer=(user_display_name or ctx.author.display_name)
+    )
+
+    # Thuộc tính
+    if stats:
+        lines = []
+        for st in stats:
+            label = st.get("label") or st.get("code", "Thuộc tính")
+            val = st.get("val", 0)
+            lines.append(f"+ {label} {val}")
+        emb.add_field(name="Thuộc tính", value="\n".join(lines), inline=False)
+    else:
+        emb.add_field(name="Thuộc tính", value="(Trang bị này chưa có thuộc tính hiển thị)", inline=False)
+
+    # Dòng Hoàn Hảo
+    if hoan_hao:
+        emb.add_field(
+            name="💫 Hoàn Hảo",
+            value="+10% tất cả chỉ số của trang bị này",
+            inline=False
+        )
+
+    # Thông tin
+    info_lines = [
+        f"Loại: **{it_type}**",
+        f"Môn phái dùng: **{phai_hien}**",
+        f"Giá bán: {XU_EMOJI} **{format_num(sell_xu)}** Xu",
+    ]
+    emb.add_field(name="Thông tin", value="\n".join(info_lines), inline=False)
+
+    # Lore
+    if lore:
+        emb.add_field(name="Mô tả", value=lore, inline=False)
+
+    return emb
+
+
+class OxemAllView(discord.ui.View):
+    def __init__(self, ctx: commands.Context, items: list):
+        super().__init__(timeout=180.0)
+        self.ctx = ctx
+        self.author_id = ctx.author.id
+        self.items = items
+        self.index = 0  # bắt đầu từ item đầu tiên
+
+    async def _refresh(self, interaction: discord.Interaction):
+        # chặn người khác bấm
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("❗ Chỉ người gọi lệnh mới xem được danh sách này.", ephemeral=True)
+            return
+
+        item = self.items[self.index]
+        emb = _build_item_embed(self.ctx, item, user_display_name=self.ctx.author.display_name)
+        emb.set_footer(text=f"Trang {self.index+1}/{len(self.items)} — {self.ctx.author.display_name}")
+
+        # bật/tắt nút
+        self.prev_btn.disabled = (self.index == 0)
+        self.next_btn.disabled = (self.index == len(self.items) - 1)
+
+        await interaction.response.edit_message(embed=emb, view=self)
+
+    @discord.ui.button(label="◀ Trước", style=discord.ButtonStyle.secondary)
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index > 0:
+            self.index -= 1
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Tiếp ▶", style=discord.ButtonStyle.secondary)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index < len(self.items) - 1:
+            self.index += 1
+        await self._refresh(interaction)
+
+
+@bot.command(name="xem", aliases=["oxem"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_oxem(ctx, item_id: str = None):
+    user_id = str(ctx.author.id)
+    data = ensure_user(user_id)
+    user = data["users"][user_id]
+
+    # oxem all
+    if item_id is not None and item_id.lower() == "all":
+        items = list(user.get("items", []))
+        if not items:
+            await ctx.reply("Bạn không có trang bị nào để xem.", mention_author=False)
+            return
+
+        rarity_order = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4}
+        items.sort(key=lambda it: (
+            rarity_order.get(it.get("rarity", "D"), 99),
+            -int(it.get("luc_chien", 0))
+        ))
+
+        first = items[0]
+        emb = _build_item_embed(ctx, first, user_display_name=ctx.author.display_name)
+        emb.set_footer(text=f"Trang 1/{len(items)} — {ctx.author.display_name}")
+
+        view = OxemAllView(ctx, items)
+        await ctx.send(embed=emb, view=view)
+        return
+
+    # oxem <ID>
+    if item_id is None:
+        await ctx.reply("📝 Cách dùng: `oxem <ID>` hoặc `oxem all`.", mention_author=False)
+        return
+
+    it = next((x for x in user.get("items", []) if x.get("id") == item_id), None)
+    if not it:
+        await ctx.reply("❗ Không tìm thấy trang bị với ID đó.", mention_author=False)
+        return
+
+    emb = _build_item_embed(ctx, it, user_display_name=ctx.author.display_name)
+    await ctx.send(embed=emb)
+
+# ====================================================================================================================================
+# 🧍 XEM KẾT THÚC
+# ====================================================================================================================================
+
+
+import discord
+from discord.ext import commands
+import asyncio, datetime, pytz, time, random
+
+# ======================================================
+# 🧭 LỆNH GIA NHẬP MÔN PHÁI
+# ======================================================
+
+
+# =====================================================================
+# 🔰 MÔN PHÁI — chọn / đổi / hiển thị
+# =====================================================================
+
+# ================== MÔN PHÁI ==================
+from datetime import datetime, timedelta, timezone
+
+TZ_GMT7 = timezone(timedelta(hours=7))
+
+PHAI_INFO = {
+    "thiet_y": "Đóng vai chống chịu/tanker, thủ trâu, bảo kê tuyến sau.",
+    "huyet_ha": "Đấu sĩ hút máu, đánh lâu dài, train quái khỏe.",
+    "than_tuong": "Pháp sư đánh xa, cấu rỉa, có khống chế.",
+    "to_van": "Hỗ trợ / hồi phục, bảo vệ đồng đội.",
+    "cuu_linh": "Triệu hồi / quần thể, mạnh PvE nhưng máu mỏng.",
+    "toai_mong": "Sát thủ DPS, chí mạng cao, dồn sát thương nhanh.",
+}
+
+# label để hiển thị, key để lưu vào user["class"]
+PHAI_BUTTONS = [
+    ("Thiết Y", "thiet_y"),
+    ("Huyết Hà", "huyet_ha"),
+    ("Thần Tương", "than_tuong"),
+    ("Tố Vấn", "to_van"),
+    ("Cửu Linh", "cuu_linh"),
+    ("Toái Mộng", "toai_mong"),
+]
+
+# map key -> tên hiển thị đẹp
+PHAI_DISPLAY = {
+    "thiet_y": "Thiết Y",
+    "huyet_ha": "Huyết Hà",
+    "than_tuong": "Thần Tương",
+    "to_van": "Tố Vấn",
+    "cuu_linh": "Cửu Linh",
+    "toai_mong": "Toái Mộng",
+}
+
+
+
+PHAI_COOLDOWN_HOURS = 24
+PHAI_REJOIN_COST_XU = 10_000
+
+
+class PhaiView(discord.ui.View):
+    def __init__(self, user_id: str, current_class: str | None):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+        for label, key in PHAI_BUTTONS:
+            is_current = (current_class == key)
+            btn = self.PhaiButton(label, key, user_id, is_current)
+            self.add_item(btn)
+
+    class PhaiButton(discord.ui.Button):
+        def __init__(self, label: str, key: str, user_id: str, is_current: bool):
+            style = discord.ButtonStyle.secondary if is_current else discord.ButtonStyle.primary
+            super().__init__(label=label, style=style, disabled=is_current)
+            self.phai_key = key
+            self.user_id = user_id
+
+        async def callback(self, interaction: discord.Interaction):
+            # chỉ chủ lệnh được bấm
+            if str(interaction.user.id) != self.user_id:
+                await interaction.response.send_message("❗ Không phải lựa chọn của bạn.", ephemeral=True)
+                return
+
+            data = ensure_user(self.user_id)
+            user = data["users"][self.user_id]
+            _ensure_economy_fields(user)
+
+            now = datetime.now(TZ_GMT7)
+            last = user.get("phai_last_change_ts")
+
+            # kiểm tra cooldown
+            if last:
+                last_dt = datetime.fromtimestamp(last, TZ_GMT7)
+                diff = now - last_dt
+                if diff < timedelta(hours=PHAI_COOLDOWN_HOURS):
+                    remain_dt = last_dt + timedelta(hours=PHAI_COOLDOWN_HOURS)
+                    remain = remain_dt - now
+                    h = int(remain.total_seconds() // 3600)
+                    m = int((remain.total_seconds() % 3600) // 60)
+                    await interaction.response.send_message(
+                        f"⏳ Bạn đã chọn môn phái rồi. Chờ thêm **{h}h{m}m** để đổi.\n"
+                        f"🔁 Sau khi hết thời gian, đổi sẽ tốn **{PHAI_REJOIN_COST_XU:,} Xu**.",
+                        ephemeral=True
+                    )
+                    return
+                else:
+                    # hết cooldown → phải trả phí
+                    if user.get("xu", 0) < PHAI_REJOIN_COST_XU:
+                        await interaction.response.send_message(
+                            f"💰 Đổi môn phái tốn **{PHAI_REJOIN_COST_XU:,} Xu**, bạn không đủ.",
+                            ephemeral=True
+                        )
+                        return
+                    user["xu"] -= PHAI_REJOIN_COST_XU
+            # nếu chưa từng chọn → miễn phí
+
+            # gán phái
+            user["class"] = self.phai_key
+            user["phai_last_change_ts"] = now.timestamp()
+            save_data(data)
+
+            desc = PHAI_INFO.get(self.phai_key, "Môn phái.")
+            await interaction.response.send_message(
+                f"🎉 **Gia nhập môn phái thành công!**\n"
+                f"Bạn hiện là đệ tử **{self.label}**.\n"
+                f"» {desc}\n"
+                f"⏳ Bạn có thể đổi lại sau **{PHAI_COOLDOWN_HOURS}h**, lần đổi sau tốn **{PHAI_REJOIN_COST_XU:,} Xu**.",
+                ephemeral=True
+            )
+
+            # cập nhật lại view: nút phái đang chọn xám lại
+            for child in self.view.children:
+                if isinstance(child, discord.ui.Button):
+                    child.disabled = (child.label == self.label)
+                    child.style = discord.ButtonStyle.secondary if child.disabled else discord.ButtonStyle.primary
+            try:
+                await interaction.message.edit(view=self.view)
+            except Exception:
+                pass
+
+
+@bot.command(name="monphai", aliases=["omonphai"])
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_omonphai(ctx):
+    uid = str(ctx.author.id)
+    data = ensure_user(uid)
+    user = data["users"][uid]
+    _ensure_economy_fields(user)
+
+    cur = user.get("class")
+    last_ts = user.get("phai_last_change_ts")
+    note = ""
+    if last_ts:
+        now = datetime.now(TZ_GMT7)
+        last_dt = datetime.fromtimestamp(last_ts, TZ_GMT7)
+        if now - last_dt < timedelta(hours=PHAI_COOLDOWN_HOURS):
+            remain = (last_dt + timedelta(hours=PHAI_COOLDOWN_HOURS)) - now
+            h = int(remain.total_seconds() // 3600)
+            m = int((remain.total_seconds() % 3600) // 60)
+            note = (
+                f"⏳ Bạn đã chọn phái. Có thể đổi sau **{h}h{m}m** "
+                f"(sau đó tốn **{PHAI_REJOIN_COST_XU:,} Xu**)."
+            )
+
+    phai_label = next((label for label, key in PHAI_BUTTONS if key == cur), "Chưa chọn")
+
+    emb = make_embed(
+        title="⚔️ Chọn môn phái",
+        description=(
+            "Chọn 1 trong 6 môn phái dưới đây. Mỗi phái sẽ dùng vũ khí riêng và ưu tiên chỉ số riêng.\n\n"
+            "• **Thiết Y** — Đóng vai “tanker” – chịu đòn mạnh, bảo vệ đồng đội. Thích hợp cho người chơi thích đứng tuyến trước, thu hút sát thương.\n"
+            "• **Huyết Hà** — Lối chơi đấu sĩ – có sát thương khá, khả năng chống chịu trung bình, có kỹ năng “hút máu”. Phù hợp cho train quái, solo lâu dài.\n"
+            "• **Thần Tương** — Là lớp tầm xa, kiểu pháp sư/đấu sĩ từ xa – gây sát thương liên tục, có khả năng cấu rỉa, khống chế.\n"
+            "• **Tố Vấn** — Hỗ trợ/Healer – hồi máu và support đồng đội, đồng thời có khả năng khống chế để bảo vệ team.\n"
+            "• **Cửu Linh** — Lối chơi đặc biệt – có khả năng triệu hồi thực thể hỗ trợ chiến đấu, rất mạnh trong PvE/quần thể nhưng máu yếu khi bị tiếp cận.\n"
+            "• **Toái Mộng** — Sát thủ/DPS đơn mục tiêu – dồn sát thương mạnh, tỉ lệ bạo kích cao, lối chơi yêu cầu kỹ năng cao và độ nhanh nhạy.\n\n"
+            f"\nHiện tại: **{phai_label}**"
+            + (f"\n{note}" if note else "")
+        ),
+        color=0x2ECC71,
+        footer=ctx.author.display_name,
+    )
+
+    view = PhaiView(uid, cur)
+    await ctx.reply(embed=emb, view=view, mention_author=False)
+
+
+
+
+
+# 🧍 TÍNH NĂNG CŨ
+# ====================================================================================================================================
+# 🧍 TÍNH NĂNG CŨ
+# ====================================================================================================================================
+
 
 # ====================================================================================================================================
 # 🧍 KHÁM PHÁ BẮT ĐẦU
 # ====================================================================================================================================
 
-#==========OL========================
+COOLDOWN_OL = 10
 
 @bot.command(name="l", aliases=["ol"])
 async def cmd_ol(ctx):
@@ -3690,54 +5491,67 @@ async def cmd_ol(ctx):
     data = ensure_user(user_id)
     user = data["users"][user_id]
 
-    # cập nhật danh tính / hoạt động
-    touch_user_activity(ctx, user)
+    if "touch_user_activity" in globals():
+        touch_user_activity(ctx, user)
 
     now = time.time()
     if now < user["cooldowns"]["ol"]:
-        await ctx.reply(
-            f"⏳ Hãy chờ {int(user['cooldowns']['ol'] - now)} giây nữa.",
-            mention_author=False
-        )
+        await ctx.reply(f"⏳ Hãy chờ {int(user['cooldowns']['ol'] - now)} giây nữa.", mention_author=False)
         return
 
-    rarity = choose_rarity()
-    map_loc = random.choice(MAP_POOL)
+    # chọn phẩm
+    if "choose_rarity" in globals():
+        rarity = choose_rarity()
+    else:
+        roll = random.random()
+        if roll < 0.01:
+            rarity = "S"
+        elif roll < 0.05:
+            rarity = "A"
+        elif roll < 0.20:
+            rarity = "B"
+        elif roll < 0.50:
+            rarity = "C"
+        else:
+            rarity = "D"
 
-    # user loot được rương
+    if "MAP_POOL" in globals():
+        map_loc = random.choice(MAP_POOL)
+    else:
+        map_loc = "Biện Kinh"
+
     user["rungs"][rarity] += 1
-    # đếm số lần đi thám hiểm
     user["stats"]["ol_count"] = int(user["stats"].get("ol_count", 0)) + 1
-
-    # cooldown
+    quest_runtime_increment(user, "ol_today", 1)
     user["cooldowns"]["ol"] = now + COOLDOWN_OL
-
     save_data(data)
 
     rarity_name = {
-        "D":"Phổ Thông",
-        "C":"Hiếm",
-        "B":"Tuyệt Phẩm",
-        "A":"Sử Thi",
-        "S":"Truyền Thuyết"
+        "D": "Phổ Thông",
+        "C": "Hiếm",
+        "B": "Tuyệt Phẩm",
+        "A": "Sử Thi",
+        "S": "Truyền Thuyết",
     }[rarity]
 
-    title = (
-        f"**[{map_loc}]** **{ctx.author.display_name}** Thu được Rương "
-        f"trang bị {rarity_name} {RARITY_CHEST_EMOJI[rarity]} x1"
-    )
-    desc = get_loot_description(map_loc, rarity)
+    chest_emo = RARITY_CHEST_EMOJI.get(rarity, "🎁")
+    title = f"**[{map_loc}]** **{ctx.author.display_name}** thu được Rương {rarity_name} {chest_emo} x1"
+
+    desc = ""
+    if "get_loot_description" in globals():
+        desc = get_loot_description(map_loc, rarity)
+
     emb = make_embed(
         title=title,
         description=desc,
-        color=RARITY_COLOR[rarity],
-    footer=f"{ctx.author.display_name}\nĐã có nâng cấp phiên bản dùng lệnh olenh để xem!"
-
+        color=RARITY_COLOR.get(rarity, 0x95A5A6),
+        footer=ctx.author.display_name
     )
 
-    if images_enabled_global():
+    if "images_enabled_global" in globals() and images_enabled_global():
         try:
-            emb.set_image(url=MAP_IMAGES.get(rarity, IMG_BANDO_DEFAULT))
+            img = MAP_IMAGES.get(rarity, IMG_BANDO_DEFAULT)
+            emb.set_image(url=img)
         except Exception:
             pass
 
@@ -3751,365 +5565,11 @@ async def cmd_ol(ctx):
     except Exception:
         pass
 # ====================================================================================================================================
-# 🧍 KHÁM PHÁ BẮT ĐẦU
+# 🧍 KHÁM PHÁ KẾT THÚC
 # ====================================================================================================================================
-
-
-
-# ====================================================================================================================================
-# 🧍 MỞ RƯƠNG BẮT ĐẦU
-# ====================================================================================================================================
-
-@bot.command(name="mo", aliases=["omo"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_omo(ctx, *args):
-    user_id = str(ctx.author.id)
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
-    argv = [a.strip().lower() for a in args]
-
-    def _open_many_for_rarity(user, r: str, limit: int = 50):
-        opened = 0
-        total_np = 0
-        items = []
-        while (opened < limit) and (int(user["rungs"].get(r, 0)) > 0):
-            gp, it = _open_one_chest(user, r)
-            opened += 1
-            total_np += gp
-            if it:
-                items.append(it)
-        return opened, total_np, items
-
-    # omo all
-    if len(argv) == 1 and argv[0] == "all":
-        LIMIT = 50
-        opened = 0
-        total_np = 0
-        items = []
-        per_rarity = {"S":0,"A":0,"B":0,"C":0,"D":0}
-        highest_seen = None
-
-        for r in ["S","A","B","C","D"]:
-            while (opened < LIMIT) and (int(user["rungs"].get(r, 0)) > 0):
-                gp, it = _open_one_chest(user, r)
-                opened += 1
-                total_np += gp
-                per_rarity[r] += 1
-                if it:
-                    items.append(it)
-                    if (
-                        (highest_seen is None)
-                        or (_rarity_order_index(it["rarity"]) < _rarity_order_index(highest_seen))
-                    ):
-                        highest_seen = it["rarity"]
-
-        if opened == 0:
-            await ctx.reply(
-                "❗ Bạn không có rương để mở.",
-                mention_author=False
-            )
-            return
-
-        # ✅ Ghi log nhiệm vụ ngày: mở rương
-        quest_runtime_increment(user, "opened_today", opened)
-        save_data(data)
-
-        highest_for_title = highest_seen
-        if not highest_for_title:
-            for r in ["S","A","B","C","D"]:
-                if per_rarity[r] > 0:
-                    highest_for_title = r
-                    break
-
-        title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title or "D", "🎁")
-        title = f"{title_emoji} **{ctx.author.display_name}** đã mở x{opened} rương"
-        emb = make_embed(
-            title=title,
-            color=0x2ECC71,
-            footer=ctx.author.display_name
-        )
-
-        rewards_block = (
-            f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(total_np)}**\n"
-            f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{len(items)}**"
-        )
-        emb.add_field(
-            name="Phần thưởng nhận được",
-            value=rewards_block,
-            inline=False
-        )
-
-        breakdown_lines = [
-            f"{RARITY_EMOJI[r]} x{per_rarity[r]}"
-            for r in ["S","A","B","C","D"]
-            if per_rarity[r] > 0
-        ]
-        if breakdown_lines:
-            emb.add_field(
-                name="Đã mở",
-                value="  ".join(breakdown_lines),
-                inline=False
-            )
-
-        if items:
-            lines = [_fmt_item_line(it) for it in items]
-            if len(lines) > 10:
-                extra = len(lines) - 10
-                lines = lines[:10] + [f"... và {extra} món khác"]
-            emb.add_field(
-                name="Vật phẩm nhận được",
-                value="\n".join(lines),
-                inline=False
-            )
-
-        remaining = sum(
-            int(user["rungs"].get(r, 0))
-            for r in ["S","A","B","C","D"]
-        )
-        if remaining > 0:
-            emb.set_footer(
-                text=(
-                    f"Còn {remaining} rương — dùng omo all hoặc "
-                    f"omo <phẩm> all để mở tiếp"
-                )
-            )
-
-        await ctx.send(embed=emb)
-        return
-
-    # omo <rarity> [all / num]
-    if (len(argv) >= 1) and (argv[0] in {"d","c","b","a","s"}):
-        r = argv[0].upper()
-        available = int(user["rungs"].get(r, 0))
-        if available <= 0:
-            await ctx.reply(
-                f"❗ Bạn không có rương phẩm {r}.",
-                mention_author=False
-            )
-            return
-
-        req = 1
-        if len(argv) >= 2:
-            if argv[1] == "all":
-                req = min(50, available)
-            else:
-                try:
-                    req = int(argv[1].replace(",", ""))
-                except Exception:
-                    await ctx.reply(
-                        "⚠️ Số lượng không hợp lệ. Ví dụ: `omo d 3` hoặc `omo d all`.",
-                        mention_author=False
-                    )
-                    return
-                if req <= 0:
-                    await ctx.reply(
-                        "⚠️ Số lượng phải > 0.",
-                        mention_author=False
-                    )
-                    return
-                if req > 50:
-                    await ctx.reply(
-                        "⚠️ Mỗi lần chỉ mở tối đa **50** rương.",
-                        mention_author=False
-                    )
-                    return
-                if req > available:
-                    await ctx.reply(
-                        f"⚠️ Bạn chỉ có **{available}** rương {r}.",
-                        mention_author=False
-                    )
-                    return
-
-        opened, total_np, items = _open_many_for_rarity(user, r, limit=req)
-        if opened == 0:
-            await ctx.reply(
-                "❗ Không mở được rương nào.",
-                mention_author=False
-            )
-            return
-
-        # ✅ Ghi log nhiệm vụ ngày: mở rương
-        quest_runtime_increment(user, "opened_today", opened)
-        save_data(data)
-
-        title_emoji = RARITY_CHEST_OPENED_EMOJI.get(r, "🎁")
-        title = f"{title_emoji} **{ctx.author.display_name}** đã mở x{opened} rương"
-        emb = make_embed(
-            title=title,
-            color=RARITY_COLOR.get(r, 0x95A5A6),
-            footer=ctx.author.display_name
-        )
-
-        rewards_block = (
-            f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(total_np)}**\n"
-            f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{len(items)}**"
-        )
-        emb.add_field(
-            name="Phần thưởng nhận được",
-            value=rewards_block,
-            inline=False
-        )
-
-        if items:
-            lines = [_fmt_item_line(it) for it in items]
-            if len(lines) > 10:
-                extra = len(lines) - 10
-                lines = lines[:10] + [f"... và {extra} món khác"]
-            emb.add_field(
-                name="Vật phẩm nhận được",
-                value="\n".join(lines),
-                inline=False
-            )
-
-        remaining_r = int(user["rungs"].get(r, 0))
-        if remaining_r > 0:
-            emb.set_footer(
-                text=(
-                    f"Còn {remaining_r} rương {r} — dùng "
-                    f"omo {r.lower()} all để mở tiếp"
-                )
-            )
-
-        await ctx.send(embed=emb)
-        return
-
-    # omo (không tham số): mở 1 rương tốt nhất
-    r_found = _pick_highest_available_rarity(user)
-    if not r_found:
-        await ctx.reply(
-            "❗ Bạn không có rương để mở.",
-            mention_author=False
-        )
-        return
-
-    gp, item = _open_one_chest(user, r_found)
-
-    # ✅ Ghi log nhiệm vụ ngày: mở rương
-    quest_runtime_increment(user, "opened_today", 1)
-    save_data(data)
-
-    highest_for_title = item["rarity"] if item else r_found
-    title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title, "🎁")
-    title = f"{title_emoji} **{ctx.author.display_name}** đã mở 1 rương"
-
-    emb = make_embed(
-        title=title,
-        color=RARITY_COLOR.get(highest_for_title, 0x95A5A6),
-        footer=ctx.author.display_name
-    )
-
-    rewards_block = (
-        f"{NP_EMOJI}\u2003Ngân Phiếu: **{format_num(gp)}**\n"
-        f"{EMOJI_TRANG_BI_COUNT}\u2003Trang bị: **{1 if item else 0}**"
-    )
-    emb.add_field(
-        name="Phần thưởng nhận được",
-        value=rewards_block,
-        inline=False
-    )
-
-    if item:
-        emb.add_field(
-            name="Vật phẩm nhận được",
-            value=_fmt_item_line(item),
-            inline=False
-        )
-
-    await ctx.send(embed=emb)
-
-# ====================================================================================================================================
-# 🧍 MỞ RƯƠNG KẾT THÚC
-# ====================================================================================================================================
-
-
-# ====================================================================================================================================
-# 🧍 BÁN ĐỒ BẮT ĐẦU
-# ====================================================================================================================================
-
-@bot.command(name="ban", aliases=["oban"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_oban(ctx, *args):
-    user_id=str(ctx.author.id)
-    data=ensure_user(user_id)
-    user=data["users"][user_id]
-    args=list(args)
-
-    def settle(lst):
-        total=sum(it["value"] for it in lst)
-        user["ngan_phi"]+=total
-        user["stats"]["sold_count"]+=len(lst)
-        user["stats"]["sold_value_total"]+=total
-        return total
-
-    if not args:
-        await ctx.reply(
-            "Cú pháp: `oban all` hoặc `oban <D|C|B|A|S> all`",
-            mention_author=False
-        )
-        return
-
-    if args[0].lower()=="all":
-        sell=[it for it in user["items"] if not it["equipped"]]
-        if not sell:
-            await ctx.reply(
-                "Không có trang bị rảnh để bán.",
-                mention_author=False
-            )
-            return
-        total=settle(sell)
-        user["items"]=[it for it in user["items"] if it["equipped"]]
-        save_data(data)
-        await ctx.send(embed=make_embed(
-            "🧾 Bán vật phẩm",
-            f"Đã bán **{len(sell)}** món — Nhận **{NP_EMOJI} {format_num(total)}**",
-            color=0xE67E22,
-            footer=ctx.author.display_name
-        ))
-        return
-
-    if len(args)>=2 and args[1].lower()=="all":
-        rar=args[0].upper()
-        if rar not in ["D","C","B","A","S"]:
-            await ctx.reply(
-                "Phẩm chất không hợp lệ (D/C/B/A/S).",
-                mention_author=False
-            )
-            return
-        sell=[it for it in user["items"] if (it["rarity"]==rar and not it["equipped"])]
-        if not sell:
-            await ctx.reply(
-                f"Không có vật phẩm phẩm chất {rar} để bán.",
-                mention_author=False
-            )
-            return
-        total=settle(sell)
-        user["items"]=[
-            it for it in user["items"]
-            if not (it["rarity"]==rar and not it["equipped"])
-        ]
-        save_data(data)
-        await ctx.send(embed=make_embed(
-            "🧾 Bán vật phẩm",
-            f"Đã bán **{len(sell)}** món {rar} — Nhận **{NP_EMOJI} {format_num(total)}**",
-            color=RARITY_COLOR.get(rar,0x95A5A6),
-            footer=ctx.author.display_name
-        ))
-        return
-
-    await ctx.reply(
-        "Cú pháp không hợp lệ. Ví dụ: `oban all` hoặc `oban D all`.",
-        mention_author=False
-    )
-
-# ====================================================================================================================================
-# 🧍 BÁN ĐỒ KẾT THÚC
-# ====================================================================================================================================
-
-
 # ====================================================================================================================================
 # 🧍 ĐỔ THẠCH BẮT ĐẦU
 # ====================================================================================================================================
-
 # ----- Đổ thạch (odt/dt) + Jackpot (module-style) -----
 ODT_MAX_BET        = 250_000
 POOL_ON_LOSS_RATE  = 1.0
@@ -4551,9 +6011,6 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 # ====================================================================================================================================
 # 🧍 TẶNG TIỀN KẾT THÚC
 # ====================================================================================================================================
-
-
-
 # ====================================================================================================================================
 # 🧍 NHIỆM VỤ BẮT ĐẦU
 # ====================================================================================================================================
