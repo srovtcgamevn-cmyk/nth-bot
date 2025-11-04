@@ -5244,8 +5244,8 @@ def build_nv_embed(ctx, target_user: dict, target_member: discord.Member) -> dis
         description=(
             f"Phái: **{phai_name}**\n"
             f"Cấp: **{level}**  •  EXP: **{exp}/{exp_need}**\n"
-            f"Lực chiến: {LC_EMOJI} **{lc_total:,}**\n"
-            f"{fashion_text}"
+            f"Lực chiến: {LC_EMOJI} **{lc_total:,}**\n\n"
+            f"{fashion_text}\n"
         ),
         color=0x9B59B6,
     )
