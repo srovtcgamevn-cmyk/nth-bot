@@ -6563,7 +6563,7 @@ def render_battle_image(
     ft_small = load_font_safe(13)
 
     # ===== HEADER =====
-    draw.text((20, 12), f"{user_name} — Phó bản sơ cấp", font=ft_title, fill=(255, 255, 255))
+    draw.text((20, 12), f"Phó Bản Sơ Cấp", font=ft_title, fill=(255, 255, 255))
     draw.text((W - 140, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
 
     # tên phái
