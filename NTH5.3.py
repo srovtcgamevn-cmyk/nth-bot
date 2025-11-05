@@ -949,7 +949,7 @@ from datetime import datetime
 AUTO_BACKUP_CHANNEL_ID = 821066331826421840  
 
 # ⏱ Thời gian mặc định
-AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
+AUTO_BACKUP_INTERVAL_MINUTES = 60    # sao lưu mỗi X phút
 AUTO_REPORT_INTERVAL_MINUTES = 60    # báo lên kênh tối đa 1 lần mỗi Y phút
 
 # Bộ nhớ runtime
