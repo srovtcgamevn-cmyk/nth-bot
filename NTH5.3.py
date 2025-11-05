@@ -888,46 +888,39 @@ bot = commands.Bot(
     case_insensitive=True
 )
 
-
-
-import glob, os
-
 @bot.event
 async def on_ready():
     """
     Gọi khi bot login xong và event loop Discord đã chạy.
     - Log bot ready
-    - Chụp snapshot 'startup'
+    - Chụp snapshot 'startup' (như cũ)
     - Khởi động vòng auto_backup_task nếu chưa chạy
     """
     global _auto_backup_started
 
     print(f"✅ Bot ready: {bot.user} (id: {bot.user.id})")
 
-    # chụp 1 bản backup lúc khởi động
+    # Snapshot khởi động (giữ nguyên logic cũ của bạn)
     try:
         data = load_data()
         snapshot_data_v16(data, tag="startup", subkey="startup")
-    except Exception as e:
-        print("Không snapshot được lúc startup:", e)
+    except Exception:
+        pass
 
-    # khởi động vòng auto backup 1 lần duy nhất
+    # Khởi động vòng auto backup 1 lần duy nhất
     if not _auto_backup_started:
         try:
             auto_backup_task.start()
             _auto_backup_started = True
             print("[AUTO-BACKUP] Đã khởi động auto_backup_task.")
             print(
-                f"[AUTO-BACKUP] backup mỗi {AUTO_BACKUP_INTERVAL_MINUTES} phút, "
+                f"[AUTO-BACKUP] Cấu hình ban đầu: "
+                f"backup mỗi {AUTO_BACKUP_INTERVAL_MINUTES} phút, "
                 f"báo mỗi {AUTO_REPORT_INTERVAL_MINUTES} phút."
             )
         except RuntimeError:
             # Nếu Discord reconnect và task đã start rồi -> bỏ qua
             pass
-
-# ⚙️ Biến toàn cục dùng để đánh dấu cần lưu data
-NEED_SAVE = False
-
 # ===================================
 # 🧩 BOT & CẤU HÌNH CHUNG — KẾT THÚC
 # ===================================
@@ -2110,7 +2103,7 @@ async def cmd_batanh(ctx, mode: str = None):
     m = (mode or "").strip().lower()
     if m in ("on","bật","bat","enable","enabled","true","1"):
         cfg["images_enabled"] = True
-        NEED_SAVE = True
+        save_data(data)
         await ctx.reply(
             "✅ Đã BẬT hiển thị ảnh.",
             mention_author=False
@@ -2118,7 +2111,7 @@ async def cmd_batanh(ctx, mode: str = None):
         return
     if m in ("off","tắt","tat","disable","disabled","false","0"):
         cfg["images_enabled"] = False
-        NEED_SAVE = True
+        save_data(data)
         await ctx.reply(
             "✅ Đã TẮT hiển thị ảnh.",
             mention_author=False
@@ -2147,7 +2140,7 @@ async def cmd_addtien(ctx, member: discord.Member, so: str):
     u, path = _get_user_ref(data, member)
     bal = get_balance(u)
     set_balance(u, bal + amount)
-    NEED_SAVE = True
+    save_data(data)
     await ctx.reply(
         f"✅ Cộng `{format_num(amount)}` NP cho `{member.display_name}` — Tổng: `{format_num(get_balance(u))}`",
         mention_author=False
@@ -2184,7 +2177,7 @@ async def cmd_addruong(ctx, member: discord.Member, pham: str, so: str):
     u, path = _get_user_ref(data, member)
     r = ensure_rungs(u)
     r[pham] = int(r.get(pham, 0)) + amount
-    NEED_SAVE = True
+    save_data(data)
     await ctx.reply(
         f"✅ Đã cấp `{format_num(amount)}` rương **{pham}** cho `{member.display_name}` — Tổng: `{format_num(r[pham])}`",
         mention_author=False
@@ -2575,8 +2568,6 @@ async def check_community_requirements(bot, user_id: int):
 
 @bot.command(name="onhanthuong", aliases=["nhanthuong"])
 async def onhanthuong_cmd(ctx):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     uid = str(ctx.author.id)
 
     # lấy data toàn cục + object người chơi
@@ -2678,7 +2669,7 @@ async def onhanthuong_cmd(ctx):
         )
 
         # lưu lại trạng thái pending
-        NEED_SAVE = True
+        save_data(data)
 
         try:
             await ctx.author.send(embed=guide_embed)
@@ -3732,8 +3723,6 @@ def _open_one_chest(user, r: str):
 @bot.command(name="mo", aliases=["omo"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_omo(ctx, *args):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
@@ -3789,9 +3778,7 @@ async def cmd_omo(ctx, *args):
 
         # log nhiệm vụ ngày
         quest_runtime_increment(user, "opened_today", opened)
-
-        NEED_SAVE = True
-
+        save_data(data)
 
         # nếu không rơi item nào thì lấy cái phẩm cao nhất đã mở
         highest_for_title = highest_seen or "D"
@@ -3864,8 +3851,7 @@ async def cmd_omo(ctx, *args):
             return
 
         quest_runtime_increment(user, "opened_today", opened)
-        NEED_SAVE = True
-
+        save_data(data)
 
         title_emoji = RARITY_CHEST_OPENED_EMOJI.get(r, "🎁")
         emb = make_embed(
@@ -3908,8 +3894,7 @@ async def cmd_omo(ctx, *args):
 
     gp, xu_gain, tv, item = _open_one_chest(user, r_found)
     quest_runtime_increment(user, "opened_today", 1)
-    NEED_SAVE = True
-
+    save_data(data)
 
     highest_for_title = item["rarity"] if item else r_found
     title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title, "🎁")
@@ -4429,8 +4414,6 @@ async def cmd_okho(ctx):
 @bot.command(name="ban", aliases=["oban"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_oban(ctx, *args):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     """
     bán tạp vật lấy NP
     - oban            → bán hết
@@ -4466,7 +4449,7 @@ async def cmd_oban(ctx, *args):
         if not have:
             await ctx.reply("Bạn không có Tạp Vật để bán.", mention_author=False)
             return
-        NEED_SAVE = True
+        save_data(data)
         await ctx.send(embed=make_embed(
             "🧾 Bán Tạp Vật",
             " • " + "\n • ".join(lines) + f"\n\nTổng: {NP_EMOJI} **{format_num(total_np)}**",
@@ -4483,7 +4466,7 @@ async def cmd_oban(ctx, *args):
             await ctx.reply(f"Bạn không có Tạp Vật phẩm {r}.", mention_author=False)
             return
         gain = _sell_tv(r, qty)
-        NEED_SAVE = True
+        save_data(data)
         await ctx.send(embed=make_embed(
             "🧾 Bán Tạp Vật",
             f"{TAP_VAT_EMOJI[r]} x{qty} → {NP_EMOJI} **+{format_num(gain)}**",
@@ -4500,8 +4483,6 @@ async def cmd_oban(ctx, *args):
 @bot.command(name="bantrangbi", aliases=["obantrangbi"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_obantrangbi(ctx, *args):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     """
     bán trang bị rảnh để lấy Xu
     - obantrangbi all
@@ -4539,7 +4520,7 @@ async def cmd_obantrangbi(ctx, *args):
             return
         total = settle(sell)
         user["items"] = [it for it in user["items"] if it.get("equipped")]
-        NEED_SAVE = True
+        save_data(data)
         await ctx.send(embed=make_embed(
             "🧾 Bán trang bị",
             f"Đã bán **{len(sell)}** món — Nhận {XU_EMOJI} **{format_num(total)}**",
@@ -4556,8 +4537,7 @@ async def cmd_obantrangbi(ctx, *args):
             return
         total = settle(sell)
         user["items"] = [it for it in user["items"] if not (it["rarity"] == rar and not it.get("equipped"))]
-        NEED_SAVE = True
-
+        save_data(data)
         await ctx.send(embed=make_embed(
             "🧾 Bán trang bị",
             f"Đã bán **{len(sell)}** món {rar} — Nhận {XU_EMOJI} **{format_num(total)}**",
@@ -4573,8 +4553,6 @@ async def cmd_obantrangbi(ctx, *args):
 @bot.command(name="thao", aliases=["othao"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_othao(ctx, item_id: str = None):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     if item_id is None:
         await ctx.reply("📝 Cách dùng: `thao <ID>` (xem ID trong `okho`).", mention_author=False)
         return
@@ -4908,8 +4886,6 @@ PHAI_LABEL_FROM_KEY = {
 @bot.command(name="mac", aliases=["omac"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_omac(ctx, item_id: str = None):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     if not item_id:
         await ctx.reply("📝 Cách dùng: `mac <ID>` (xem ID trong `okho`).", mention_author=False)
         return
@@ -4980,6 +4956,7 @@ async def cmd_omac(ctx, item_id: str = None):
     item["equipped"] = True
     user["equipped"][slot] = item["id"]
     save_data(data)
+
     emo = RARITY_EMOJI.get(item.get("rarity", "D"), "🔸")
     emb = make_embed(
         title="🪄 Mặc trang bị",
@@ -4993,6 +4970,16 @@ async def cmd_omac(ctx, item_id: str = None):
 
 # ================================================================
 # NHANVAT FULL — 2 TAB (NHÂN VẬT / TRANG BỊ)
+# ================================================================
+# YÊU CẦU FILE GỐC ĐÃ CÓ:
+# - bot = commands.Bot(...)
+# - make_embed(title, description=..., color=..., footer=...)
+# - format_num(x)
+# - ensure_user(user_id) -> dict toàn bộ data
+# - save_data(data)
+# - user["items"] là list item như bạn đang dùng
+# - user["equipped"] dùng key "slot_vukhi", "slot_aogiap" (nếu khác thì sửa ở dưới)
+# - đã có RARITY_EMOJI, XU_EMOJI, LC_EMOJI (nếu chưa thì copy luôn 3 cái này)
 # ================================================================
 
 
@@ -5429,6 +5416,8 @@ async def cmd_onhanvat(ctx, member: discord.Member = None):
     user.setdefault("equipped", {"slot_vukhi": None, "slot_aogiap": None})
 
     # nếu bạn muốn lưu lại khi bổ sung field mới:
+    save_data(data)
+
     emb = build_nv_embed(ctx, user, target)
     view = OnhanvatView(ctx, user, target)
     await ctx.reply(embed=emb, view=view, mention_author=False)
@@ -5796,7 +5785,8 @@ class PhaiView(discord.ui.View):
             # gán phái
             user["class"] = self.phai_key
             user["phai_last_change_ts"] = now.timestamp()
-            NEED_SAVE = True
+            save_data(data)
+
             desc = PHAI_INFO.get(self.phai_key, "Môn phái.")
             await interaction.response.send_message(
                 f"🎉 **Gia nhập môn phái thành công!**\n"
@@ -5820,8 +5810,6 @@ class PhaiView(discord.ui.View):
 @bot.command(name="monphai", aliases=["omonphai"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_omonphai(ctx):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     uid = str(ctx.author.id)
     data = ensure_user(uid)
     user = data["users"][uid]
@@ -5882,8 +5870,6 @@ COOLDOWN_OL = 10
 
 @bot.command(name="l", aliases=["ol"])
 async def cmd_ol(ctx):
-    global NEED_SAVE
-
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
@@ -5921,7 +5907,7 @@ async def cmd_ol(ctx):
     user["stats"]["ol_count"] = int(user["stats"].get("ol_count", 0)) + 1
     quest_runtime_increment(user, "ol_today", 1)
     user["cooldowns"]["ol"] = now + COOLDOWN_OL
-    NEED_SAVE = True
+    save_data(data)
 
     rarity_name = {
         "D": "Phổ Thông",
@@ -6095,8 +6081,6 @@ def _try_jackpot(data: dict, member: discord.Member) -> int:
 @bot.command(name="odt", aliases=["dt"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_odt(ctx, amount: str = None):
-    global NEED_SAVE
-
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
@@ -6154,7 +6138,7 @@ async def cmd_odt(ctx, amount: str = None):
 
     # trừ tiền trước khi biết kết quả
     user["ngan_phi"] = bal - amount_val
-    NEED_SAVE = True
+    save_data(data)
 
     outcome = _odt_pick_outcome(odt_state)
     try:
@@ -6212,8 +6196,7 @@ async def cmd_odt(ctx, amount: str = None):
             except Exception:
                 pass
 
-        NEED_SAVE = True
-
+        save_data(data)
 
     else:
         # THẮNG
@@ -6246,8 +6229,7 @@ async def cmd_odt(ctx, amount: str = None):
             )
 
         _jp_open_window_if_needed(_jp(data), time.time())
-        NEED_SAVE = True
-
+        save_data(data)
 
     # footer hiển thị quỹ jackpot + người trúng gần nhất
     jp_now = _jp(data)
@@ -6283,8 +6265,6 @@ async def cmd_odt(ctx, amount: str = None):
 @bot.command(name="otang", aliases=["tang"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
-    global NEED_SAVE
-
 
     """
     Chuyển Ngân Phiếu cho người chơi khác.
@@ -6368,6 +6348,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
     # Lưu lại sau khi cập nhật hết
     save_data(data)
 
+
     # ==================================================================
     # 📊 Ghi log nhiệm vụ ngày: "Tặng tiền cho người chơi khác"
     # Người được tính là NGƯỜI GỬI (ctx.author)
@@ -6416,6 +6397,10 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 # ====================================================================================================================================
 # 🧍 PHÓ BẢN BẮT ĐẦU
 # ====================================================================================================================================
+
+
+
+
 
 # =========================================================
 # OPB – ĐÁNH PHÓ BẢN (vẽ ảnh, diễn biến từng lượt, có emoji ở diễn biến)
@@ -6613,8 +6598,6 @@ def render_battle_image(user_name: str,
 @bot.command(name="opb", aliases=["pb"])
 @commands.cooldown(1, 8, commands.BucketType.user)
 async def cmd_opb(ctx: commands.Context):
-    global NEED_SAVE
-
     uid = str(ctx.author.id)
     data = ensure_user(uid)
     user = data["users"][uid]
@@ -6676,7 +6659,7 @@ async def cmd_opb(ctx: commands.Context):
 
     emb = discord.Embed(
         title=f"**{ctx.author.display_name}** — **Bầy quái nhỏ**",
-        description="**Diễn biến phó bản**:\n**Lượt 1**",
+        description="🎥 **Diễn biến phó bản**:\n⌛ Lượt 1",
         color=0xE67E22,
     )
     msg = await ctx.send(embed=emb, file=file)
@@ -6727,12 +6710,12 @@ async def cmd_opb(ctx: commands.Context):
         file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
 
         # mô tả lượt
-        desc = "**Diễn biến phó bản**:\n"
-        desc += f"**Lượt** {turn}\n"
+        desc = "🎥 **Diễn biến phó bản**:\n"
+        desc += f"🔁 Lượt {turn}\n"
         desc += "\n".join(turn_logs) if turn_logs else "(không có hành động)"
 
         emb = discord.Embed(
-            title=f"**{ctx.author.display_name}** — **Bầy quái nhỏ**",
+            title=f"**{ctx.author.display_name}** — **Bầy quái**",
             description=desc,
             color=0xE67E22,
         )
@@ -6744,7 +6727,7 @@ async def cmd_opb(ctx: commands.Context):
         turn += 1
         await asyncio.sleep(OPB_TURN_DELAY)
 
-     # ===== tổng kết =====
+    # ===== tổng kết =====
     killed = sum(1 for m in monsters if m["ko"])
     exp_gain = 18 * max(1, killed)
     user["exp"] += exp_gain
@@ -6774,7 +6757,7 @@ async def cmd_opb(ctx: commands.Context):
             drop_counter[rr] += 1
             tv[rr] = int(tv.get(rr, 0)) + 1
 
-    NEED_SAVE = True
+    save_data(data)
 
     # emoji
     np_emo = globals().get("NP_EMOJI", "📦")
@@ -6811,7 +6794,6 @@ async def cmd_opb(ctx: commands.Context):
     # giữ ảnh battle cuối
     final_file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
     await msg.edit(embed=final_emb, attachments=[final_file])
-
 
 # ====================================================================================================================================
 # 🧍 PHÓ BẢN PHÓ BẢN
@@ -6883,8 +6865,6 @@ BOT_OWNER_ID = 821066331826421840  # 👈 thay bằng ID thật của bạn
 
 @bot.command(name="thongbao")
 async def cmd_thongbao(ctx, *, text: str):
-    global NEED_SAVE
-
     """Chỉ chủ bot mới có thể thay đổi thông báo footer toàn hệ thống"""
     if ctx.author.id != BOT_OWNER_ID:
         await ctx.reply("❌ Bạn đang cố thực hiện lệnh không có", mention_author=False)
@@ -6917,38 +6897,16 @@ async def on_message(message):
 
         # ✅ Ghi log nhiệm vụ "Gửi 50 tin nhắn trong server"
         quest_runtime_increment(user, "messages_today", 1)
-        NEED_SAVE = True
+        save_data(data)
 
     # Cho phép các lệnh bot hoạt động bình thường
     await bot.process_commands(message)
-# ==================================================
-
-# =========================================================
-# VÒNG TỰ LƯU DATA 5 GIÂY / LẦN
-# =========================================================
-import asyncio
-
-async def auto_save_loop():
-    global NEED_SAVE, data
-    while True:
-        await asyncio.sleep(1)
-        if NEED_SAVE:
-            save_data(data)
-            NEED_SAVE = False
-
-@bot.event
-async def on_ready():
-    print("✅ Bot ready")
-
-    # Nếu on_ready của bạn đã có nội dung khác, chỉ cần thêm dòng này vào cuối on_ready:
-    bot.loop.create_task(auto_save_loop())
-# =========================================================
-
-
-
-#==================================================================================
+# ====================================================================================================================================
 # 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
 # ====================================================================================================================================
+
+
+
 
 
 
