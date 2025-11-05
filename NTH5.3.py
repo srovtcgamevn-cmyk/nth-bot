@@ -6570,36 +6570,50 @@ def render_battle_image(
     turn_idx: int,
     total_turns: int,
 ) -> bytes:
-    W, H = 900, 240
-    img = Image.new("RGB", (W, H), (46, 48, 52))  # nền xám đậm
+    # kích thước nhỏ hơn cho nhẹ
+    W, H = 720, 220
+
+    # nền trong
+    inner = Image.new("RGB", (W - 8, H - 8), (46, 48, 52))
+    mask = Image.new("L", (W - 8, H - 8), 0)
+    dm = ImageDraw.Draw(mask)
+    dm.rounded_rectangle((0, 0, W - 8, H - 8), radius=20, fill=255)
+    inner.putalpha(mask)
+
+    # ảnh cuối có viền trắng mỏng
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    img.paste(inner, (4, 4), inner)
     draw = ImageDraw.Draw(img)
 
-    ft_title = load_font_safe(24)
-    ft = load_font_safe(16)
-    ft_small = load_font_safe(13)
+    ft_title = load_font_safe(22)
+    ft = load_font_safe(15)
+    ft_small = load_font_safe(12)
 
-    # ===== HEADER =====
-    draw.text((20, 12), f"Phó Bản Sơ Cấp", font=ft_title, fill=(255, 255, 255))
-    draw.text((W - 140, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
+    # header
+    draw.text((22, 14), "Phó bản sơ cấp", font=ft_title, fill=(255, 255, 255))
+    draw.text(
+        (W - 115, 16),
+        f"Lượt: {turn_idx}/{total_turns}",
+        font=ft_small,
+        fill=(220, 220, 220),
+    )
 
-    # tên phái
+    # tên phái + cấp + atk
     phai_name = PHAI_DISPLAY.get(phai_key, phai_key or "Chưa chọn")
 
-    # ===== KHỐI NGƯỜI CHƠI =====
-    left_x = 20
-    top_y = 50
-
-    # dòng cấp + phái + atk
+    # --- khối player (trái) ---
+    left_x = 28
+    top_y = 48
     draw.text(
         (left_x, top_y),
-        f"Cấp: {user_level}   |   Phái: {phai_name}   |   Tấn công: {user_atk}",
+        f"Cấp: {user_level}  |  Phái: {phai_name}  |  Tấn công: {user_atk}",
         font=ft_small,
         fill=(230, 230, 230),
     )
 
-    # máu
+    # thanh máu
     draw.text(
-        (left_x, top_y + 24),
+        (left_x, top_y + 20),
         f"Máu: {user_hp}/{user_hp_max}",
         font=ft_small,
         fill=(255, 255, 255),
@@ -6607,35 +6621,26 @@ def render_battle_image(
     _draw_bar(
         draw,
         left_x,
-        top_y + 42,
-        270,
-        14,
-        user_hp / user_hp_max if user_hp_max else 0,
+        top_y + 38,
+        250,        # ngắn lại để cân với bên phải
+        13,
+        user_hp / user_hp_max if user_hp_max else 0.0,
         (90, 35, 35),
         (230, 70, 70),
     )
 
     # thủ
     draw.text(
-        (left_x, top_y + 66),
+        (left_x, top_y + 58),
         f"Thủ: {user_def}",
         font=ft_small,
         fill=(255, 255, 255),
     )
-    _draw_bar(
-        draw,
-        left_x,
-        top_y + 84,
-        270,
-        12,
-        1,
-        (70, 70, 70),
-        (150, 150, 150),
-    )
+    _draw_bar(draw, left_x, top_y + 74, 250, 11, 1, (70, 70, 70), (150, 150, 150))
 
     # năng lượng
     draw.text(
-        (left_x, top_y + 106),
+        (left_x, top_y + 94),
         f"Năng lượng: {user_energy}",
         font=ft_small,
         fill=(255, 255, 255),
@@ -6643,19 +6648,18 @@ def render_battle_image(
     _draw_bar(
         draw,
         left_x,
-        top_y + 124,
-        270,
-        12,
+        top_y + 110,
+        250,
+        11,
         1,
         (40, 65, 105),
         (95, 165, 230),
     )
 
-    # ---------------- KHỐI QUÁI (PHẢI) ----------------
-    # đẩy sát phải hơn chút
-    right_x = 590  # 540 + 270 = 810, vẫn còn 90px mép phải
-    slot_y = 37
-
+    # --- khối quái (phải) ---
+    # đẩy sát phải hơn 1 chút
+    right_x = W - 290  # 720 - 290 = 430
+    slot_y = 42
     for m in monsters:
         name_no_emo = m["name_plain"]
         rar = m["rarity"]
@@ -6666,36 +6670,45 @@ def render_battle_image(
 
         bar_color = RARITY_BAR_COLOR.get(rar, (200, 200, 200))
 
-        # tên quái
-        draw.text((right_x, slot_y), f"{name_no_emo} [{rar}]", font=ft, fill=(255, 255, 255))
-        # dòng nhỏ: công + hp
-        draw.text((right_x, slot_y + 18), f"Công: {atk}", font=ft_small, fill=(220, 220, 220))
-        draw.text((right_x + 180, slot_y + 18), f"{hp}/{hpmax}", font=ft_small, fill=(220, 220, 220))
-
-        # thanh máu quái
+        draw.text(
+            (right_x, slot_y),
+            f"{name_no_emo} [{rar}]",
+            font=ft,
+            fill=(255, 255, 255),
+        )
+        # công + hp nhỏ
+        draw.text(
+            (right_x, slot_y + 16),
+            f"Công: {atk}",
+            font=ft_small,
+            fill=(220, 220, 220),
+        )
+        draw.text(
+            (right_x + 165, slot_y + 16),
+            f"{hp}/{hpmax}",
+            font=ft_small,
+            fill=(220, 220, 220),
+        )
         _draw_bar(
             draw,
             right_x,
-            slot_y + 38,
-            270,
-            13,
+            slot_y + 34,
+            250,
+            12,
             hp / hpmax if hpmax else 0.0,
             (70, 70, 70),
             (95, 95, 95) if ko else bar_color,
         )
-
-        # chữ THUA
         if ko:
             draw.text(
-                (right_x + 200, slot_y + 38),
+                (right_x + 205, slot_y + 34),
                 "THUA",
                 font=ft_small,
                 fill=(255, 90, 90),
             )
 
-        slot_y += 64  # khoảng cách giữa các quái
+        slot_y += 60
 
-    # xuất bytes
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="PNG")
     buf.seek(0)
