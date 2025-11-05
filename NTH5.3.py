@@ -1026,6 +1026,9 @@ async def before_auto_backup():
     print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
 
 # ------------------ LỆNH CẤU HÌNH ------------------
+
+BOT_OWNERS = {821066331826421840}
+
 @bot.command(name="thoigiansaoluu", aliases=["backupconfig"])
 @owner_only()
 @commands.cooldown(1, 5, commands.BucketType.user)
