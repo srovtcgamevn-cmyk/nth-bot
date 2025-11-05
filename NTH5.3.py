@@ -941,7 +941,7 @@ import time, os, glob
 from datetime import datetime
 
 # 🧭 Kênh Discord để gửi thông báo
-AUTO_BACKUP_CHANNEL_ID = 1433207596898193479  
+AUTO_BACKUP_CHANNEL_ID = 821066331826421840  
 
 # ⏱ Thời gian mặc định
 AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
