@@ -6528,7 +6528,6 @@ def render_battle_image(user_name: str,
     # khối người chơi
     left_x = 20
     top_y = 50
-    draw.text((left_x, top_y), user_name, font=ft, fill=(255, 255, 255))
     draw.text((left_x, top_y + 20), f"Phái: {phai_name}  |  Tấn công: {user_atk}", font=ft_small, fill=(230, 230, 230))
 
     # thanh máu
@@ -6712,7 +6711,7 @@ async def cmd_opb(ctx: commands.Context):
         desc += "\n".join(turn_logs) if turn_logs else "(không có hành động)"
 
         emb = discord.Embed(
-            title=f"**{ctx.author.display_name}** — **Bầy quái**",
+            title=f"**{ctx.author.display_name}** — **Bầy quái nhỏ**",
             description=desc,
             color=0xE67E22,
         )
