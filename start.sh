@@ -8,4 +8,4 @@ if [ ! -f /var/data/data.json ]; then
     echo "{}" > /var/data/data.json
   fi
 fi
-python NTH_v1.py
+python NTH5.3.py
