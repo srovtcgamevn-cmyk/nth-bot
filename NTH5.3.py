@@ -6366,7 +6366,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
     quest_runtime_increment(sender, "give_today", 1)
 
     # Lưu lại sau khi cập nhật hết
-    NEED_SAVE = True
+    save_data(data)
 
     # ==================================================================
     # 📊 Ghi log nhiệm vụ ngày: "Tặng tiền cho người chơi khác"
@@ -6378,7 +6378,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 
     # tăng biến đếm nhiệm vụ "tang_today"
     quest_runtime_increment(sender_user, "tang_today", 1)
-    NEED_SAVE = True
+    save_data(data)
     # ==================================================================
 
 
@@ -6931,7 +6931,7 @@ import asyncio
 async def auto_save_loop():
     global NEED_SAVE, data
     while True:
-        await asyncio.sleep(5)
+        await asyncio.sleep(1)
         if NEED_SAVE:
             save_data(data)
             NEED_SAVE = False
