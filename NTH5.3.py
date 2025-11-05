@@ -57,6 +57,11 @@ DATA_FILE = os.path.join(BASE_DATA_DIR, "data.json")
 COOLDOWN_OL = 10
 STARTING_NP = 1000
 
+size = os.path.getsize(filename)
+print(f"[AUTO-BACKUP] Kích thước snapshot: {size/1024/1024:.2f} MB")
+
+
+
 # ——— Whitelist từ ‘o…’ không báo lỗi CommandNotFound ———
 IGNORE_O_TOKENS = {"ok","oh","ob","oke","okay","ooo","oi"}
 
