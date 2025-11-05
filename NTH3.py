@@ -6652,8 +6652,8 @@ async def cmd_opb(ctx: commands.Context):
         )
         file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
 
-        desc = "🎥 **Diễn biến phó bản**:\n"
-        desc += f"⌛ Lượt {turn}\n"
+        desc = "**Diễn biến phó bản**:\n"
+        desc += "**Lượt** {turn}\n"
         desc += "\n".join(turn_logs) if turn_logs else "(không có hành động)"
 
         emb = discord.Embed(
