@@ -2400,58 +2400,35 @@ async def cmd_osaoluu_antoan(ctx):
 
 
 
-# ================== XOÁ BACKUP (THỦ CÔNG + TỰ ĐỘNG, GIỮ 2 BẢN) ==================
-from discord.ext import tasks
-import os, glob
+# ================== XOÁ TOÀN BỘ BACKUP ==================
 
-# 🧹 HÀM DỌN BACKUP DÙNG CHUNG
-def run_xoabackup():
-    """
-    Dọn thư mục backups: chỉ giữ lại 2 file .json mới nhất.
-    KHÔNG xoá file data.json chính.
-    """
-    backup_root = os.path.join(BASE_DATA_DIR, "backups")
-    os.makedirs(backup_root, exist_ok=True)
-
-    files = sorted(
-        glob.glob(os.path.join(backup_root, "*.json")),
-        key=os.path.getmtime
-    )
-    # nếu <= 2 file thì thôi
-    if len(files) <= 2:
-        print("[XOABACKUP] Ít hơn hoặc bằng 2 file, không cần xoá.")
-        return
-
-    # xoá hết trừ 2 cái mới nhất
-    for f in files[:-2]:
-        try:
-            os.remove(f)
-            print(f"[XOABACKUP] Đã xoá: {f}")
-        except Exception as e:
-            print(f"[XOABACKUP] Lỗi khi xoá {f}: {e}")
-
-# 💬 LỆNH THỦ CÔNG
 @bot.command(name="xoabackup", aliases=["oxoabackup"])
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def cmd_xoabackup(ctx):
+    """
+    GIẢI PHÓNG DUNG LƯỢNG.
+    Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
+    KHÔNG xoá data.json chính.
+    Nên chạy `osaoluuantoan` trước để chắc chắn luôn còn 1 bản backup mới nhất.
+    """
+    import shutil
+    backup_root = os.path.join(BASE_DATA_DIR, "backups")
     try:
-        run_xoabackup()
+        if os.path.isdir(backup_root):
+            shutil.rmtree(backup_root)
+        os.makedirs(backup_root, exist_ok=True)
         await ctx.reply(
-            "🧹 Đã dọn backup, chỉ giữ lại 2 bản mới nhất trong `/backups`.\n"
-            "📦 File dữ liệu chính `data.json` vẫn còn nguyên.",
+            "🧹 Đã xoá toàn bộ backup cũ (startup / pre-save / manual / ...).\n"
+            "📦 File dữ liệu chính data.json vẫn còn nguyên.\n"
+            "💡 Gợi ý: kiểm tra lại dung lượng volume trên Railway.",
             mention_author=False
         )
     except Exception as e:
-        await ctx.reply(f"❌ Không thể xoá backup: {e}", mention_author=False)
-
-# 🔁 TỰ ĐỘNG XOÁ MỖI 24 GIỜ
-@tasks.loop(minutes=10)
-async def auto_xoabackup_task():
-    await bot.wait_until_ready()
-    print("[AUTO-XOABACKUP] Bắt đầu dọn volume tự động...")
-    run_xoabackup()
-    print("[AUTO-XOABACKUP] Dọn volume tự động hoàn tất!")
+        await ctx.reply(
+            f"❌ Không thể xoá backup: {e}",
+            mention_author=False
+        )
 
 
 # ================== XOÁ TOÀN BỘ BACKUP (THỦ CÔNG + TỰ ĐỘNG) ==================
