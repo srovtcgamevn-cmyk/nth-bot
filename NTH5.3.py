@@ -890,24 +890,30 @@ bot = commands.Bot(
 
 
 
+import glob, os
+
 @bot.event
 async def on_ready():
     """
     Gọi khi bot login xong và event loop Discord đã chạy.
     - Log bot ready
-    - Chụp snapshot 'startup' (như cũ)
+    - Chụp snapshot 'startup'
     - Khởi động vòng auto_backup_task nếu chưa chạy
     """
-    global _auto_backup_started
+    global _auto_backup_started, data
 
     print(f"✅ Bot ready: {bot.user} (id: {bot.user.id})")
 
-    # Snapshot khởi động (giữ nguyên logic cũ của bạn)
+    # Snapshot khởi động + dọn bớt snapshot cũ, chỉ giữ 10 bản
     try:
-        data = load_data()
         snapshot_data_v16(data, tag="startup", subkey="startup")
-    except Exception:
-        pass
+
+        snap_dir = "/mnt/volume/snapshots"
+        files = sorted(glob.glob(f"{snap_dir}/*.json"), key=os.path.getmtime)
+        for f in files[:-10]:
+            os.remove(f)
+    except Exception as e:
+        print("Snapshot lỗi hoặc không dọn được:", e)
 
     # Khởi động vòng auto backup 1 lần duy nhất
     if not _auto_backup_started:
@@ -923,6 +929,7 @@ async def on_ready():
         except RuntimeError:
             # Nếu Discord reconnect và task đã start rồi -> bỏ qua
             pass
+
 
 # ⚙️ Biến toàn cục dùng để đánh dấu cần lưu data
 NEED_SAVE = False
@@ -6948,42 +6955,6 @@ async def on_ready():
 #==================================================================================
 # 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
 # ====================================================================================================================================
-
-
-
-import glob, os
-
-# load 1 lần
-data = load_data()
-NEED_SAVE = False
-
-def cleanup_snapshots(path="/mnt/volume/snapshots", keep=10):
-    try:
-        files = sorted(glob.glob(f"{path}/*.json"), key=os.path.getmtime)
-        for f in files[:-keep]:
-            os.remove(f)
-    except Exception:
-        pass
-
-@bot.event
-async def on_ready():
-    global _auto_backup_started, data
-    print(f"✅ Bot ready: {bot.user} (id: {bot.user.id})")
-
-    # Snapshot nhưng dọn ngay
-    try:
-        snapshot_data_v16(data, tag="startup", subkey="startup")
-        cleanup_snapshots("/mnt/volume/snapshots", keep=10)
-    except Exception:
-        pass
-
-    if not _auto_backup_started:
-        try:
-            auto_backup_task.start()
-            _auto_backup_started = True
-            print("[AUTO-BACKUP] Đã khởi động auto_backup_task.")
-        except RuntimeError:
-            pass
 
 
 
