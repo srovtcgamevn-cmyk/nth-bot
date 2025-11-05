@@ -4,7 +4,7 @@
     "buildCommand": "pip install -r requirements.txt"
   },
   "deploy": {
-    "startCommand": "python NTH3.py"
+    "startCommand": "python NTH5.3.py"
   },
   "variables": {
     "PYTHON_VERSION": "3.12.7"
