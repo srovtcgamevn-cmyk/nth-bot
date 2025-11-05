@@ -921,6 +921,14 @@ async def on_ready():
         except RuntimeError:
             # Nếu Discord reconnect và task đã start rồi -> bỏ qua
             pass
+
+# ✅ THÊM 3 DÒNG NÀY
+    if not auto_xoabackup_task.is_running():
+        auto_xoabackup_task.start()
+        print("[AUTO-XOABACKUP] đã start (10 phút/lần)")
+
+
+
 # ===================================
 # 🧩 BOT & CẤU HÌNH CHUNG — KẾT THÚC
 # ===================================
@@ -2411,6 +2419,8 @@ def run_xoabackup():
     KHÔNG xoá data.json chính.
     """
     backup_root = os.path.join(BASE_DATA_DIR, "backups")
+    print("[XOABACKUP] đang xoá:", backup_root)
+
     try:
         if os.path.isdir(backup_root):
             shutil.rmtree(backup_root)   # 👈 y như bản cũ của bạn
@@ -6534,52 +6544,39 @@ def _draw_bar(draw: ImageDraw.ImageDraw, x, y, w, h, ratio, bg, fg):
 def render_battle_image(
     user_name: str,
     phai_key: str,
+    user_level: int,
     user_hp: int,
     user_hp_max: int,
     user_def: int,
     user_energy: int,
     user_atk: int,
-    monsters: list,   # [{name_plain, rarity, hp, hp_max, atk, ko}, ...]
+    monsters: list,
     turn_idx: int,
     total_turns: int,
 ) -> bytes:
-    # kích thước khung
     W, H = 900, 240
-
-    # nền trắng trong suốt để còn bo góc + viền
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    img = Image.new("RGB", (W, H), (46, 48, 52))  # nền xám đậm
     draw = ImageDraw.Draw(img)
 
-    # nền tối bo góc bên trong
-    bg_radius = 26
-    inner_rect = (4, 4, W - 4, H - 4)
-    draw.rounded_rectangle(inner_rect, radius=bg_radius, fill=(46, 48, 52, 255))
-
-    # viền mỏng
-    draw.rounded_rectangle(inner_rect, radius=bg_radius, outline=(225, 225, 225, 90), width=2)
-
-    # font
-    ft_title = load_font_safe(22)
+    ft_title = load_font_safe(24)
     ft = load_font_safe(16)
     ft_small = load_font_safe(13)
 
-    # tên phái có dấu
+    # ===== HEADER =====
+    draw.text((20, 12), f"{user_name} — Phó bản sơ cấp", font=ft_title, fill=(255, 255, 255))
+    draw.text((W - 140, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
+
+    # tên phái
     phai_name = PHAI_DISPLAY.get(phai_key, phai_key or "Chưa chọn")
 
-    # ---------------- HEADER ----------------
-    # tiêu đề
-    draw.text((37, 14), f"{user_name} — Phó bản sơ cấp", font=ft_title, fill=(280, 280, 280))
-    # lượt ở góc phải
-    draw.text((W - 130, 16), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(225, 225, 225))
+    # ===== KHỐI NGƯỜI CHƠI =====
+    left_x = 20
+    top_y = 50
 
-    # ---------------- KHỐI PLAYER (TRÁI) ----------------
-    left_x = 37
-    top_y = 54
-
-    # dòng phái + tấn công
+    # dòng cấp + phái + atk
     draw.text(
         (left_x, top_y),
-        f"Phái: {phai_name}   |   Tấn công: {user_atk}",
+        f"Cấp: {user_level}   |   Phái: {phai_name}   |   Tấn công: {user_atk}",
         font=ft_small,
         fill=(230, 230, 230),
     )
@@ -6689,6 +6686,8 @@ def render_battle_image(
     return buf.getvalue()
 
 
+
+
 # ---------------------------------------------------------
 # 5) LỆNH opb / pb
 # ---------------------------------------------------------
@@ -6745,6 +6744,7 @@ async def cmd_opb(ctx: commands.Context):
     # render lượt đầu
     img_bytes = render_battle_image(
         ctx.author.display_name,
+        int(user.get("level", 1)),   # <— truyền cấp thật
         user.get("class", ""),
         user_hp, user_hp_max,
         user_def, user_energy,
@@ -6797,6 +6797,7 @@ async def cmd_opb(ctx: commands.Context):
         img_bytes = render_battle_image(
             ctx.author.display_name,
             user.get("class", ""),
+            int(user.get("level", 1)),   # <— truyền cấp thật
             user_hp, user_hp_max,
             user_def, user_energy,
             user_atk,
@@ -6824,25 +6825,39 @@ async def cmd_opb(ctx: commands.Context):
         turn += 1
         await asyncio.sleep(OPB_TURN_DELAY)
 
-     # ===== tổng kết =====
+        # ===== TỔNG KẾT / THƯỞNG =====
     killed = sum(1 for m in monsters if m["ko"])
+
+    # 1) cộng EXP vào user
     exp_gain = 18 * max(1, killed)
-    user["exp"] += exp_gain
+    user_exp = int(user.get("exp", 0))
+    user_level = int(user.get("level", 1))
 
-    # lên cấp nếu đủ exp
+    user_exp += exp_gain
+    user["exp"] = user_exp  # ghi lại
+
+    # 2) xử lý lên cấp
     leveled = False
-    while user["exp"] >= get_exp_required_for_level(user["level"]):
-        user["exp"] -= get_exp_required_for_level(user["level"])
-        user["level"] += 1
-        leveled = True
+    while True:
+        need = get_exp_required_for_level(user_level)
+        if user_exp >= need:
+            user_exp -= need
+            user_level += 1
+            leveled = True
+        else:
+            break
 
-    # kinh tế
+    # cập nhật lại vào user
+    user["exp"] = user_exp
+    user["level"] = user_level
+
+    # 3) kinh tế
     np_gain = 40 * killed
     xu_gain = 8 * killed
-    user["ngan_phi"] += np_gain
-    user["xu"] += xu_gain
+    user["ngan_phi"] = int(user.get("ngan_phi", 0)) + np_gain
+    user["xu"] = int(user.get("xu", 0)) + xu_gain
 
-    # tạp vật theo phẩm quái
+    # 4) tạp vật theo phẩm quái
     tv = user.setdefault("tap_vat", {})
     for r in ["S", "A", "B", "C", "D"]:
         tv.setdefault(r, 0)
@@ -6850,11 +6865,13 @@ async def cmd_opb(ctx: commands.Context):
     drop_counter = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0}
     for m in monsters:
         if m["ko"]:
-            rr = m["rarity"]
-            drop_counter[rr] += 1
-            tv[rr] = int(tv.get(rr, 0)) + 1
+            rar = m["rarity"]
+            drop_counter[rar] += 1
+            tv[rar] = int(tv.get(rar, 0)) + 1
 
+    # 5) LƯU FILE NGAY TẠI ĐÂY
     save_data(data)
+
 
     # emoji
     np_emo = globals().get("NP_EMOJI", "📦")
@@ -7005,6 +7022,8 @@ async def on_message(message):
 # ====================================================================================================================================
 # 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
 # ====================================================================================================================================
+
+
 
 
 
@@ -7507,6 +7526,8 @@ async def testnhiemvusos(ctx):
 # ====================================================================================================================================
 # 🧍 NHIỆM VỤ KẾT THÚC
 # ====================================================================================================================================
+
+
 
 
 
