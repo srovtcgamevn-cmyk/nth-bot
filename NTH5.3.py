@@ -6951,6 +6951,39 @@ async def on_ready():
 
 
 
+import glob, os
+
+# load 1 lần
+data = load_data()
+NEED_SAVE = False
+
+def cleanup_snapshots(path="/mnt/volume/snapshots", keep=10):
+    try:
+        files = sorted(glob.glob(f"{path}/*.json"), key=os.path.getmtime)
+        for f in files[:-keep]:
+            os.remove(f)
+    except Exception:
+        pass
+
+@bot.event
+async def on_ready():
+    global _auto_backup_started, data
+    print(f"✅ Bot ready: {bot.user} (id: {bot.user.id})")
+
+    # Snapshot nhưng dọn ngay
+    try:
+        snapshot_data_v16(data, tag="startup", subkey="startup")
+        cleanup_snapshots("/mnt/volume/snapshots", keep=10)
+    except Exception:
+        pass
+
+    if not _auto_backup_started:
+        try:
+            auto_backup_task.start()
+            _auto_backup_started = True
+            print("[AUTO-BACKUP] Đã khởi động auto_backup_task.")
+        except RuntimeError:
+            pass
 
 
 
