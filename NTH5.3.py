@@ -5424,6 +5424,7 @@ class OnhanvatView(discord.ui.View):
 @bot.command(name="nhanvat", aliases=["onhanvat", "nv"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_onhanvat(ctx, member: discord.Member = None):
+    data = load_data()          # <— thêm dòng này    
     # chọn target
     target = member or ctx.author
     uid = str(target.id)
