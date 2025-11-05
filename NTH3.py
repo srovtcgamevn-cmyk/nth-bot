@@ -465,6 +465,9 @@ EMOJI_DOTHACH          = "<a:dothach:1431793311978491914>"
 EMOJI_DOTHACHT         = "<:dothacht:1431806329529303041>"
 EMOJI_DOTHACH1         = "<a:dothach1:1432592899694002286>"
 EMOJI_DOTHACHTHUA      = "<:dothachthua:1432755827621757038>"
+EMOJI_THIENTHUONG      = "<a:thienthuong:1434625295897333811>"
+
+
 # ===== Emoji — KẾT THÚC =====
 
 # ===== Link Hình Ảnh — BẮT ĐẦU =====
@@ -1087,8 +1090,8 @@ async def cmd_olenh(ctx: commands.Context):
         "**osetbot** — Kích hoạt BOT trong kênh *(Admin)*\n"
         "**ol** — Đi thám hiểm, tìm rương báu (CD 10s)\n"
         "**odt** — Đổ thạch (hỗ trợ `odt all`)\n"
-        "**opk** — Sắp ra mắt\n"
-        "**opb** — Sắp ra mắt\n\n"
+        "**opb** — Đi phó bản sơ cấp\n"
+        "**opk** — Sắp ra mắt\n\n"
 
 
         "**👤 LỆNH NHÂN VẬT**\n"
@@ -5235,9 +5238,9 @@ def build_nv_embed(ctx, target_user: dict, target_member: discord.Member) -> dis
     # thời trang
     fashion = target_user.get("fashion")
     if fashion:
-        fashion_text = f"👗 Thời trang: **{fashion}**"
+        fashion_text = f"{EMOJI_THIENTHUONG} Thời trang: **{fashion}**"
     else:
-        fashion_text = "👗 Thời trang: — Chưa có —"
+        fashion_text = f"{EMOJI_THIENTHUONG} Thời trang: — Chưa có —"
 
     emb = discord.Embed(
         title=f"👤 Nhân vật — {target_member.display_name}",
@@ -5312,7 +5315,7 @@ def build_trang_bi_embed(ctx, target_user: dict, target_member: discord.Member) 
         description="\n".join(desc_lines),
         color=0x3498DB,
     )
-    emb.set_footer(text="Dùng `oxem <ID>` để xem chi tiết 1 món.")
+    emb.set_footer(text="Dùng oxem <ID> để xem chi tiết 1 món.")
     return emb
 
 
@@ -6395,507 +6398,353 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 
 
 
-from datetime import datetime, timedelta, timezone
+# =========================================================
+# OPB – ĐÁNH PHÓ BẢN (vẽ ảnh, diễn biến từng lượt, có emoji ở diễn biến)
+# =========================================================
+import io
+import random
+import asyncio
+from PIL import Image, ImageDraw, ImageFont
+import discord
+from discord.ext import commands
 
-# múi giờ GMT+7
-TZ_GMT7 = timezone(timedelta(hours=7))
+OPB_TURN_DELAY = 3.0  # giây giữa các lượt
 
-# 🎯 Danh sách nhiệm vụ trong ngày
-DAILY_MISSION_TEMPLATES = [
-    {
-        "key": "ol_10",
-        "title": "Đi thám hiểm 10 lần (ol)",
-        "stat_field": ("stats", "ol_count"),
-        "target": 10,
-        "reward_np": 5_000,
-    },
-    {
-        "key": "odt_10",
-        "title": "Đổ thạch 10 lần (odt)",
-        "stat_field": ("stats", "odt_count"),
-        "target": 10,
-        "reward_np": 4_000,
-    },
-    {
-        "key": "omo_5",
-        "title": "Mở 5 rương (omo)",
-        "stat_field": ("quest_runtime", "opened_today"),
-        "target": 5,
-        "reward_np": 2_000,
-    },
-    {
-        "key": "chat_50",
-        "title": "Gửi 50 tin nhắn trong server",
-        "stat_field": ("quest_runtime", "messages_today"),
-        "target": 50,
-        "reward_np": 2_000,
-    },
-    {
-        "key": "tang_5",
-        "title": f"`otang` {NP_EMOJI} cho người chơi khác 5 lần",
-        "stat_field": ("quest_runtime", "tang_today"),
-        "target": 5,
-        "reward_np": 3_000,
-    },
-]
-
-# 🎁 Thưởng lớn khi hoàn tất tất cả nhiệm vụ ngày
-DAILY_FULL_REWARD_NP = 100_000
-DAILY_FULL_REWARD_RUONG = {"S": 1}  # Rương S x1
-DAILY_FULL_REWARD_EMOJI = "<a:rs_d:1432101376699269364>"  # emoji rương S
-
-def _today_key_str():
-    """Chuỗi ngày hiện tại theo GMT+7 dạng YYYY-MM-DD (để reset nhiệm vụ theo ngày)."""
-    return datetime.now(TZ_GMT7).strftime("%Y-%m-%d")
-
-def _ensure_daily_quest_block(user: dict) -> dict:
-    """
-    Đảm bảo user có block daily_quests đúng ngày.
-    Nếu qua ngày mới -> reset toàn bộ.
-    Cấu trúc:
-    user["daily_quests"] = {
-        "date": "2025-11-02",
-        "missions": {...},
-        "full_done": False,
-        "full_claimed": False,
-        "completion_announced": False,
-        "quest_runtime": {
-            "opened_today": 0,
-            "messages_today": 0,
-            "tang_today": 0,
-        },
-        "dm_message_id": None
-    }
-    """
-    today_key = _today_key_str()
-    dq = user.setdefault("daily_quests", {})
-    dq_date = dq.get("date")
-
-    # sang ngày mới -> reset
-    if dq_date != today_key:
-        dq.clear()
-        dq["date"] = today_key
-        dq["missions"] = {}
-        dq["full_done"] = False
-        dq["full_claimed"] = False
-        dq["completion_announced"] = False
-        dq["dm_message_id"] = None
-        dq["quest_runtime"] = {
-            "opened_today": 0,
-            "messages_today": 0,
-            "tang_today": 0,
-        }
-
-        # snapshot stat ban đầu
-        for tpl in DAILY_MISSION_TEMPLATES:
-            key = tpl["key"]
-            sf_root, sf_key = tpl["stat_field"]
-            if sf_root == "stats":
-                start_val = int(user.get("stats", {}).get(sf_key, 0))
-            else:
-                start_val = 0  # quest_runtime reset mỗi ngày
-
-            dq["missions"][key] = {
-                "target": tpl["target"],
-                "progress_start": start_val,
-                "reward_np": tpl["reward_np"],
-                "done": False,
-                "claimed": False,
-                "title": tpl["title"],
-                "sf_root": sf_root,
-                "sf_key": sf_key,
-            }
-
-    else:
-        # bảo đảm đủ field nếu code cũ chưa có
-        dq.setdefault("missions", {})
-        dq.setdefault("full_done", False)
-        dq.setdefault("full_claimed", False)
-        dq.setdefault("completion_announced", False)
-        dq.setdefault("dm_message_id", None)
-        qr = dq.setdefault("quest_runtime", {})
-        qr.setdefault("opened_today", 0)
-        qr.setdefault("messages_today", 0)
-        qr.setdefault("tang_today", 0)
-
-        # bảo đảm đủ mission template
-        for tpl in DAILY_MISSION_TEMPLATES:
-            key = tpl["key"]
-            if key not in dq["missions"]:
-                sf_root, sf_key = tpl["stat_field"]
-                if sf_root == "stats":
-                    start_val = int(user.get("stats", {}).get(sf_key, 0))
-                else:
-                    start_val = 0
-                dq["missions"][key] = {
-                    "target": tpl["target"],
-                    "progress_start": start_val,
-                    "reward_np": tpl["reward_np"],
-                    "done": False,
-                    "claimed": False,
-                    "title": tpl["title"],
-                    "sf_root": sf_root,
-                    "sf_key": sf_key,
-                }
-
-    return dq
-
-def _calc_progress_for_mission(user: dict, dq: dict, mdata: dict) -> int:
-    """
-    Tiến độ hiện tại cho 1 nhiệm vụ.
-    stats -> (current_stat - progress_start)
-    quest_runtime -> giá trị trực tiếp trong dq["quest_runtime"]
-    """
-    sf_root = mdata["sf_root"]
-    sf_key = mdata["sf_key"]
-    base = int(mdata.get("progress_start", 0))
-    target = int(mdata.get("target", 0))
-
-    if sf_root == "stats":
-        current_val = int(user.get("stats", {}).get(sf_key, 0))
-        delta = current_val - base
-    else:  # quest_runtime
-        delta = int(dq.get("quest_runtime", {}).get(sf_key, 0))
-
-    if delta < 0:
-        delta = 0
-    if delta > target:
-        delta = target
-    return delta
-
-def _refresh_daily_quest_completion(user: dict):
-
-    """
-    Đánh dấu nhiệm vụ done / chưa done, và đánh dấu full_done nếu ALL done.
-    """
-    dq = _ensure_daily_quest_block(user)
-
-    all_done = True
-    for _key, m in dq["missions"].items():
-        prog = _calc_progress_for_mission(user, dq, m)
-        if prog >= m["target"]:
-            m["done"] = True
-        else:
-            m["done"] = False
-            all_done = False
-    dq["full_done"] = all_done
-    return dq
-
-def _format_single_mission_line(idx: int, m: dict, progress_now: int) -> str:
-    """
-    Ví dụ dòng:
-    ✅ 1️⃣ Đi thám hiểm 10 lần (ol)
-    • Tiến độ: 7 / 10 → Phần thưởng: 5,000 NP
-    """
-    box = "✅" if m.get("done") else "⬛"
-    title = m.get("title", f"Nhiệm vụ #{idx}")
-    target = int(m.get("target", 0))
-    reward_np = int(m.get("reward_np", 0))
-    return (
-        f"{box} {idx}️⃣ {title}\n"
-        f"• Tiến độ: {progress_now} / {target} → Phần thưởng: {format_num(reward_np)} {NP_EMOJI}"
-    )
-
-def _build_daily_text(user: dict, dq: dict) -> tuple[str, int]:
-    """
-    Tạo nội dung embed hiển thị nhiệm vụ ngày + thời gian GMT+7.
-    """
-    missions = dq.get("missions", {})
-    done_count = sum(1 for m in missions.values() if m.get("done"))
-    total = len(missions)
-
-    if not dq.get("full_done", False):
-        header_lines = [
-            f"📅 Nhiệm vụ ngày {datetime.now(TZ_GMT7).strftime('%d/%m/%Y')}",
-            f"⏰ Thời gian: {datetime.now(TZ_GMT7).strftime('%H:%M')}",
-            f"🎯 Hoàn thành tất cả {total} nhiệm vụ để nhận:",
-            f"   {NP_EMOJI} {format_num(DAILY_FULL_REWARD_NP)} Ngân Phiếu "
-            f"+ {DAILY_FULL_REWARD_EMOJI} Rương S x1",
-            "──────────────────────────────",
-        ]
-    else:
-        if dq.get("full_claimed", False):
-            claim_txt = "✅ Bạn đã nhận thưởng lớn hôm nay rồi."
-        else:
-            claim_txt = (
-                "🏆 Bạn đã hoàn thành tất cả nhiệm vụ hôm nay!\n"
-                f"🎁 Sẵn sàng nhận: {NP_EMOJI} +{format_num(DAILY_FULL_REWARD_NP)} "
-                f"& {DAILY_FULL_REWARD_EMOJI} +1 Rương S"
-            )
-        header_lines = [
-            f"📅 Nhiệm vụ ngày {datetime.now(TZ_GMT7).strftime('%d/%m/%Y')}",
-            f"⏰ Thời gian: {datetime.now(TZ_GMT7).strftime('%H:%M')} (GMT+7)",
-            claim_txt,
-            "──────────────────────────────",
-        ]
-
-    # sắp xếp nhiệm vụ theo template order
-    order_map = {tpl["key"]: i for i, tpl in enumerate(DAILY_MISSION_TEMPLATES, start=1)}
-    missions_sorted = list(dq["missions"].items())
-    missions_sorted.sort(key=lambda kv: order_map.get(kv[0], 999))
-
-    body_lines = []
-    for key, m in missions_sorted:
-        prog_now = _calc_progress_for_mission(user, dq, m)
-        idx_display = order_map.get(key, 0)
-        body_lines.append(_format_single_mission_line(idx_display, m, prog_now))
-
-    desc_text = (
-        "\n".join(header_lines)
-        + "\n\n"
-        + "\n\n".join(body_lines)
-        + "\n\n"
-        + f"📌 Tiến độ tổng: {done_count}/{total} nhiệm vụ đã hoàn thành hôm nay."
-    )
-    return desc_text, done_count
-
-async def _send_or_update_daily_dm(member: discord.Member, user: dict, dq: dict):
-    """
-    Gửi HOẶC sửa lại 1 tin nhắn DM duy nhất để không spam.
-    Lưu message_id vào user['daily_quests']['dm_message_id'].
-    """
-    desc_text, _ = _build_daily_text(user, dq)
-
-    dm_embed = make_embed(
-        title="📜 NHIỆM VỤ HÀNG NGÀY",
-        description=desc_text,
-        color=0x00B894,
-        footer=(
-            "Cập nhật lúc "
-            + datetime.now(TZ_GMT7).strftime('%H:%M:%S %d/%m/%Y')
-            + " (GMT+7)"
-        )
-    )
-
+def _load_font(size=20):
     try:
-        dm_channel = await member.create_dm()
+        return ImageFont.truetype("arial.ttf", size)
     except Exception:
-        return
+        return ImageFont.load_default()
 
-    dm_msg_id = dq.get("dm_message_id")
-    if dm_msg_id:
-        try:
-            prev_msg = await dm_channel.fetch_message(int(dm_msg_id))
-            await prev_msg.edit(embed=dm_embed)
-            return
-        except Exception:
-            pass
+# tên phái có dấu để hiện lên ảnh
+PHAI_DISPLAY = {
+    "thiet_y": "Thiết Y",
+    "huyet_ha": "Huyết Hà",
+    "than_tuong": "Thần Tương",
+    "to_van": "Tố Vấn",
+    "cuu_linh": "Cửu Linh",
+    "toai_mong": "Toái Mộng",
+}
 
-    try:
-        sent = await dm_channel.send(embed=dm_embed)
-        dq["dm_message_id"] = sent.id
-    except Exception:
-        dq["dm_message_id"] = None
+# 1) bộ quái có emoji để viết vào DIỄN BIẾN
+MONSTER_WITH_EMOJI = {
+    "D": ["🐭 Chuột Rừng", "🐰 Thỏ Xám", "🐸 Ếch Con", "🐝 Ong Độc", "🐤 Chim Non"],
+    "C": ["🐺 Sói Rừng", "🐗 Lợn Rừng", "🦎 Thằn Lằn Cát", "🐢 Rùa Rừng", "🦆 Vịt Hoang"],
+    "B": ["🐯 Hổ Núi", "🦊 Cáo Lửa", "🦉 Cú Đêm", "🐊 Cá Sấu Nham", "🦝 Gấu Trộm"],
+    "A": ["🦁 Sư Tử Linh", "🐻 Gấu Núi", "🐼 Gấu Trúc", "🦧 Vượn Thần", "🦛 Hà Mã Linh"],
+    "S": ["🦄 Kỳ Lân", "🐉 Long Thú", "🦬 Thú Thần", "🦣 Tượng Cổ", "🦙 Linh Thú"],
+}
+# 2) bản rút emoji để vẽ vào ảnh
+def _strip_emoji(name: str) -> str:
+    # tách tới khoảng đầu tiên
+    parts = name.split(" ", 1)
+    if len(parts) == 2 and len(parts[0]) <= 3:  # kiểu "🐭"
+        return parts[1]
+    return name
 
-async def _check_and_announce_completion(member: discord.Member, dq: dict):
-    """
-    Nếu user đã hoàn thành toàn bộ nhiệm vụ ngày (full_done)
-    và chưa gửi lời chúc mừng -> gửi DM 1 lần.
-    """
-    if not dq.get("full_done", False):
-        return
-    if dq.get("completion_announced", False):
-        return
+# màu thanh máu theo phẩm
+RARITY_BAR_COLOR = {
+    "D": (120, 120, 120),
+    "C": (60, 135, 245),
+    "B": (170, 90, 245),
+    "A": (245, 155, 60),
+    "S": (235, 65, 65),
+}
 
-    msg_txt = (
-        "🏆 Hoàn thành toàn bộ nhiệm vụ ngày!\n"
-        f"Bạn có thể nhận thưởng lớn hôm nay:\n"
-        f"- {NP_EMOJI} {format_num(DAILY_FULL_REWARD_NP)} Ngân Phiếu\n"
-        f"- {DAILY_FULL_REWARD_EMOJI} Rương S x{DAILY_FULL_REWARD_RUONG.get('S', 1)}\n\n"
-        f"⏰ {datetime.now(TZ_GMT7).strftime('%H:%M %d/%m/%Y')} (GMT+7)"
-    )
-    try:
-        await member.send(msg_txt)
-    except Exception:
-        pass
+def get_exp_required_for_level(level: int) -> int:
+    if level <= 5:
+        return 100 + level * 50
+    if level <= 10:
+        return 350 + (level - 5) * 200
+    if level <= 20:
+        return 1350 + (level - 10) * 350
+    if level <= 30:
+        return 4850 + (level - 20) * 700
+    if level <= 40:
+        return 11850 + (level - 30) * 1000
+    if level <= 50:
+        return 21850 + (level - 40) * 1300
+    return 34850 + (level - 50) * 1800
 
-    dq["completion_announced"] = True
+def _draw_bar(draw: ImageDraw.ImageDraw, x, y, w, h, ratio, bg, fg):
+    draw.rounded_rectangle((x, y, x+w, y+h), radius=int(h/2), fill=bg)
+    ratio = max(0.0, min(1.0, ratio))
+    fill_w = int(w * ratio)
+    if fill_w > 0:
+        draw.rounded_rectangle((x, y, x+fill_w, y+h), radius=int(h/2), fill=fg)
 
-def quest_runtime_increment(user: dict, field: str, amount: int = 1):
-    """
-    Cộng dồn các chỉ số nhiệm vụ trong ngày (opened_today, messages_today, tang_today ...)
-    Sau đó nhớ save_data(data) ở chỗ bạn gọi.
-    """
-    dq = _ensure_daily_quest_block(user)
-    qr = dq["quest_runtime"]
-    qr[field] = int(qr.get(field, 0)) + amount
-    return dq
+def render_battle_image(user_name: str,
+                        phai_key: str,
+                        user_hp: int,
+                        user_hp_max: int,
+                        user_def: int,
+                        user_energy: int,
+                        user_atk: int,
+                        monsters: list[dict],
+                        turn_idx: int,
+                        total_turns: int) -> bytes:
+    W, H = 900, 240
+    img = Image.new("RGB", (W, H), (46, 48, 52))
+    draw = ImageDraw.Draw(img)
+    ft_title = _load_font(24)
+    ft = _load_font(16)
+    ft_small = _load_font(13)
 
-@bot.command(name="onhiemvu", aliases=["nhiemvu"])
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_onhiemvu(ctx: commands.Context):
-    """
-    Hiển thị tình trạng nhiệm vụ ngày + cập nhật DM cá nhân theo dõi.
-    """
-    user_id = str(ctx.author.id)
+    draw.text((20, 12), f"{user_name} — Phó Bản Sơ Cấp", font=ft_title, fill=(255, 255, 255))
+    draw.text((W-120, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
 
-    # đảm bảo user tồn tại
-    data = ensure_user(user_id)
-    user = data["users"][user_id]
+    phai_name = PHAI_DISPLAY.get(phai_key, phai_key or "Chưa chọn")
+    left_x = 20
+    top_y = 50
 
-    # log hoạt động
-    touch_user_activity(ctx, user)
-
-    # refresh trạng thái done / full_done
-    dq = _refresh_daily_quest_completion(user)
-    # --- Thêm 1 dòng: tự trả thưởng nếu có mission done chưa claimed ---
-    await _auto_claim_missions(ctx, data, user, dq)
-
-    # update DM theo dõi
-    await _send_or_update_daily_dm(ctx.author, user, dq)
-    await _check_and_announce_completion(ctx.author, dq)
-
-    # lưu mọi thay đổi (dm_message_id, completion_announced, ...)
-    save_data(data)
-
-    # embed trả lời công khai trong kênh
-    desc_text, _ = _build_daily_text(user, dq)
-    emb = make_embed(
-        title="📜 NHIỆM VỤ HÀNG NGÀY",
-        description=desc_text,
-        color=0x00B894,
-        footer=(
-            f"Yêu cầu bởi {ctx.author.display_name} • "
-            + datetime.now(TZ_GMT7).strftime('%H:%M %d/%m/%Y')
-            + " (GMT+7)"
-        )
-    )
-    await ctx.reply(embed=emb, mention_author=False)
+    text_line = f"Phái: {phai_name}   |   Tấn công: {user_atk}"
+    draw.text((left_x, top_y + 20), text_line, font=ft_small, fill=(230, 230, 230))
 
 
-#===========================================================
-# ======= AUTO-CLAIM / AUTO-REWARD FOR DAILY MISSIONS =======
-# - Giữ nguyên data structure hiện có; chỉ tự trả thưởng khi mission.done == True và claimed == False
-# - Không gửi DM khi hoàn thành nhiệm vụ con. Khi hoàn tất full (5/5) sẽ:
-#     1) trả thưởng lớn (NP + Rương S)
-#     2) gửi 1 DM chúc mừng cho user
-#     3) gửi 1 thông báo public ở cùng kênh (ctx) nơi user gọi onhiemvu
-# Usage:
-#  - Thêm 1 dòng vào đầu hàm cmd_onhiemvu (sau khi đã load data,user và dq):
-#       await _auto_claim_missions(ctx, data, user, dq)
-#===========================================================
+    draw.text((left_x, top_y+44), f"Máu: {user_hp}/{user_hp_max}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+62, 340, 14,
+              user_hp/user_hp_max if user_hp_max else 0,
+              (90, 35, 35), (230, 75, 75))
 
-async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
-    """
-    Tự trả thưởng cho các nhiệm vụ con đã hoàn thành mà chưa claimed.
-    Nếu full_done và chưa full_claimed -> trả thưởng full + DM + public announce.
-    - ctx: commands.Context (bắt buộc để gửi DM / thông báo public)
-    - data: toàn bộ data (để save_data)
-    - user: object user (mutable)
-    - dq: daily_quests block của user (mutable)
-    """
-    claimed_any = False
+    draw.text((left_x, top_y+82), f"Thủ: {user_def}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+100, 340, 12, 1, (70, 70, 70), (150, 150, 150))
 
-    # 1) trả thưởng cho từng mission con (chỉ tiền NP, không DM)
-    for key, m in dq.get("missions", {}).items():
-        try:
-            if m.get("done") and not m.get("claimed"):
-                reward_np = int(m.get("reward_np", 0))
-                # đảm bảo field stats.np tồn tại
-                user["ngan_phi"] = int(user.get("ngan_phi", 0)) + reward_np
-
-                # đánh dấu đã lấy phần thưởng nhiệm vụ con
-                m["claimed"] = True
-                claimed_any = True
-        except Exception:
-            # không để crash toàn bộ flow - log nếu bạn có hàm log
-            try:
-                print(f"[WARN] lỗi khi auto-claim mission {key} cho user {user.get('id','?')}")
-            except Exception:
-                pass
-
-    # Nếu có claim con thì lưu data (save once)
-    if claimed_any:
-        try:
-            save_data(data)
-        except Exception:
-            pass
-
-    # 2) nếu full_done và chưa full_claimed -> cấp thưởng lớn + DM + public announce
-    if dq.get("full_done", False) and not dq.get("full_claimed", False):
-        try:
-            # trả thưởng NP lớn
-            user["ngan_phi"] = int(user.get("ngan_phi", 0)) + int(DAILY_FULL_REWARD_NP)
-
-            # cộng rương S cho user (nếu data structure khác bạn thay vào chỗ này)
-            user.setdefault("rungs", {})
-            user["rungs"]["S"] = int(user["rungs"].get("S", 0)) + int(DAILY_FULL_REWARD_RUONG.get("S", 0))
-
-            # đánh dấu đã nhận phần thưởng lớn
-            dq["full_claimed"] = True
-
-            # save data
-            try:
-                save_data(data)
-            except Exception:
-                pass
-
-            # Gửi DM chúc mừng (1 lần)
-            dm_title = f"{NP_EMOJI} NHẬN TIỀN THÀNH CÔNG"
-            dm_body = (
-                f"Chúc mừng {ctx.author.display_name}!\n\n"
-                f"Bạn đã hoàn thành toàn bộ nhiệm vụ hôm nay ({dq.get('date','')}).\n\n"
-                f"Bạn nhận được: {NP_EMOJI} **{format_num(DAILY_FULL_REWARD_NP)}** Ngân Phiếu\n"
-                f"Và: {DAILY_FULL_REWARD_EMOJI} **Rương S x{DAILY_FULL_REWARD_RUONG.get('S',0)}**\n\n"
-                "Cảm ơn bạn đã chơi!"
-            )
-            try:
-                emb_dm = make_embed(title=dm_title, description=dm_body, footer=f"Yêu cầu bởi {ctx.author.display_name}")
-                await ctx.author.send(embed=emb_dm)
-            except Exception:
-                # DM failed (user closed DM) -> ignore
-                pass
-
-            # Thông báo public 1 lần ở channel gọi onhiemvu (nếu có quyền gửi)
-            try:
-                public_title = f"{NP_EMOJI} HOÀN THÀNH NHIỆM VỤ HÀNG NGÀY"
-                public_desc = (
-                    f"🎉 {ctx.author.mention} đã hoàn thành 5/5 nhiệm vụ ngày và nhận "
-                    f"{NP_EMOJI} **{format_num(DAILY_FULL_REWARD_NP)}** + {DAILY_FULL_REWARD_EMOJI} **Rương S x{DAILY_FULL_REWARD_RUONG.get('S',0)}**"
-                )
-                emb_public = make_embed(title=public_title, description=public_desc, footer=f"Yêu cầu bởi {ctx.author.display_name}")
-                await ctx.reply(embed=emb_public, mention_author=False)
-            except Exception:
-                # nếu reply fail, ignore
-                pass
-
-        except Exception as e:
-            try:
-                print(f"[ERROR] _auto_claim_missions error: {e}")
-            except Exception:
-                pass
-
-#===========================================================
-# ======= END AUTO-CLAIM BLOCK =======
-#===========================================================
+    draw.text((left_x, top_y+119), f"Năng lượng: {user_energy}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+137, 340, 12, 1, (40, 65, 105), (95, 165, 230))
 
 
-@bot.command(name="testnhiemvusos")
-@commands.is_owner()
-async def testnhiemvusos(ctx):
+    right_x = 480
+    slot_y = 50
+    for m in monsters:
+        name_no_emo = m["name_plain"]
+        rar = m["rarity"]
+        hp = m["hp"]
+        hpmax = m["hp_max"]
+        atk = m["atk"]
+        ko = m["ko"]
+        bar_color = RARITY_BAR_COLOR.get(rar, (200, 200, 200))
+
+        draw.text((right_x, slot_y), f"{name_no_emo} [{rar}]", font=ft, fill=(255, 255, 255))
+        draw.text((right_x, slot_y+18), f"Công: {atk}", font=ft_small, fill=(220, 220, 220))
+        draw.text((right_x+170, slot_y+18), f"{hp}/{hpmax}", font=ft_small, fill=(220, 220, 220))
+        _draw_bar(draw, right_x, slot_y+38, 270, 13,
+                  hp/hpmax if hpmax else 0.0,
+                  (70, 70, 70),
+                  (90, 90, 90) if ko else bar_color)
+        if ko:
+            draw.text((right_x+230, slot_y+38), "THUA", font=ft_small, fill=(255, 80, 80))
+        slot_y += 62
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf.getvalue()
+
+@bot.command(name="opb", aliases=["pb"])
+@commands.cooldown(1, 8, commands.BucketType.user)
+async def cmd_opb(ctx: commands.Context):
     uid = str(ctx.author.id)
     data = ensure_user(uid)
     user = data["users"][uid]
-    dq = _ensure_daily_quest_block(user)
-    # ép tất cả done & chưa claimed
-    for m in dq["missions"].values():
-        m["done"] = True
-        m["claimed"] = False
-    dq["full_done"] = True
+
+    user.setdefault("level", 1)
+    user.setdefault("exp", 0)
+    user.setdefault("xu", 0)
+    user.setdefault("ngan_phi", 0)
+    user.setdefault("tap_vat", {"D": 0, "C": 0, "B": 0, "A": 0, "S": 0})
+
+    stats = calc_character_stats(user)
+    user_atk = stats["offense"]["total"]
+    user_def = stats["defense"]["total"]
+    user_energy = stats["energy"]["total"]
+    user_hp_max = 3000 + user_def
+    user_hp = user_hp_max
+
+    monsters = []
+    for _ in range(3):
+        roll = random.random()
+        if roll < 0.02:
+            rar = "S"
+        elif roll < 0.10:
+            rar = "A"
+        elif roll < 0.25:
+            rar = "B"
+        elif roll < 0.55:
+            rar = "C"
+        else:
+            rar = "D"
+        display_name = random.choice(MONSTER_WITH_EMOJI[rar])   # có emoji
+        plain_name = _strip_emoji(display_name)                  # để vẽ
+        base_hp = {"D": 180, "C": 240, "B": 420, "A": 650, "S": 1000}[rar]
+        atk = {"D": 18, "C": 36, "B": 80, "A": 140, "S": 200}[rar]
+        monsters.append({
+            "name": display_name,      # dùng ở diễn biến
+            "name_plain": plain_name,  # dùng ở ảnh
+            "rarity": rar,
+            "hp": base_hp,
+            "hp_max": base_hp,
+            "atk": atk,
+            "ko": False,
+        })
+
+    # ảnh lượt 1
+    img_bytes = render_battle_image(
+        ctx.author.display_name,
+        user.get("class", ""),
+        user_hp, user_hp_max,
+        user_def, user_energy,
+        user_atk,
+        monsters,
+        1, 1
+    )
+    file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
+
+    emb = discord.Embed(
+        title=f"**{ctx.author.display_name}** — **Bầy quái nhỏ**",
+        description="🎥 **Diễn biến phó bản**:\n⌛ Lượt 1",
+        color=0xE67E22,
+    )
+    msg = await ctx.send(embed=emb, file=file)
+
+    turn = 1
+    max_turns = 12
+    battle_over = False
+
+    while turn <= max_turns and not battle_over:
+        turn_logs = []
+
+        # quái đánh trước
+        for m in monsters:
+            if m["ko"]:
+                continue
+            dmg = max(1, m["atk"] - int(user_def * 0.12))
+            user_hp = max(0, user_hp - dmg)
+            turn_logs.append(f"{m['name']} tấn công bạn: **-{dmg} HP**")
+            if user_hp <= 0:
+                turn_logs.append("💥 Bạn đã gục!")
+                battle_over = True
+                break
+
+        # bạn đánh lại
+        if not battle_over:
+            target = next((mm for mm in monsters if not mm["ko"]), None)
+            if target:
+                dmg = max(15, int(user_atk * 0.6))
+                target["hp"] = max(0, target["hp"] - dmg)
+                turn_logs.append(f"🤜 Bạn đánh {target['name']}: **-{dmg} HP**")
+                if target["hp"] <= 0:
+                    target["ko"] = True
+                    turn_logs.append(f"💥 {target['name']} bị hạ gục!")
+            # nếu hết quái thì dừng
+            if all(m["ko"] for m in monsters):
+                battle_over = True
+
+        # vẽ lại ảnh theo trạng thái mới
+        img_bytes = render_battle_image(
+            ctx.author.display_name,
+            user.get("class", ""),
+            user_hp, user_hp_max,
+            user_def, user_energy,
+            user_atk,
+            monsters,
+            turn,
+            max_turns,
+        )
+        file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
+
+        desc = "🎥 **Diễn biến phó bản**:\n"
+        desc += f"⌛ Lượt {turn}\n"
+        desc += "\n".join(turn_logs) if turn_logs else "(không có hành động)"
+
+        emb = discord.Embed(
+            title=f"**{ctx.author.display_name}** — **Bầy quái**",
+            description=desc,
+            color=0xE67E22,
+        )
+        await msg.edit(embed=emb, attachments=[file])
+
+        if battle_over:
+            break
+
+        turn += 1
+        await asyncio.sleep(OPB_TURN_DELAY)
+
+    # ===== tổng kết =====
+    # ===== tổng kết =====
+    killed = sum(1 for m in monsters if m["ko"])
+    exp_gain = 18 * max(1, killed)
+    user["exp"] += exp_gain
+
+    # lên cấp nếu đủ exp
+    leveled = False
+    while user["exp"] >= get_exp_required_for_level(user["level"]):
+        user["exp"] -= get_exp_required_for_level(user["level"])
+        user["level"] += 1
+        leveled = True
+
+    # kinh tế
+    np_gain = 40 * killed
+    xu_gain = 8 * killed
+    user["ngan_phi"] += np_gain
+    user["xu"] += xu_gain
+
+    # tạp vật: mỗi con rơi 1 tạp vật đúng phẩm
+    # đảm bảo user có tap_vat đủ key
+    tv = user.setdefault("tap_vat", {})
+    for r in ["S", "A", "B", "C", "D"]:
+        tv.setdefault(r, 0)
+
+    drop_counter = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0}
+    for m in monsters:
+        if m["ko"]:
+            rar = m["rarity"]
+            drop_counter[rar] += 1
+            tv[rar] = int(tv.get(rar, 0)) + 1
+
     save_data(data)
-    await _auto_claim_missions(ctx, data, user, dq)
-    save_data(data)
-    await ctx.reply("Đã ép 5/5 và chạy auto-claim. Dùng `oncheck_tien` để xem số dư.", mention_author=False)
+
+    # emoji
+    np_emo = globals().get("NP_EMOJI", "📦")
+    xu_emo = globals().get("XU_EMOJI", "🪙")
+    tap_emo = globals().get("TAP_VAT_EMOJI", {
+        "S": "💎", "A": "💍", "B": "🐚", "C": "🪨", "D": "🪵"
+    })
+
+    # base text
+    final = (
+        f"⚔️ Đánh {killed}/3 quái → nhận **{exp_gain} EXP**.\n"
+        f"📈 EXP: {user['exp']}/{get_exp_required_for_level(user['level'])} • Cấp: **{user['level']}**"
+    )
+    if leveled:
+        final += " 🎉 Lên cấp!"
+
+    # ghép phần thưởng
+    reward_parts = [
+        f"{np_emo} +{np_gain}",
+        f"{xu_emo} +{xu_gain}",
+    ]
+    # thêm tạp vật từng phẩm
+    for r in ["S", "A", "B", "C", "D"]:
+        cnt = drop_counter[r]
+        if cnt > 0:
+            reward_parts.append(f"{tap_emo[r]} +{cnt}")
+
+    final += "\n" + "  |  ".join(reward_parts)
+
+    await ctx.send(final)
+
+
+
+
+
+
+
+
 
 
 
 # ====================================================================================================================================
-# 🧍 NHIỆM VỤ KẾT THÚC
-# ====================================================================================================================================
-
-
-# ====================================================================================================================================
-# 🧍 NHIỆM VỤ KẾT THÚC
+# 🧍 PHÓ BẢN PHÓ BẢN
 # ====================================================================================================================================
 # ====================================================================================================================================
 # 🧍 KẾT THÚC GAME PLAY      KẾT THÚC GAME PLAY      KẾT THÚC GAME PLAY     KẾT THÚC GAME PLAY        KẾT THÚC GAME PLAY
