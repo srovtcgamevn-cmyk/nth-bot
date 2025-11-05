@@ -927,122 +927,6 @@ async def on_ready():
 
 
 
-# ===============================================
-# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
-# ===============================================
-from discord.ext import tasks
-import time
-
-# 🧭 Kênh Discord để gửi thông báo
-AUTO_BACKUP_CHANNEL_ID = 821066331826421840  
-
-# ⏱ Thời gian mặc định (có thể thay đổi lúc chạy bằng lệnh othoigiansaoluu)
-AUTO_BACKUP_INTERVAL_MINUTES = 1500    # sao lưu mỗi X phút
-AUTO_REPORT_INTERVAL_MINUTES = 10    # báo lên kênh tối đa 1 lần mỗi Y phút
-
-# Bộ nhớ runtime
-_last_report_ts = 0  # timestamp giây lần cuối đã báo
-_auto_backup_started = False  # để đảm bảo chỉ start loop 1 lần
-
-@tasks.loop(minutes=1)
-async def auto_backup_task():
-    """
-    Vòng lặp chạy mỗi 1 phút.
-    - Tự đếm phút để biết khi nào cần backup.
-    - Backup xong thì quyết định có báo vào kênh hay không.
-    """
-    global _last_report_ts
-    global AUTO_BACKUP_INTERVAL_MINUTES
-    global AUTO_REPORT_INTERVAL_MINUTES
-
-    # setup biến đếm phút từ lần backup gần nhất
-    if not hasattr(auto_backup_task, "_minutes_since_backup"):
-        auto_backup_task._minutes_since_backup = 0
-
-    auto_backup_task._minutes_since_backup += 1
-
-    # chưa đủ thời gian -> thôi
-    if auto_backup_task._minutes_since_backup < AUTO_BACKUP_INTERVAL_MINUTES:
-        return
-
-    # reset đếm vì sắp backup
-    auto_backup_task._minutes_since_backup = 0
-
-    # Thực hiện backup
-    try:
-        data_now = load_data()
-        filename = snapshot_data_v16(data_now, tag="auto", subkey="manual")
-
-        # Dọn backup cũ (giữ lại 10 bản manual mới nhất)
-        try:
-            _cleanup_old_backups_limit()
-        except Exception as e:
-            print(f"[AUTO-BACKUP] ⚠️ Lỗi dọn backup cũ: {e}")
-
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = (
-            f"✅ **Tự động sao lưu dữ liệu thành công!**\n"
-            f"📦 File: `{os.path.basename(filename)}`\n"
-            f"🕐 Thời gian backup: {current_time}\n"
-            f"⏱️ Chu kỳ backup hiện tại: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
-            f"📣 Chu kỳ báo cáo hiện tại: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần"
-        )
-
-        print(f"[AUTO-BACKUP] {msg}")
-
-        # Có nên báo vào kênh không?
-        now_ts = time.time()
-        elapsed_since_report_min = (now_ts - _last_report_ts) / 60.0
-
-        if elapsed_since_report_min >= AUTO_REPORT_INTERVAL_MINUTES:
-            try:
-                channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
-                if channel:
-                    await channel.send(msg)
-                else:
-                    print("[AUTO-BACKUP] ⚠️ Không tìm thấy kênh Discord để gửi thông báo.")
-            except Exception as e:
-                print(f"[AUTO-BACKUP] ⚠️ Lỗi gửi thông báo Discord: {e}")
-
-            _last_report_ts = now_ts  # đánh dấu lần báo gần nhất
-
-    except Exception as e:
-        print(f"[AUTO-BACKUP] ❌ Lỗi khi tạo backup tự động: {e}")
-
-
-@auto_backup_task.before_loop
-async def before_auto_backup():
-    # đợi bot kết nối xong discord
-    await bot.wait_until_ready()
-    # khởi tạo lại bộ đếm phút
-    auto_backup_task._minutes_since_backup = 0
-    # lần đầu start thì cho phép báo ngay
-    global _last_report_ts
-    _last_report_ts = 0
-    print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
-
-
-
-@bot.command(name="pingg")
-async def cmd_opingg(ctx):
-    t0 = time.perf_counter()
-    msg = await ctx.send("⏱️ Đang đo...")
-    t1 = time.perf_counter()
-    gateway_ms = int(bot.latency * 1000)
-    send_ms = int((t1 - t0) * 1000)
-    await msg.edit(
-        content=f"🏓 Gateway: {gateway_ms} ms • Send/edit: {send_ms} ms"
-    )
-
-
-
-# ===============================================
-# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
-# ===============================================
-
-
-
-
 # =================================================
 # 🧱 QUẢN LÝ — ADMIN (module-style)
 # =================================================
@@ -1989,6 +1873,134 @@ async def cmd_osaoluu(ctx):
 
 
 
+
+
+# ===============================================
+# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
+# ===============================================
+from discord.ext import tasks
+import time, os, glob
+from datetime import datetime
+
+# 🧭 Kênh Discord để gửi thông báo
+AUTO_BACKUP_CHANNEL_ID = 821066331826421840  
+
+
+# ⏱ Thời gian mặc định
+AUTO_BACKUP_INTERVAL_MINUTES = 1500   # 24 giờ sao lưu 1 lần
+AUTO_REPORT_INTERVAL_MINUTES = 60    # báo tối đa mỗi 60 phút (bạn giữ như cũ)
+
+# Bộ nhớ runtime
+_last_report_ts = 0
+_auto_backup_started = False
+
+@tasks.loop(minutes=1)
+async def auto_backup_task():
+    """
+    Vòng lặp chạy mỗi 1 phút.
+    - Đếm phút → đủ 720 phút (12h) thì backup.
+    - Backup xong dọn bớt → chỉ giữ 2 file mới nhất.
+    """
+    global _last_report_ts
+    global AUTO_BACKUP_INTERVAL_MINUTES
+    global AUTO_REPORT_INTERVAL_MINUTES
+
+    # setup biến đếm phút từ lần backup gần nhất
+    if not hasattr(auto_backup_task, "_minutes_since_backup"):
+        auto_backup_task._minutes_since_backup = 0
+
+    auto_backup_task._minutes_since_backup += 1
+
+    # chưa đủ thời gian -> thôi
+    if auto_backup_task._minutes_since_backup < AUTO_BACKUP_INTERVAL_MINUTES:
+        return
+
+    # đủ thời gian → reset đếm
+    auto_backup_task._minutes_since_backup = 0
+
+    try:
+        # 1) tạo backup
+        data_now = load_data()
+        filename = snapshot_data_v16(data_now, tag="auto", subkey="manual")
+
+        # 2) dọn bớt backup cũ, chỉ giữ 2 cái mới nhất
+        # đoán thư mục snapshot nằm ở đây, nếu bạn lưu chỗ khác thì đổi lại
+        SNAP_DIRS = [
+            "/mnt/volume/snapshots",
+            "/mnt/volume/backups",
+        ]
+        for snap_dir in SNAP_DIRS:
+            if os.path.isdir(snap_dir):
+                files = sorted(
+                    glob.glob(os.path.join(snap_dir, "*.json")),
+                    key=os.path.getmtime
+                )
+                # giữ lại 2 cái mới nhất
+                for f in files[:-2]:
+                    try:
+                        os.remove(f)
+                    except Exception as e:
+                        print(f"[AUTO-BACKUP] ⚠️ Không xóa được {f}: {e}")
+
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = (
+            f"✅ **Tự động sao lưu dữ liệu thành công!**\n"
+            f"📦 File: `{os.path.basename(filename)}`\n"
+            f"🕐 Thời gian backup: {current_time}\n"
+            f"⏱️ Chu kỳ backup hiện tại: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
+            f"📣 Chu kỳ báo cáo hiện tại: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần"
+        )
+        print(f"[AUTO-BACKUP] {msg}")
+
+        # 3) báo kênh nếu tới giờ
+        now_ts = time.time()
+        elapsed_since_report_min = (now_ts - _last_report_ts) / 60.0
+
+        if elapsed_since_report_min >= AUTO_REPORT_INTERVAL_MINUTES:
+            try:
+                channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
+                if channel:
+                    await channel.send(msg)
+                else:
+                    print("[AUTO-BACKUP] ⚠️ Không tìm thấy kênh Discord để gửi thông báo.")
+            except Exception as e:
+                print(f"[AUTO-BACKUP] ⚠️ Lỗi gửi thông báo Discord: {e}")
+
+            _last_report_ts = now_ts
+
+    except Exception as e:
+        print(f"[AUTO-BACKUP] ❌ Lỗi khi tạo backup tự động: {e}")
+
+
+@auto_backup_task.before_loop
+async def before_auto_backup():
+    # đợi bot kết nối xong discord
+    await bot.wait_until_ready()
+    # khởi tạo lại bộ đếm phút
+    auto_backup_task._minutes_since_backup = 0
+    # lần đầu start thì cho phép báo ngay
+    global _last_report_ts
+    _last_report_ts = 0
+    print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
+
+
+
+# ===============================================
+# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
+# ===============================================
+
+
+
+
+
+
+
+
+
+
+
+
+
 # =================LỆNH THAY ĐỔI THỜI GIAN SAO LƯU TỰ ĐỘNG======================
 
 
@@ -2310,7 +2322,7 @@ async def cmd_resetuser(ctx, member: discord.Member):
 # =================== BACKUP & XUẤT DỮ LIỆU HOÀN CHỈNH ===================
 
 # ⚙️ Giữ lại tối đa 10 file backup mới nhất cho mỗi loại (manual, pre-save, startup, ...)
-MAX_BACKUPS_PER_DIR = 10
+MAX_BACKUPS_PER_DIR = 2
 
 def _cleanup_old_backups_limit():
     """
@@ -2388,36 +2400,61 @@ async def cmd_osaoluu_antoan(ctx):
 
 
 
-# ================== XOÁ TOÀN BỘ BACKUP ==================
+# ================== XOÁ BACKUP (THỦ CÔNG + TỰ ĐỘNG, GIỮ 2 BẢN) ==================
+from discord.ext import tasks
+import os, glob
 
+# 🧹 HÀM DỌN BACKUP DÙNG CHUNG
+def run_xoabackup():
+    """
+    Dọn thư mục backups: chỉ giữ lại 2 file .json mới nhất.
+    KHÔNG xoá file data.json chính.
+    """
+    backup_root = os.path.join(BASE_DATA_DIR, "backups")
+    os.makedirs(backup_root, exist_ok=True)
+
+    files = sorted(
+        glob.glob(os.path.join(backup_root, "*.json")),
+        key=os.path.getmtime
+    )
+    # nếu <= 2 file thì thôi
+    if len(files) <= 2:
+        print("[XOABACKUP] Ít hơn hoặc bằng 2 file, không cần xoá.")
+        return
+
+    # xoá hết trừ 2 cái mới nhất
+    for f in files[:-2]:
+        try:
+            os.remove(f)
+            print(f"[XOABACKUP] Đã xoá: {f}")
+        except Exception as e:
+            print(f"[XOABACKUP] Lỗi khi xoá {f}: {e}")
+
+# 💬 LỆNH THỦ CÔNG
 @bot.command(name="xoabackup", aliases=["oxoabackup"])
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def cmd_xoabackup(ctx):
-    """
-    GIẢI PHÓNG DUNG LƯỢNG.
-    Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
-    KHÔNG xoá data.json chính.
-    Nên chạy `osaoluuantoan` trước để chắc chắn luôn còn 1 bản backup mới nhất.
-    """
-    import shutil
-    backup_root = os.path.join(BASE_DATA_DIR, "backups")
     try:
-        if os.path.isdir(backup_root):
-            shutil.rmtree(backup_root)
-        os.makedirs(backup_root, exist_ok=True)
+        run_xoabackup()
         await ctx.reply(
-            "🧹 Đã xoá toàn bộ backup cũ (startup / pre-save / manual / ...).\n"
-            "📦 File dữ liệu chính data.json vẫn còn nguyên.\n"
-            "💡 Gợi ý: kiểm tra lại dung lượng volume trên Railway.",
+            "🧹 Đã dọn backup, chỉ giữ lại 2 bản mới nhất trong `/backups`.\n"
+            "📦 File dữ liệu chính `data.json` vẫn còn nguyên.",
             mention_author=False
         )
     except Exception as e:
-        await ctx.reply(
-            f"❌ Không thể xoá backup: {e}",
-            mention_author=False
-        )
+        await ctx.reply(f"❌ Không thể xoá backup: {e}", mention_author=False)
 
+# 🔁 TỰ ĐỘNG XOÁ MỖI 24 GIỜ
+@tasks.loop(minutes=10)
+async def auto_xoabackup_task():
+    await bot.wait_until_ready()
+    print("[AUTO-XOABACKUP] Bắt đầu dọn volume tự động...")
+    run_xoabackup()
+    print("[AUTO-XOABACKUP] Dọn volume tự động hoàn tất!")
+
+
+# ================== XOÁ TOÀN BỘ BACKUP (THỦ CÔNG + TỰ ĐỘNG) ==================
 
 
 # ================== XUẤT FILE BACKUP ZIP ==================
@@ -6403,46 +6440,38 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 
 
 # =========================================================
-# OPB – ĐÁNH PHÓ BẢN (vẽ ảnh, diễn biến từng lượt, có emoji ở diễn biến)
+# OPB – PHÓ BẢN ĐÁNH QUÁI CÓ ẢNH + DIỄN BIẾN
 # =========================================================
-import io
-import os
-import random
-import asyncio
+import io, os, random, asyncio
 from PIL import Image, ImageDraw, ImageFont
 import discord
 from discord.ext import commands
 
-# nếu bạn muốn chậm hơn thì tăng lên 3 → 4 → 5
-OPB_TURN_DELAY = 3.0  # giây giữa các lượt
+# chỉnh chậm nhanh ở đây
+OPB_TURN_DELAY = 3.0  # giây giữa mỗi lượt
 
-
-# ---------------------------------------------------------
-# 1) LOAD FONT AN TOÀN CHO RAILWAY
-# ---------------------------------------------------------
-# Railway thường có sẵn DejaVuSans trong /usr/share/..., còn nếu bạn
-# upload file .ttf cạnh file .py thì nó sẽ bắt được ở BASE_DIR.
+# ----------------------------------------
+# FONT AN TOÀN CHO RAILWAY / WINDOWS
+# ----------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_CANDIDATES = [
     os.path.join(BASE_DIR, "DejaVuSans.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "DejaVuSans.ttf",
-    "arial.ttf",              # nếu host có arial
+    "arial.ttf",
 ]
 
 def load_font_safe(size=20):
-    for path in FONT_CANDIDATES:
+    for p in FONT_CANDIDATES:
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(p, size)
         except Exception:
             continue
-    # fallback chắc chắn không lỗi
     return ImageFont.load_default()
 
-
-# ---------------------------------------------------------
-# 2) BẢNG TÊN PHÁI CÓ DẤU
-# ---------------------------------------------------------
+# ----------------------------------------
+# PHÁI HIỂN THỊ ĐẸP
+# ----------------------------------------
 PHAI_DISPLAY = {
     "thiet_y": "Thiết Y",
     "huyet_ha": "Huyết Hà",
@@ -6452,7 +6481,9 @@ PHAI_DISPLAY = {
     "toai_mong": "Toái Mộng",
 }
 
-# quái có emoji (dùng ở DIỄN BIẾN)
+# ----------------------------------------
+# QUÁI + EMOJI (dùng ở diễn biến)
+# ----------------------------------------
 MONSTER_WITH_EMOJI = {
     "D": ["🐭 Chuột Rừng", "🐰 Thỏ Xám", "🐸 Ếch Con", "🐝 Ong Độc", "🐤 Chim Non"],
     "C": ["🐺 Sói Rừng", "🐗 Lợn Rừng", "🦎 Thằn Lằn Cát", "🐢 Rùa Rừng", "🦆 Vịt Hoang"],
@@ -6470,10 +6501,9 @@ RARITY_BAR_COLOR = {
     "S": (235, 65, 65),
 }
 
-
-# ---------------------------------------------------------
-# 3) EXP CẦN CHO MỖI LEVEL
-# ---------------------------------------------------------
+# ----------------------------------------
+# EXP THEO LEVEL
+# ----------------------------------------
 def get_exp_required_for_level(level: int) -> int:
     if level <= 5:
         return 100 + level * 50
@@ -6489,100 +6519,95 @@ def get_exp_required_for_level(level: int) -> int:
         return 21850 + (level - 40) * 1300
     return 34850 + (level - 50) * 1800
 
-
-# ---------------------------------------------------------
-# 4) CÁC HÀM VẼ
-# ---------------------------------------------------------
+# ----------------------------------------
+# HÀM PHỤ VẼ
+# ----------------------------------------
 def _strip_emoji(name: str) -> str:
     parts = name.split(" ", 1)
-    if len(parts) == 2 and len(parts[0]) <= 3:  # "🐭 bla bla"
+    if len(parts) == 2 and len(parts[0]) <= 3:  # "🐭 ..."
         return parts[1]
     return name
 
 def _draw_bar(draw: ImageDraw.ImageDraw, x, y, w, h, ratio, bg, fg):
-    draw.rounded_rectangle((x, y, x + w, y + h), radius=int(h / 2), fill=bg)
+    draw.rounded_rectangle((x, y, x+w, y+h), radius=int(h/2), fill=bg)
     ratio = max(0.0, min(1.0, ratio))
     fill_w = int(w * ratio)
     if fill_w > 0:
-        draw.rounded_rectangle((x, y, x + fill_w, y + h), radius=int(h / 2), fill=fg)
+        draw.rounded_rectangle((x, y, x+fill_w, y+h), radius=int(h/2), fill=fg)
 
-def render_battle_image(user_name: str,
-                        phai_key: str,
-                        user_hp: int,
-                        user_hp_max: int,
-                        user_def: int,
-                        user_energy: int,
-                        user_atk: int,
-                        monsters: list,
-                        turn_idx: int,
-                        total_turns: int) -> bytes:
+def render_battle_image(
+    user_name: str,
+    phai_key: str,
+    user_hp: int,
+    user_hp_max: int,
+    user_def: int,
+    user_energy: int,
+    user_atk: int,
+    monsters: list,
+    turn_idx: int,
+    total_turns: int,
+) -> bytes:
     W, H = 900, 240
-    img = Image.new("RGB", (W, H), (46, 48, 52))  # xám đậm
+    img = Image.new("RGB", (W, H), (46, 48, 52))  # nền xám
     draw = ImageDraw.Draw(img)
-    ft_title = load_font_safe(24)
+
+    ft_title = load_font_safe(22)
     ft = load_font_safe(16)
     ft_small = load_font_safe(13)
 
-    # header
-    draw.text((20, 12), f"{user_name} — Phó Bản Sơ Cấp", font=ft_title, fill=(255, 255, 255))
-    draw.text((W - 140, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
-
     phai_name = PHAI_DISPLAY.get(phai_key, phai_key or "Chưa chọn")
 
-    # khối người chơi
+    # Header
+    draw.text((20, 12), f"{user_name} — Phó Bản", font=ft_title, fill=(255, 255, 255))
+    draw.text((W-140, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
+
+    # Khối nhân vật (trái)
     left_x = 20
     top_y = 50
-    draw.text((left_x, top_y + 20), f"Phái: {phai_name}  |  Tấn công: {user_atk}", font=ft_small, fill=(230, 230, 230))
 
-    # thanh máu
-    draw.text((left_x, top_y + 44), f"Máu: {user_hp}/{user_hp_max}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(
-        draw,
-        left_x,
-        top_y + 62,
-        340,
-        14,
-        user_hp / user_hp_max if user_hp_max else 0,
-        (90, 35, 35),
-        (230, 75, 75),
-    )
+    draw.text((left_x, top_y+20), f"Phái: {phai_name}", font=ft_small, fill=(230, 230, 230))
 
-    # thủ
-    draw.text((left_x, top_y + 82), f"Thủ: {user_def}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(draw, left_x, top_y + 100, 340, 12, 1, (70, 70, 70), (150, 150, 150))
+    # Máu
+    draw.text((left_x, top_y+42), f"Máu: {user_hp}/{user_hp_max}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+60, 340, 14,
+              user_hp/user_hp_max if user_hp_max else 0,
+              (90, 35, 35), (230, 75, 75))
 
-    # năng lượng
-    draw.text((left_x, top_y + 119), f"Năng lượng: {user_energy}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(draw, left_x, top_y + 137, 340, 12, 1, (40, 65, 105), (95, 165, 230))
+    # Thủ
+    draw.text((left_x, top_y+82), f"Thủ: {user_def}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+100, 340, 12, 1, (70, 70, 70), (150, 150, 150))
 
-    # quái bên phải
+    # Năng lượng
+    draw.text((left_x, top_y+122), f"Năng lượng: {user_energy}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+140, 340, 12, 1, (40, 65, 105), (95, 165, 230))
+
+    # Tấn công
+    draw.text((left_x, top_y+164), f"Tấn công: {user_atk}", font=ft_small, fill=(255, 255, 255))
+
+    # Quái (phải)
     right_x = 480
     slot_y = 50
     for m in monsters:
-        name_no_emo = m["name_plain"]
+        name_plain = m["name_plain"]
         rar = m["rarity"]
         hp = m["hp"]
         hpmax = m["hp_max"]
         atk = m["atk"]
         ko = m["ko"]
+
         bar_color = RARITY_BAR_COLOR.get(rar, (200, 200, 200))
 
-        draw.text((right_x, slot_y), f"{name_no_emo} [{rar}]", font=ft, fill=(255, 255, 255))
-        draw.text((right_x, slot_y + 18), f"Công: {atk}", font=ft_small, fill=(220, 220, 220))
-        draw.text((right_x + 170, slot_y + 18), f"{hp}/{hpmax}", font=ft_small, fill=(220, 220, 220))
+        draw.text((right_x, slot_y), f"{name_plain} [{rar}]", font=ft, fill=(255, 255, 255))
+        draw.text((right_x, slot_y+18), f"Công: {atk}", font=ft_small, fill=(220, 220, 220))
+        draw.text((right_x+170, slot_y+18), f"{hp}/{hpmax}", font=ft_small, fill=(220, 220, 220))
 
-        _draw_bar(
-            draw,
-            right_x,
-            slot_y + 38,
-            270,
-            13,
-            hp / hpmax if hpmax else 0.0,
-            (70, 70, 70),
-            (90, 90, 90) if ko else bar_color,
-        )
+        _draw_bar(draw, right_x, slot_y+38, 270, 13,
+                  hp/hpmax if hpmax else 0,
+                  (70, 70, 70),
+                  (95, 95, 95) if ko else bar_color)
+
         if ko:
-            draw.text((right_x + 230, slot_y + 38), "THUA", font=ft_small, fill=(255, 80, 80))
+            draw.text((right_x+225, slot_y+38), "Hạ", font=ft_small, fill=(255, 90, 90))
 
         slot_y += 62
 
@@ -6591,10 +6616,9 @@ def render_battle_image(user_name: str,
     buf.seek(0)
     return buf.getvalue()
 
-
-# ---------------------------------------------------------
-# 5) LỆNH opb / pb
-# ---------------------------------------------------------
+# ----------------------------------------
+# LỆNH OPB
+# ----------------------------------------
 @bot.command(name="opb", aliases=["pb"])
 @commands.cooldown(1, 8, commands.BucketType.user)
 async def cmd_opb(ctx: commands.Context):
@@ -6602,15 +6626,15 @@ async def cmd_opb(ctx: commands.Context):
     data = ensure_user(uid)
     user = data["users"][uid]
 
-    # bảo đảm field
+    # đảm bảo field
     user.setdefault("level", 1)
     user.setdefault("exp", 0)
     user.setdefault("xu", 0)
     user.setdefault("ngan_phi", 0)
     user.setdefault("tap_vat", {"D": 0, "C": 0, "B": 0, "A": 0, "S": 0})
 
-    # lấy chỉ số tổng (bạn đã có hàm này)
-    stats = calc_character_stats(user)
+    # lấy chỉ số
+    stats = calc_character_stats(user)  # HÀM NÀY BẠN ĐÃ CÓ
     user_atk = stats["offense"]["total"]
     user_def = stats["defense"]["total"]
     user_energy = stats["energy"]["total"]
@@ -6631,13 +6655,15 @@ async def cmd_opb(ctx: commands.Context):
             rar = "C"
         else:
             rar = "D"
-        display_name = random.choice(MONSTER_WITH_EMOJI[rar])   # có emoji để ghi diễn biến
-        plain_name = _strip_emoji(display_name)                  # bỏ emoji để vẽ
+
+        name_display = random.choice(MONSTER_WITH_EMOJI[rar])
+        name_plain = _strip_emoji(name_display)
         base_hp = {"D": 180, "C": 240, "B": 420, "A": 650, "S": 1000}[rar]
         atk = {"D": 18, "C": 36, "B": 80, "A": 140, "S": 200}[rar]
+
         monsters.append({
-            "name": display_name,
-            "name_plain": plain_name,
+            "name": name_display,     # để log
+            "name_plain": name_plain, # để vẽ
             "rarity": rar,
             "hp": base_hp,
             "hp_max": base_hp,
@@ -6645,7 +6671,7 @@ async def cmd_opb(ctx: commands.Context):
             "ko": False,
         })
 
-    # render lượt đầu
+    # vẽ lượt 1
     img_bytes = render_battle_image(
         ctx.author.display_name,
         user.get("class", ""),
@@ -6658,8 +6684,8 @@ async def cmd_opb(ctx: commands.Context):
     file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
 
     emb = discord.Embed(
-        title=f"**{ctx.author.display_name}** — **Bầy quái nhỏ**",
-        description="🎥 **Diễn biến phó bản**:\n⌛ Lượt 1",
+        title=f"{ctx.author.display_name} — Bầy quái nhỏ",
+        description="**Diễn biến phó bản**:\n**Lượt 1**",
         color=0xE67E22,
     )
     msg = await ctx.send(embed=emb, file=file)
@@ -6677,7 +6703,7 @@ async def cmd_opb(ctx: commands.Context):
                 continue
             dmg = max(1, m["atk"] - int(user_def * 0.12))
             user_hp = max(0, user_hp - dmg)
-            turn_logs.append(f"{m['name']} tấn công bạn: **-{dmg} HP**")
+            turn_logs.append(f"{m['name']} tấn công bạn **-{dmg} HP**")
             if user_hp <= 0:
                 turn_logs.append("💥 Bạn đã gục!")
                 battle_over = True
@@ -6689,7 +6715,7 @@ async def cmd_opb(ctx: commands.Context):
             if target:
                 dmg = max(15, int(user_atk * 0.6))
                 target["hp"] = max(0, target["hp"] - dmg)
-                turn_logs.append(f"🤜 Bạn đánh {target['name']}: **-{dmg} HP**")
+                turn_logs.append(f"🤜 Bạn đánh {target['name']} **-{dmg} HP**")
                 if target["hp"] <= 0:
                     target["ko"] = True
                     turn_logs.append(f"💥 {target['name']} bị hạ gục!")
@@ -6710,12 +6736,12 @@ async def cmd_opb(ctx: commands.Context):
         file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
 
         # mô tả lượt
-        desc = "🎥 **Diễn biến phó bản**:\n"
-        desc += f"🔁 Lượt {turn}\n"
+        desc = "**Diễn biến phó bản**:\n"
+        desc += f"**Lượt {turn}**\n"
         desc += "\n".join(turn_logs) if turn_logs else "(không có hành động)"
 
         emb = discord.Embed(
-            title=f"**{ctx.author.display_name}** — **Bầy quái**",
+            title=f"{ctx.author.display_name} — Bầy quái",
             description=desc,
             color=0xE67E22,
         )
@@ -6727,46 +6753,40 @@ async def cmd_opb(ctx: commands.Context):
         turn += 1
         await asyncio.sleep(OPB_TURN_DELAY)
 
-    # ===== tổng kết =====
+    # ================= TỔNG KẾT =================
     killed = sum(1 for m in monsters if m["ko"])
     exp_gain = 18 * max(1, killed)
     user["exp"] += exp_gain
 
-    # lên cấp nếu đủ exp
     leveled = False
     while user["exp"] >= get_exp_required_for_level(user["level"]):
         user["exp"] -= get_exp_required_for_level(user["level"])
         user["level"] += 1
         leveled = True
 
-    # kinh tế
     np_gain = 40 * killed
     xu_gain = 8 * killed
     user["ngan_phi"] += np_gain
     user["xu"] += xu_gain
 
-    # tạp vật theo phẩm quái
     tv = user.setdefault("tap_vat", {})
     for r in ["S", "A", "B", "C", "D"]:
         tv.setdefault(r, 0)
 
-    drop_counter = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0}
+    drop_counter = {"S":0,"A":0,"B":0,"C":0,"D":0}
     for m in monsters:
         if m["ko"]:
-            rr = m["rarity"]
-            drop_counter[rr] += 1
-            tv[rr] = int(tv.get(rr, 0)) + 1
+            drop_counter[m["rarity"]] += 1
+            tv[m["rarity"]] += 1
 
     save_data(data)
 
-    # emoji
     np_emo = globals().get("NP_EMOJI", "📦")
     xu_emo = globals().get("XU_EMOJI", "🪙")
     tap_emo = globals().get("TAP_VAT_EMOJI", {
         "S": "💎", "A": "💍", "B": "🐚", "C": "🪨", "D": "🪵"
     })
 
-    # ghép dòng tổng kết
     summary = (
         f"⚔️ Đánh {killed}/3 quái → nhận **{exp_gain} EXP**.\n"
         f"📈 EXP: {user['exp']}/{get_exp_required_for_level(user['level'])} • Cấp: **{user['level']}**"
@@ -6775,26 +6795,13 @@ async def cmd_opb(ctx: commands.Context):
         summary += " 🎉 Lên cấp!"
 
     reward_parts = [f"{np_emo} +{np_gain}", f"{xu_emo} +{xu_gain}"]
-    for r in ["S", "A", "B", "C", "D"]:
+    for r in ["S","A","B","C","D"]:
         if drop_counter[r] > 0:
             reward_parts.append(f"{tap_emo[r]} +{drop_counter[r]}")
     summary += "\n" + "  |  ".join(reward_parts)
 
-    # lấy lại diễn biến lượt cuối để vẫn hiển thị
-    # (emb hiện giờ bạn đang tạo trong vòng lặp, ở đây tạo cái mới)
-    final_desc = emb.description  # emb của lượt cuối trong code cũ
-
-    # gắn tổng kết vào embed hiện tại
-    final_emb = discord.Embed(
-        title=emb.title,
-        description=f"{final_desc}\n\n**Hoàn thành**:\n{summary}",
-        color=emb.color,
-    )
-
-    # giữ ảnh battle cuối
-    final_file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
-    await msg.edit(embed=final_emb, attachments=[final_file])
-
+    # gửi tổng kết cuối (không sửa lại ảnh nữa)
+    await ctx.send(summary)
 # ====================================================================================================================================
 # 🧍 PHÓ BẢN PHÓ BẢN
 # ====================================================================================================================================
