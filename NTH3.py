@@ -6395,10 +6395,8 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 # 🧍 TẶNG TIỀN KẾT THÚC
 # ====================================================================================================================================
 # ====================================================================================================================================
-# 🧍 PHÓ BẢN BẮT ĐẦU
+# 🧍 NHIỆM VỤ BẮT ĐẦU
 # ====================================================================================================================================
-
-
 
 
 
@@ -6406,43 +6404,27 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 # OPB – ĐÁNH PHÓ BẢN (vẽ ảnh, diễn biến từng lượt, có emoji ở diễn biến)
 # =========================================================
 import io
-import os
 import random
 import asyncio
 from PIL import Image, ImageDraw, ImageFont
 import discord
 from discord.ext import commands
 
-# nếu bạn muốn chậm hơn thì tăng lên 3 → 4 → 5
 OPB_TURN_DELAY = 3.0  # giây giữa các lượt
 
+import os
 
-# ---------------------------------------------------------
-# 1) LOAD FONT AN TOÀN CHO RAILWAY
-# ---------------------------------------------------------
-# Railway thường có sẵn DejaVuSans trong /usr/share/..., còn nếu bạn
-# upload file .ttf cạnh file .py thì nó sẽ bắt được ở BASE_DIR.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FONT_CANDIDATES = [
-    os.path.join(BASE_DIR, "DejaVuSans.ttf"),
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "DejaVuSans.ttf",
-    "arial.ttf",              # nếu host có arial
-]
+FONT_PATH = os.path.join(BASE_DIR, "DejaVuSans.ttf")
 
-def load_font_safe(size=20):
-    for path in FONT_CANDIDATES:
-        try:
-            return ImageFont.truetype(path, size)
-        except Exception:
-            continue
-    # fallback chắc chắn không lỗi
-    return ImageFont.load_default()
+def load_font(size=20):
+    try:
+        return ImageFont.truetype(FONT_PATH, size)
+    except Exception:
+        # fallback để tránh crash nếu Railway đọc lỗi font
+        return ImageFont.load_default()
 
-
-# ---------------------------------------------------------
-# 2) BẢNG TÊN PHÁI CÓ DẤU
-# ---------------------------------------------------------
+# tên phái có dấu để hiện lên ảnh
 PHAI_DISPLAY = {
     "thiet_y": "Thiết Y",
     "huyet_ha": "Huyết Hà",
@@ -6452,7 +6434,7 @@ PHAI_DISPLAY = {
     "toai_mong": "Toái Mộng",
 }
 
-# quái có emoji (dùng ở DIỄN BIẾN)
+# 1) bộ quái có emoji để viết vào DIỄN BIẾN
 MONSTER_WITH_EMOJI = {
     "D": ["🐭 Chuột Rừng", "🐰 Thỏ Xám", "🐸 Ếch Con", "🐝 Ong Độc", "🐤 Chim Non"],
     "C": ["🐺 Sói Rừng", "🐗 Lợn Rừng", "🦎 Thằn Lằn Cát", "🐢 Rùa Rừng", "🦆 Vịt Hoang"],
@@ -6460,8 +6442,15 @@ MONSTER_WITH_EMOJI = {
     "A": ["🦁 Sư Tử Linh", "🐻 Gấu Núi", "🐼 Gấu Trúc", "🦧 Vượn Thần", "🦛 Hà Mã Linh"],
     "S": ["🦄 Kỳ Lân", "🐉 Long Thú", "🦬 Thú Thần", "🦣 Tượng Cổ", "🦙 Linh Thú"],
 }
+# 2) bản rút emoji để vẽ vào ảnh
+def _strip_emoji(name: str) -> str:
+    # tách tới khoảng đầu tiên
+    parts = name.split(" ", 1)
+    if len(parts) == 2 and len(parts[0]) <= 3:  # kiểu "🐭"
+        return parts[1]
+    return name
 
-# màu thanh máu quái theo phẩm
+# màu thanh máu theo phẩm
 RARITY_BAR_COLOR = {
     "D": (120, 120, 120),
     "C": (60, 135, 245),
@@ -6470,10 +6459,6 @@ RARITY_BAR_COLOR = {
     "S": (235, 65, 65),
 }
 
-
-# ---------------------------------------------------------
-# 3) EXP CẦN CHO MỖI LEVEL
-# ---------------------------------------------------------
 def get_exp_required_for_level(level: int) -> int:
     if level <= 5:
         return 100 + level * 50
@@ -6489,22 +6474,12 @@ def get_exp_required_for_level(level: int) -> int:
         return 21850 + (level - 40) * 1300
     return 34850 + (level - 50) * 1800
 
-
-# ---------------------------------------------------------
-# 4) CÁC HÀM VẼ
-# ---------------------------------------------------------
-def _strip_emoji(name: str) -> str:
-    parts = name.split(" ", 1)
-    if len(parts) == 2 and len(parts[0]) <= 3:  # "🐭 bla bla"
-        return parts[1]
-    return name
-
 def _draw_bar(draw: ImageDraw.ImageDraw, x, y, w, h, ratio, bg, fg):
-    draw.rounded_rectangle((x, y, x + w, y + h), radius=int(h / 2), fill=bg)
+    draw.rounded_rectangle((x, y, x+w, y+h), radius=int(h/2), fill=bg)
     ratio = max(0.0, min(1.0, ratio))
     fill_w = int(w * ratio)
     if fill_w > 0:
-        draw.rounded_rectangle((x, y, x + fill_w, y + h), radius=int(h / 2), fill=fg)
+        draw.rounded_rectangle((x, y, x+fill_w, y+h), radius=int(h/2), fill=fg)
 
 def render_battle_image(user_name: str,
                         phai_key: str,
@@ -6513,49 +6488,39 @@ def render_battle_image(user_name: str,
                         user_def: int,
                         user_energy: int,
                         user_atk: int,
-                        monsters: list,
+                        monsters: list[dict],
                         turn_idx: int,
                         total_turns: int) -> bytes:
     W, H = 900, 240
-    img = Image.new("RGB", (W, H), (46, 48, 52))  # xám đậm
+    img = Image.new("RGB", (W, H), (46, 48, 52))
     draw = ImageDraw.Draw(img)
-    ft_title = load_font_safe(24)
-    ft = load_font_safe(16)
-    ft_small = load_font_safe(13)
+    ft_title = _load_font(24)
+    ft = _load_font(16)
+    ft_small = _load_font(13)
 
-    # header
     draw.text((20, 12), f"{user_name} — Phó Bản Sơ Cấp", font=ft_title, fill=(255, 255, 255))
-    draw.text((W - 140, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
+    draw.text((W-120, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
 
     phai_name = PHAI_DISPLAY.get(phai_key, phai_key or "Chưa chọn")
-
-    # khối người chơi
     left_x = 20
     top_y = 50
-    draw.text((left_x, top_y + 20), f"Phái: {phai_name}  |  Tấn công: {user_atk}", font=ft_small, fill=(230, 230, 230))
 
-    # thanh máu
-    draw.text((left_x, top_y + 44), f"Máu: {user_hp}/{user_hp_max}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(
-        draw,
-        left_x,
-        top_y + 62,
-        340,
-        14,
-        user_hp / user_hp_max if user_hp_max else 0,
-        (90, 35, 35),
-        (230, 75, 75),
-    )
+    text_line = f"Phái: {phai_name}   |   Tấn công: {user_atk}"
+    draw.text((left_x, top_y + 20), text_line, font=ft_small, fill=(230, 230, 230))
 
-    # thủ
-    draw.text((left_x, top_y + 82), f"Thủ: {user_def}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(draw, left_x, top_y + 100, 340, 12, 1, (70, 70, 70), (150, 150, 150))
 
-    # năng lượng
-    draw.text((left_x, top_y + 119), f"Năng lượng: {user_energy}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(draw, left_x, top_y + 137, 340, 12, 1, (40, 65, 105), (95, 165, 230))
+    draw.text((left_x, top_y+44), f"Máu: {user_hp}/{user_hp_max}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+62, 340, 14,
+              user_hp/user_hp_max if user_hp_max else 0,
+              (90, 35, 35), (230, 75, 75))
 
-    # quái bên phải
+    draw.text((left_x, top_y+82), f"Thủ: {user_def}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+100, 340, 12, 1, (70, 70, 70), (150, 150, 150))
+
+    draw.text((left_x, top_y+119), f"Năng lượng: {user_energy}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+137, 340, 12, 1, (40, 65, 105), (95, 165, 230))
+
+
     right_x = 480
     slot_y = 50
     for m in monsters:
@@ -6568,22 +6533,14 @@ def render_battle_image(user_name: str,
         bar_color = RARITY_BAR_COLOR.get(rar, (200, 200, 200))
 
         draw.text((right_x, slot_y), f"{name_no_emo} [{rar}]", font=ft, fill=(255, 255, 255))
-        draw.text((right_x, slot_y + 18), f"Công: {atk}", font=ft_small, fill=(220, 220, 220))
-        draw.text((right_x + 170, slot_y + 18), f"{hp}/{hpmax}", font=ft_small, fill=(220, 220, 220))
-
-        _draw_bar(
-            draw,
-            right_x,
-            slot_y + 38,
-            270,
-            13,
-            hp / hpmax if hpmax else 0.0,
-            (70, 70, 70),
-            (90, 90, 90) if ko else bar_color,
-        )
+        draw.text((right_x, slot_y+18), f"Công: {atk}", font=ft_small, fill=(220, 220, 220))
+        draw.text((right_x+170, slot_y+18), f"{hp}/{hpmax}", font=ft_small, fill=(220, 220, 220))
+        _draw_bar(draw, right_x, slot_y+38, 270, 13,
+                  hp/hpmax if hpmax else 0.0,
+                  (70, 70, 70),
+                  (90, 90, 90) if ko else bar_color)
         if ko:
-            draw.text((right_x + 230, slot_y + 38), "THUA", font=ft_small, fill=(255, 80, 80))
-
+            draw.text((right_x+230, slot_y+38), "THUA", font=ft_small, fill=(255, 80, 80))
         slot_y += 62
 
     buf = io.BytesIO()
@@ -6591,10 +6548,6 @@ def render_battle_image(user_name: str,
     buf.seek(0)
     return buf.getvalue()
 
-
-# ---------------------------------------------------------
-# 5) LỆNH opb / pb
-# ---------------------------------------------------------
 @bot.command(name="opb", aliases=["pb"])
 @commands.cooldown(1, 8, commands.BucketType.user)
 async def cmd_opb(ctx: commands.Context):
@@ -6602,14 +6555,12 @@ async def cmd_opb(ctx: commands.Context):
     data = ensure_user(uid)
     user = data["users"][uid]
 
-    # bảo đảm field
     user.setdefault("level", 1)
     user.setdefault("exp", 0)
     user.setdefault("xu", 0)
     user.setdefault("ngan_phi", 0)
     user.setdefault("tap_vat", {"D": 0, "C": 0, "B": 0, "A": 0, "S": 0})
 
-    # lấy chỉ số tổng (bạn đã có hàm này)
     stats = calc_character_stats(user)
     user_atk = stats["offense"]["total"]
     user_def = stats["defense"]["total"]
@@ -6617,7 +6568,6 @@ async def cmd_opb(ctx: commands.Context):
     user_hp_max = 3000 + user_def
     user_hp = user_hp_max
 
-    # tạo 3 quái
     monsters = []
     for _ in range(3):
         roll = random.random()
@@ -6631,13 +6581,13 @@ async def cmd_opb(ctx: commands.Context):
             rar = "C"
         else:
             rar = "D"
-        display_name = random.choice(MONSTER_WITH_EMOJI[rar])   # có emoji để ghi diễn biến
-        plain_name = _strip_emoji(display_name)                  # bỏ emoji để vẽ
+        display_name = random.choice(MONSTER_WITH_EMOJI[rar])   # có emoji
+        plain_name = _strip_emoji(display_name)                  # để vẽ
         base_hp = {"D": 180, "C": 240, "B": 420, "A": 650, "S": 1000}[rar]
         atk = {"D": 18, "C": 36, "B": 80, "A": 140, "S": 200}[rar]
         monsters.append({
-            "name": display_name,
-            "name_plain": plain_name,
+            "name": display_name,      # dùng ở diễn biến
+            "name_plain": plain_name,  # dùng ở ảnh
             "rarity": rar,
             "hp": base_hp,
             "hp_max": base_hp,
@@ -6645,7 +6595,7 @@ async def cmd_opb(ctx: commands.Context):
             "ko": False,
         })
 
-    # render lượt đầu
+    # ảnh lượt 1
     img_bytes = render_battle_image(
         ctx.author.display_name,
         user.get("class", ""),
@@ -6693,10 +6643,11 @@ async def cmd_opb(ctx: commands.Context):
                 if target["hp"] <= 0:
                     target["ko"] = True
                     turn_logs.append(f"💥 {target['name']} bị hạ gục!")
+            # nếu hết quái thì dừng
             if all(m["ko"] for m in monsters):
                 battle_over = True
 
-        # vẽ lại ảnh
+        # vẽ lại ảnh theo trạng thái mới
         img_bytes = render_battle_image(
             ctx.author.display_name,
             user.get("class", ""),
@@ -6709,9 +6660,8 @@ async def cmd_opb(ctx: commands.Context):
         )
         file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
 
-        # mô tả lượt
-        desc = "🎥 **Diễn biến phó bản**:\n"
-        desc += f"🔁 Lượt {turn}\n"
+        desc = "**Diễn biến phó bản**:\n"
+        desc += "**Lượt** {turn}\n"
         desc += "\n".join(turn_logs) if turn_logs else "(không có hành động)"
 
         emb = discord.Embed(
@@ -6727,6 +6677,7 @@ async def cmd_opb(ctx: commands.Context):
         turn += 1
         await asyncio.sleep(OPB_TURN_DELAY)
 
+    # ===== tổng kết =====
     # ===== tổng kết =====
     killed = sum(1 for m in monsters if m["ko"])
     exp_gain = 18 * max(1, killed)
@@ -6745,7 +6696,8 @@ async def cmd_opb(ctx: commands.Context):
     user["ngan_phi"] += np_gain
     user["xu"] += xu_gain
 
-    # tạp vật theo phẩm quái
+    # tạp vật: mỗi con rơi 1 tạp vật đúng phẩm
+    # đảm bảo user có tap_vat đủ key
     tv = user.setdefault("tap_vat", {})
     for r in ["S", "A", "B", "C", "D"]:
         tv.setdefault(r, 0)
@@ -6753,9 +6705,9 @@ async def cmd_opb(ctx: commands.Context):
     drop_counter = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0}
     for m in monsters:
         if m["ko"]:
-            rr = m["rarity"]
-            drop_counter[rr] += 1
-            tv[rr] = int(tv.get(rr, 0)) + 1
+            rar = m["rarity"]
+            drop_counter[rar] += 1
+            tv[rar] = int(tv.get(rar, 0)) + 1
 
     save_data(data)
 
@@ -6766,34 +6718,38 @@ async def cmd_opb(ctx: commands.Context):
         "S": "💎", "A": "💍", "B": "🐚", "C": "🪨", "D": "🪵"
     })
 
-    # ghép dòng tổng kết
-    summary = (
+    # base text
+    final = (
         f"⚔️ Đánh {killed}/3 quái → nhận **{exp_gain} EXP**.\n"
         f"📈 EXP: {user['exp']}/{get_exp_required_for_level(user['level'])} • Cấp: **{user['level']}**"
     )
     if leveled:
-        summary += " 🎉 Lên cấp!"
+        final += " 🎉 Lên cấp!"
 
-    reward_parts = [f"{np_emo} +{np_gain}", f"{xu_emo} +{xu_gain}"]
+    # ghép phần thưởng
+    reward_parts = [
+        f"{np_emo} +{np_gain}",
+        f"{xu_emo} +{xu_gain}",
+    ]
+    # thêm tạp vật từng phẩm
     for r in ["S", "A", "B", "C", "D"]:
-        if drop_counter[r] > 0:
-            reward_parts.append(f"{tap_emo[r]} +{drop_counter[r]}")
-    summary += "\n" + "  |  ".join(reward_parts)
+        cnt = drop_counter[r]
+        if cnt > 0:
+            reward_parts.append(f"{tap_emo[r]} +{cnt}")
 
-    # lấy lại diễn biến lượt cuối để vẫn hiển thị
-    # (emb hiện giờ bạn đang tạo trong vòng lặp, ở đây tạo cái mới)
-    final_desc = emb.description  # emb của lượt cuối trong code cũ
+    final += "\n" + "  |  ".join(reward_parts)
 
-    # gắn tổng kết vào embed hiện tại
-    final_emb = discord.Embed(
-        title=emb.title,
-        description=f"{final_desc}\n\n**Hoàn thành**:\n{summary}",
-        color=emb.color,
-    )
+    await ctx.send(final)
 
-    # giữ ảnh battle cuối
-    final_file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
-    await msg.edit(embed=final_emb, attachments=[final_file])
+
+
+
+
+
+
+
+
+
 
 # ====================================================================================================================================
 # 🧍 PHÓ BẢN PHÓ BẢN
