@@ -135,7 +135,7 @@ def total_backup_stats_v16():
 # - Nếu chạy Railway: bạn set env DATA_DIR=/data và mount volume vào /data
 
 # Giới hạn số lượng backup thủ công (manual) cần giữ lại
-MAX_MANUAL_BACKUPS = 10
+MAX_MANUAL_BACKUPS = 2
 
 def _cleanup_old_backups_limit():
     """
@@ -934,11 +934,11 @@ from discord.ext import tasks
 import time
 
 # 🧭 Kênh Discord để gửi thông báo
-AUTO_BACKUP_CHANNEL_ID = 1433207596898193479  
+AUTO_BACKUP_CHANNEL_ID = 821066331826421840  
 
 # ⏱ Thời gian mặc định (có thể thay đổi lúc chạy bằng lệnh othoigiansaoluu)
-AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
-AUTO_REPORT_INTERVAL_MINUTES = 60    # báo lên kênh tối đa 1 lần mỗi Y phút
+AUTO_BACKUP_INTERVAL_MINUTES = 1500    # sao lưu mỗi X phút
+AUTO_REPORT_INTERVAL_MINUTES = 10    # báo lên kênh tối đa 1 lần mỗi Y phút
 
 # Bộ nhớ runtime
 _last_report_ts = 0  # timestamp giây lần cuối đã báo
