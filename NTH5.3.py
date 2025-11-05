@@ -888,32 +888,24 @@ bot = commands.Bot(
     case_insensitive=True
 )
 
-
-
-import glob, os
-
 @bot.event
 async def on_ready():
     """
     Gọi khi bot login xong và event loop Discord đã chạy.
     - Log bot ready
-    - Chụp snapshot 'startup'
+    - Chụp snapshot 'startup' (như cũ)
     - Khởi động vòng auto_backup_task nếu chưa chạy
     """
-    global _auto_backup_started, data
+    global _auto_backup_started
 
     print(f"✅ Bot ready: {bot.user} (id: {bot.user.id})")
 
-    # Snapshot khởi động + dọn bớt snapshot cũ, chỉ giữ 10 bản
+    # Snapshot khởi động (giữ nguyên logic cũ của bạn)
     try:
+        data = load_data()
         snapshot_data_v16(data, tag="startup", subkey="startup")
-
-        snap_dir = "/mnt/volume/snapshots"
-        files = sorted(glob.glob(f"{snap_dir}/*.json"), key=os.path.getmtime)
-        for f in files[:-10]:
-            os.remove(f)
-    except Exception as e:
-        print("Snapshot lỗi hoặc không dọn được:", e)
+    except Exception:
+        pass
 
     # Khởi động vòng auto backup 1 lần duy nhất
     if not _auto_backup_started:
@@ -929,11 +921,6 @@ async def on_ready():
         except RuntimeError:
             # Nếu Discord reconnect và task đã start rồi -> bỏ qua
             pass
-
-
-# ⚙️ Biến toàn cục dùng để đánh dấu cần lưu data
-NEED_SAVE = False
-
 # ===================================
 # 🧩 BOT & CẤU HÌNH CHUNG — KẾT THÚC
 # ===================================
@@ -2116,7 +2103,7 @@ async def cmd_batanh(ctx, mode: str = None):
     m = (mode or "").strip().lower()
     if m in ("on","bật","bat","enable","enabled","true","1"):
         cfg["images_enabled"] = True
-        NEED_SAVE = True
+        save_data(data)
         await ctx.reply(
             "✅ Đã BẬT hiển thị ảnh.",
             mention_author=False
@@ -2124,7 +2111,7 @@ async def cmd_batanh(ctx, mode: str = None):
         return
     if m in ("off","tắt","tat","disable","disabled","false","0"):
         cfg["images_enabled"] = False
-        NEED_SAVE = True
+        save_data(data)
         await ctx.reply(
             "✅ Đã TẮT hiển thị ảnh.",
             mention_author=False
@@ -2153,7 +2140,7 @@ async def cmd_addtien(ctx, member: discord.Member, so: str):
     u, path = _get_user_ref(data, member)
     bal = get_balance(u)
     set_balance(u, bal + amount)
-    NEED_SAVE = True
+    save_data(data)
     await ctx.reply(
         f"✅ Cộng `{format_num(amount)}` NP cho `{member.display_name}` — Tổng: `{format_num(get_balance(u))}`",
         mention_author=False
@@ -2190,7 +2177,7 @@ async def cmd_addruong(ctx, member: discord.Member, pham: str, so: str):
     u, path = _get_user_ref(data, member)
     r = ensure_rungs(u)
     r[pham] = int(r.get(pham, 0)) + amount
-    NEED_SAVE = True
+    save_data(data)
     await ctx.reply(
         f"✅ Đã cấp `{format_num(amount)}` rương **{pham}** cho `{member.display_name}` — Tổng: `{format_num(r[pham])}`",
         mention_author=False
@@ -2581,8 +2568,6 @@ async def check_community_requirements(bot, user_id: int):
 
 @bot.command(name="onhanthuong", aliases=["nhanthuong"])
 async def onhanthuong_cmd(ctx):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     uid = str(ctx.author.id)
 
     # lấy data toàn cục + object người chơi
@@ -2684,7 +2669,7 @@ async def onhanthuong_cmd(ctx):
         )
 
         # lưu lại trạng thái pending
-        NEED_SAVE = True
+        save_data(data)
 
         try:
             await ctx.author.send(embed=guide_embed)
@@ -3738,8 +3723,6 @@ def _open_one_chest(user, r: str):
 @bot.command(name="mo", aliases=["omo"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_omo(ctx, *args):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
@@ -3795,9 +3778,7 @@ async def cmd_omo(ctx, *args):
 
         # log nhiệm vụ ngày
         quest_runtime_increment(user, "opened_today", opened)
-
-        NEED_SAVE = True
-
+        save_data(data)
 
         # nếu không rơi item nào thì lấy cái phẩm cao nhất đã mở
         highest_for_title = highest_seen or "D"
@@ -3870,8 +3851,7 @@ async def cmd_omo(ctx, *args):
             return
 
         quest_runtime_increment(user, "opened_today", opened)
-        NEED_SAVE = True
-
+        save_data(data)
 
         title_emoji = RARITY_CHEST_OPENED_EMOJI.get(r, "🎁")
         emb = make_embed(
@@ -3914,8 +3894,7 @@ async def cmd_omo(ctx, *args):
 
     gp, xu_gain, tv, item = _open_one_chest(user, r_found)
     quest_runtime_increment(user, "opened_today", 1)
-    NEED_SAVE = True
-
+    save_data(data)
 
     highest_for_title = item["rarity"] if item else r_found
     title_emoji = RARITY_CHEST_OPENED_EMOJI.get(highest_for_title, "🎁")
@@ -4435,8 +4414,6 @@ async def cmd_okho(ctx):
 @bot.command(name="ban", aliases=["oban"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_oban(ctx, *args):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     """
     bán tạp vật lấy NP
     - oban            → bán hết
@@ -4472,7 +4449,7 @@ async def cmd_oban(ctx, *args):
         if not have:
             await ctx.reply("Bạn không có Tạp Vật để bán.", mention_author=False)
             return
-        NEED_SAVE = True
+        save_data(data)
         await ctx.send(embed=make_embed(
             "🧾 Bán Tạp Vật",
             " • " + "\n • ".join(lines) + f"\n\nTổng: {NP_EMOJI} **{format_num(total_np)}**",
@@ -4489,7 +4466,7 @@ async def cmd_oban(ctx, *args):
             await ctx.reply(f"Bạn không có Tạp Vật phẩm {r}.", mention_author=False)
             return
         gain = _sell_tv(r, qty)
-        NEED_SAVE = True
+        save_data(data)
         await ctx.send(embed=make_embed(
             "🧾 Bán Tạp Vật",
             f"{TAP_VAT_EMOJI[r]} x{qty} → {NP_EMOJI} **+{format_num(gain)}**",
@@ -4506,8 +4483,6 @@ async def cmd_oban(ctx, *args):
 @bot.command(name="bantrangbi", aliases=["obantrangbi"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_obantrangbi(ctx, *args):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     """
     bán trang bị rảnh để lấy Xu
     - obantrangbi all
@@ -4545,7 +4520,7 @@ async def cmd_obantrangbi(ctx, *args):
             return
         total = settle(sell)
         user["items"] = [it for it in user["items"] if it.get("equipped")]
-        NEED_SAVE = True
+        save_data(data)
         await ctx.send(embed=make_embed(
             "🧾 Bán trang bị",
             f"Đã bán **{len(sell)}** món — Nhận {XU_EMOJI} **{format_num(total)}**",
@@ -4562,8 +4537,7 @@ async def cmd_obantrangbi(ctx, *args):
             return
         total = settle(sell)
         user["items"] = [it for it in user["items"] if not (it["rarity"] == rar and not it.get("equipped"))]
-        NEED_SAVE = True
-
+        save_data(data)
         await ctx.send(embed=make_embed(
             "🧾 Bán trang bị",
             f"Đã bán **{len(sell)}** món {rar} — Nhận {XU_EMOJI} **{format_num(total)}**",
@@ -4579,8 +4553,6 @@ async def cmd_obantrangbi(ctx, *args):
 @bot.command(name="thao", aliases=["othao"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_othao(ctx, item_id: str = None):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     if item_id is None:
         await ctx.reply("📝 Cách dùng: `thao <ID>` (xem ID trong `okho`).", mention_author=False)
         return
@@ -4914,8 +4886,6 @@ PHAI_LABEL_FROM_KEY = {
 @bot.command(name="mac", aliases=["omac"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_omac(ctx, item_id: str = None):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     if not item_id:
         await ctx.reply("📝 Cách dùng: `mac <ID>` (xem ID trong `okho`).", mention_author=False)
         return
@@ -4986,6 +4956,7 @@ async def cmd_omac(ctx, item_id: str = None):
     item["equipped"] = True
     user["equipped"][slot] = item["id"]
     save_data(data)
+
     emo = RARITY_EMOJI.get(item.get("rarity", "D"), "🔸")
     emb = make_embed(
         title="🪄 Mặc trang bị",
@@ -4999,6 +4970,16 @@ async def cmd_omac(ctx, item_id: str = None):
 
 # ================================================================
 # NHANVAT FULL — 2 TAB (NHÂN VẬT / TRANG BỊ)
+# ================================================================
+# YÊU CẦU FILE GỐC ĐÃ CÓ:
+# - bot = commands.Bot(...)
+# - make_embed(title, description=..., color=..., footer=...)
+# - format_num(x)
+# - ensure_user(user_id) -> dict toàn bộ data
+# - save_data(data)
+# - user["items"] là list item như bạn đang dùng
+# - user["equipped"] dùng key "slot_vukhi", "slot_aogiap" (nếu khác thì sửa ở dưới)
+# - đã có RARITY_EMOJI, XU_EMOJI, LC_EMOJI (nếu chưa thì copy luôn 3 cái này)
 # ================================================================
 
 
@@ -5435,6 +5416,8 @@ async def cmd_onhanvat(ctx, member: discord.Member = None):
     user.setdefault("equipped", {"slot_vukhi": None, "slot_aogiap": None})
 
     # nếu bạn muốn lưu lại khi bổ sung field mới:
+    save_data(data)
+
     emb = build_nv_embed(ctx, user, target)
     view = OnhanvatView(ctx, user, target)
     await ctx.reply(embed=emb, view=view, mention_author=False)
@@ -5802,7 +5785,8 @@ class PhaiView(discord.ui.View):
             # gán phái
             user["class"] = self.phai_key
             user["phai_last_change_ts"] = now.timestamp()
-            NEED_SAVE = True
+            save_data(data)
+
             desc = PHAI_INFO.get(self.phai_key, "Môn phái.")
             await interaction.response.send_message(
                 f"🎉 **Gia nhập môn phái thành công!**\n"
@@ -5826,8 +5810,6 @@ class PhaiView(discord.ui.View):
 @bot.command(name="monphai", aliases=["omonphai"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_omonphai(ctx):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
-
     uid = str(ctx.author.id)
     data = ensure_user(uid)
     user = data["users"][uid]
@@ -5888,8 +5870,6 @@ COOLDOWN_OL = 10
 
 @bot.command(name="l", aliases=["ol"])
 async def cmd_ol(ctx):
-    global NEED_SAVE
-
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
@@ -5927,7 +5907,7 @@ async def cmd_ol(ctx):
     user["stats"]["ol_count"] = int(user["stats"].get("ol_count", 0)) + 1
     quest_runtime_increment(user, "ol_today", 1)
     user["cooldowns"]["ol"] = now + COOLDOWN_OL
-    NEED_SAVE = True
+    save_data(data)
 
     rarity_name = {
         "D": "Phổ Thông",
@@ -6101,8 +6081,6 @@ def _try_jackpot(data: dict, member: discord.Member) -> int:
 @bot.command(name="odt", aliases=["dt"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_odt(ctx, amount: str = None):
-    global NEED_SAVE
-
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
@@ -6160,7 +6138,7 @@ async def cmd_odt(ctx, amount: str = None):
 
     # trừ tiền trước khi biết kết quả
     user["ngan_phi"] = bal - amount_val
-    NEED_SAVE = True
+    save_data(data)
 
     outcome = _odt_pick_outcome(odt_state)
     try:
@@ -6218,8 +6196,7 @@ async def cmd_odt(ctx, amount: str = None):
             except Exception:
                 pass
 
-        NEED_SAVE = True
-
+        save_data(data)
 
     else:
         # THẮNG
@@ -6252,8 +6229,7 @@ async def cmd_odt(ctx, amount: str = None):
             )
 
         _jp_open_window_if_needed(_jp(data), time.time())
-        NEED_SAVE = True
-
+        save_data(data)
 
     # footer hiển thị quỹ jackpot + người trúng gần nhất
     jp_now = _jp(data)
@@ -6289,8 +6265,6 @@ async def cmd_odt(ctx, amount: str = None):
 @bot.command(name="otang", aliases=["tang"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
-    global NEED_SAVE
-
 
     """
     Chuyển Ngân Phiếu cho người chơi khác.
@@ -6372,7 +6346,8 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
     quest_runtime_increment(sender, "give_today", 1)
 
     # Lưu lại sau khi cập nhật hết
-    NEED_SAVE = True
+    save_data(data)
+
 
     # ==================================================================
     # 📊 Ghi log nhiệm vụ ngày: "Tặng tiền cho người chơi khác"
@@ -6384,7 +6359,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 
     # tăng biến đếm nhiệm vụ "tang_today"
     quest_runtime_increment(sender_user, "tang_today", 1)
-    NEED_SAVE = True
+    save_data(data)
     # ==================================================================
 
 
@@ -6420,50 +6395,36 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 # 🧍 TẶNG TIỀN KẾT THÚC
 # ====================================================================================================================================
 # ====================================================================================================================================
-# 🧍 PHÓ BẢN BẮT ĐẦU
+# 🧍 NHIỆM VỤ BẮT ĐẦU
 # ====================================================================================================================================
+
+
 
 # =========================================================
 # OPB – ĐÁNH PHÓ BẢN (vẽ ảnh, diễn biến từng lượt, có emoji ở diễn biến)
 # =========================================================
 import io
-import os
 import random
 import asyncio
 from PIL import Image, ImageDraw, ImageFont
 import discord
 from discord.ext import commands
 
-# nếu bạn muốn chậm hơn thì tăng lên 3 → 4 → 5
 OPB_TURN_DELAY = 3.0  # giây giữa các lượt
 
+import os
 
-# ---------------------------------------------------------
-# 1) LOAD FONT AN TOÀN CHO RAILWAY
-# ---------------------------------------------------------
-# Railway thường có sẵn DejaVuSans trong /usr/share/..., còn nếu bạn
-# upload file .ttf cạnh file .py thì nó sẽ bắt được ở BASE_DIR.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FONT_CANDIDATES = [
-    os.path.join(BASE_DIR, "DejaVuSans.ttf"),
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "DejaVuSans.ttf",
-    "arial.ttf",              # nếu host có arial
-]
+FONT_PATH = os.path.join(BASE_DIR, "DejaVuSans.ttf")
 
-def load_font_safe(size=20):
-    for path in FONT_CANDIDATES:
-        try:
-            return ImageFont.truetype(path, size)
-        except Exception:
-            continue
-    # fallback chắc chắn không lỗi
-    return ImageFont.load_default()
+def load_font(size=20):
+    try:
+        return ImageFont.truetype(FONT_PATH, size)
+    except Exception:
+        # fallback để tránh crash nếu Railway đọc lỗi font
+        return ImageFont.load_default()
 
-
-# ---------------------------------------------------------
-# 2) BẢNG TÊN PHÁI CÓ DẤU
-# ---------------------------------------------------------
+# tên phái có dấu để hiện lên ảnh
 PHAI_DISPLAY = {
     "thiet_y": "Thiết Y",
     "huyet_ha": "Huyết Hà",
@@ -6473,7 +6434,7 @@ PHAI_DISPLAY = {
     "toai_mong": "Toái Mộng",
 }
 
-# quái có emoji (dùng ở DIỄN BIẾN)
+# 1) bộ quái có emoji để viết vào DIỄN BIẾN
 MONSTER_WITH_EMOJI = {
     "D": ["🐭 Chuột Rừng", "🐰 Thỏ Xám", "🐸 Ếch Con", "🐝 Ong Độc", "🐤 Chim Non"],
     "C": ["🐺 Sói Rừng", "🐗 Lợn Rừng", "🦎 Thằn Lằn Cát", "🐢 Rùa Rừng", "🦆 Vịt Hoang"],
@@ -6481,8 +6442,15 @@ MONSTER_WITH_EMOJI = {
     "A": ["🦁 Sư Tử Linh", "🐻 Gấu Núi", "🐼 Gấu Trúc", "🦧 Vượn Thần", "🦛 Hà Mã Linh"],
     "S": ["🦄 Kỳ Lân", "🐉 Long Thú", "🦬 Thú Thần", "🦣 Tượng Cổ", "🦙 Linh Thú"],
 }
+# 2) bản rút emoji để vẽ vào ảnh
+def _strip_emoji(name: str) -> str:
+    # tách tới khoảng đầu tiên
+    parts = name.split(" ", 1)
+    if len(parts) == 2 and len(parts[0]) <= 3:  # kiểu "🐭"
+        return parts[1]
+    return name
 
-# màu thanh máu quái theo phẩm
+# màu thanh máu theo phẩm
 RARITY_BAR_COLOR = {
     "D": (120, 120, 120),
     "C": (60, 135, 245),
@@ -6491,10 +6459,6 @@ RARITY_BAR_COLOR = {
     "S": (235, 65, 65),
 }
 
-
-# ---------------------------------------------------------
-# 3) EXP CẦN CHO MỖI LEVEL
-# ---------------------------------------------------------
 def get_exp_required_for_level(level: int) -> int:
     if level <= 5:
         return 100 + level * 50
@@ -6510,22 +6474,12 @@ def get_exp_required_for_level(level: int) -> int:
         return 21850 + (level - 40) * 1300
     return 34850 + (level - 50) * 1800
 
-
-# ---------------------------------------------------------
-# 4) CÁC HÀM VẼ
-# ---------------------------------------------------------
-def _strip_emoji(name: str) -> str:
-    parts = name.split(" ", 1)
-    if len(parts) == 2 and len(parts[0]) <= 3:  # "🐭 bla bla"
-        return parts[1]
-    return name
-
 def _draw_bar(draw: ImageDraw.ImageDraw, x, y, w, h, ratio, bg, fg):
-    draw.rounded_rectangle((x, y, x + w, y + h), radius=int(h / 2), fill=bg)
+    draw.rounded_rectangle((x, y, x+w, y+h), radius=int(h/2), fill=bg)
     ratio = max(0.0, min(1.0, ratio))
     fill_w = int(w * ratio)
     if fill_w > 0:
-        draw.rounded_rectangle((x, y, x + fill_w, y + h), radius=int(h / 2), fill=fg)
+        draw.rounded_rectangle((x, y, x+fill_w, y+h), radius=int(h/2), fill=fg)
 
 def render_battle_image(user_name: str,
                         phai_key: str,
@@ -6534,49 +6488,39 @@ def render_battle_image(user_name: str,
                         user_def: int,
                         user_energy: int,
                         user_atk: int,
-                        monsters: list,
+                        monsters: list[dict],
                         turn_idx: int,
                         total_turns: int) -> bytes:
     W, H = 900, 240
-    img = Image.new("RGB", (W, H), (46, 48, 52))  # xám đậm
+    img = Image.new("RGB", (W, H), (46, 48, 52))
     draw = ImageDraw.Draw(img)
-    ft_title = load_font_safe(24)
-    ft = load_font_safe(16)
-    ft_small = load_font_safe(13)
+    ft_title = _load_font(24)
+    ft = _load_font(16)
+    ft_small = _load_font(13)
 
-    # header
     draw.text((20, 12), f"{user_name} — Phó Bản Sơ Cấp", font=ft_title, fill=(255, 255, 255))
-    draw.text((W - 140, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
+    draw.text((W-120, 14), f"Lượt: {turn_idx}/{total_turns}", font=ft_small, fill=(220, 220, 220))
 
     phai_name = PHAI_DISPLAY.get(phai_key, phai_key or "Chưa chọn")
-
-    # khối người chơi
     left_x = 20
     top_y = 50
-    draw.text((left_x, top_y + 20), f"Phái: {phai_name}  |  Tấn công: {user_atk}", font=ft_small, fill=(230, 230, 230))
 
-    # thanh máu
-    draw.text((left_x, top_y + 44), f"Máu: {user_hp}/{user_hp_max}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(
-        draw,
-        left_x,
-        top_y + 62,
-        340,
-        14,
-        user_hp / user_hp_max if user_hp_max else 0,
-        (90, 35, 35),
-        (230, 75, 75),
-    )
+    text_line = f"Phái: {phai_name}   |   Tấn công: {user_atk}"
+    draw.text((left_x, top_y + 20), text_line, font=ft_small, fill=(230, 230, 230))
 
-    # thủ
-    draw.text((left_x, top_y + 82), f"Thủ: {user_def}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(draw, left_x, top_y + 100, 340, 12, 1, (70, 70, 70), (150, 150, 150))
 
-    # năng lượng
-    draw.text((left_x, top_y + 119), f"Năng lượng: {user_energy}", font=ft_small, fill=(255, 255, 255))
-    _draw_bar(draw, left_x, top_y + 137, 340, 12, 1, (40, 65, 105), (95, 165, 230))
+    draw.text((left_x, top_y+44), f"Máu: {user_hp}/{user_hp_max}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+62, 340, 14,
+              user_hp/user_hp_max if user_hp_max else 0,
+              (90, 35, 35), (230, 75, 75))
 
-    # quái bên phải
+    draw.text((left_x, top_y+82), f"Thủ: {user_def}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+100, 340, 12, 1, (70, 70, 70), (150, 150, 150))
+
+    draw.text((left_x, top_y+119), f"Năng lượng: {user_energy}", font=ft_small, fill=(255, 255, 255))
+    _draw_bar(draw, left_x, top_y+137, 340, 12, 1, (40, 65, 105), (95, 165, 230))
+
+
     right_x = 480
     slot_y = 50
     for m in monsters:
@@ -6589,22 +6533,14 @@ def render_battle_image(user_name: str,
         bar_color = RARITY_BAR_COLOR.get(rar, (200, 200, 200))
 
         draw.text((right_x, slot_y), f"{name_no_emo} [{rar}]", font=ft, fill=(255, 255, 255))
-        draw.text((right_x, slot_y + 18), f"Công: {atk}", font=ft_small, fill=(220, 220, 220))
-        draw.text((right_x + 170, slot_y + 18), f"{hp}/{hpmax}", font=ft_small, fill=(220, 220, 220))
-
-        _draw_bar(
-            draw,
-            right_x,
-            slot_y + 38,
-            270,
-            13,
-            hp / hpmax if hpmax else 0.0,
-            (70, 70, 70),
-            (90, 90, 90) if ko else bar_color,
-        )
+        draw.text((right_x, slot_y+18), f"Công: {atk}", font=ft_small, fill=(220, 220, 220))
+        draw.text((right_x+170, slot_y+18), f"{hp}/{hpmax}", font=ft_small, fill=(220, 220, 220))
+        _draw_bar(draw, right_x, slot_y+38, 270, 13,
+                  hp/hpmax if hpmax else 0.0,
+                  (70, 70, 70),
+                  (90, 90, 90) if ko else bar_color)
         if ko:
-            draw.text((right_x + 230, slot_y + 38), "THUA", font=ft_small, fill=(255, 80, 80))
-
+            draw.text((right_x+230, slot_y+38), "THUA", font=ft_small, fill=(255, 80, 80))
         slot_y += 62
 
     buf = io.BytesIO()
@@ -6612,27 +6548,19 @@ def render_battle_image(user_name: str,
     buf.seek(0)
     return buf.getvalue()
 
-
-# ---------------------------------------------------------
-# 5) LỆNH opb / pb
-# ---------------------------------------------------------
 @bot.command(name="opb", aliases=["pb"])
 @commands.cooldown(1, 8, commands.BucketType.user)
 async def cmd_opb(ctx: commands.Context):
-    global NEED_SAVE
-
     uid = str(ctx.author.id)
     data = ensure_user(uid)
     user = data["users"][uid]
 
-    # bảo đảm field
     user.setdefault("level", 1)
     user.setdefault("exp", 0)
     user.setdefault("xu", 0)
     user.setdefault("ngan_phi", 0)
     user.setdefault("tap_vat", {"D": 0, "C": 0, "B": 0, "A": 0, "S": 0})
 
-    # lấy chỉ số tổng (bạn đã có hàm này)
     stats = calc_character_stats(user)
     user_atk = stats["offense"]["total"]
     user_def = stats["defense"]["total"]
@@ -6640,7 +6568,6 @@ async def cmd_opb(ctx: commands.Context):
     user_hp_max = 3000 + user_def
     user_hp = user_hp_max
 
-    # tạo 3 quái
     monsters = []
     for _ in range(3):
         roll = random.random()
@@ -6654,13 +6581,13 @@ async def cmd_opb(ctx: commands.Context):
             rar = "C"
         else:
             rar = "D"
-        display_name = random.choice(MONSTER_WITH_EMOJI[rar])   # có emoji để ghi diễn biến
-        plain_name = _strip_emoji(display_name)                  # bỏ emoji để vẽ
+        display_name = random.choice(MONSTER_WITH_EMOJI[rar])   # có emoji
+        plain_name = _strip_emoji(display_name)                  # để vẽ
         base_hp = {"D": 180, "C": 240, "B": 420, "A": 650, "S": 1000}[rar]
         atk = {"D": 18, "C": 36, "B": 80, "A": 140, "S": 200}[rar]
         monsters.append({
-            "name": display_name,
-            "name_plain": plain_name,
+            "name": display_name,      # dùng ở diễn biến
+            "name_plain": plain_name,  # dùng ở ảnh
             "rarity": rar,
             "hp": base_hp,
             "hp_max": base_hp,
@@ -6668,7 +6595,7 @@ async def cmd_opb(ctx: commands.Context):
             "ko": False,
         })
 
-    # render lượt đầu
+    # ảnh lượt 1
     img_bytes = render_battle_image(
         ctx.author.display_name,
         user.get("class", ""),
@@ -6682,7 +6609,7 @@ async def cmd_opb(ctx: commands.Context):
 
     emb = discord.Embed(
         title=f"**{ctx.author.display_name}** — **Bầy quái nhỏ**",
-        description="**Diễn biến phó bản**:\n**Lượt 1**",
+        description="🎥 **Diễn biến phó bản**:\n⌛ Lượt 1",
         color=0xE67E22,
     )
     msg = await ctx.send(embed=emb, file=file)
@@ -6716,10 +6643,11 @@ async def cmd_opb(ctx: commands.Context):
                 if target["hp"] <= 0:
                     target["ko"] = True
                     turn_logs.append(f"💥 {target['name']} bị hạ gục!")
+            # nếu hết quái thì dừng
             if all(m["ko"] for m in monsters):
                 battle_over = True
 
-        # vẽ lại ảnh
+        # vẽ lại ảnh theo trạng thái mới
         img_bytes = render_battle_image(
             ctx.author.display_name,
             user.get("class", ""),
@@ -6732,13 +6660,12 @@ async def cmd_opb(ctx: commands.Context):
         )
         file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
 
-        # mô tả lượt
         desc = "**Diễn biến phó bản**:\n"
-        desc += f"**Lượt** {turn}\n"
+        desc += "**Lượt** {turn}\n"
         desc += "\n".join(turn_logs) if turn_logs else "(không có hành động)"
 
         emb = discord.Embed(
-            title=f"**{ctx.author.display_name}** — **Bầy quái nhỏ**",
+            title=f"**{ctx.author.display_name}** — **Bầy quái**",
             description=desc,
             color=0xE67E22,
         )
@@ -6750,7 +6677,8 @@ async def cmd_opb(ctx: commands.Context):
         turn += 1
         await asyncio.sleep(OPB_TURN_DELAY)
 
-     # ===== tổng kết =====
+    # ===== tổng kết =====
+    # ===== tổng kết =====
     killed = sum(1 for m in monsters if m["ko"])
     exp_gain = 18 * max(1, killed)
     user["exp"] += exp_gain
@@ -6768,7 +6696,8 @@ async def cmd_opb(ctx: commands.Context):
     user["ngan_phi"] += np_gain
     user["xu"] += xu_gain
 
-    # tạp vật theo phẩm quái
+    # tạp vật: mỗi con rơi 1 tạp vật đúng phẩm
+    # đảm bảo user có tap_vat đủ key
     tv = user.setdefault("tap_vat", {})
     for r in ["S", "A", "B", "C", "D"]:
         tv.setdefault(r, 0)
@@ -6776,11 +6705,11 @@ async def cmd_opb(ctx: commands.Context):
     drop_counter = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0}
     for m in monsters:
         if m["ko"]:
-            rr = m["rarity"]
-            drop_counter[rr] += 1
-            tv[rr] = int(tv.get(rr, 0)) + 1
+            rar = m["rarity"]
+            drop_counter[rar] += 1
+            tv[rar] = int(tv.get(rar, 0)) + 1
 
-    NEED_SAVE = True
+    save_data(data)
 
     # emoji
     np_emo = globals().get("NP_EMOJI", "📦")
@@ -6789,34 +6718,37 @@ async def cmd_opb(ctx: commands.Context):
         "S": "💎", "A": "💍", "B": "🐚", "C": "🪨", "D": "🪵"
     })
 
-    # ghép dòng tổng kết
-    summary = (
+    # base text
+    final = (
         f"⚔️ Đánh {killed}/3 quái → nhận **{exp_gain} EXP**.\n"
         f"📈 EXP: {user['exp']}/{get_exp_required_for_level(user['level'])} • Cấp: **{user['level']}**"
     )
     if leveled:
-        summary += " 🎉 Lên cấp!"
+        final += " 🎉 Lên cấp!"
 
-    reward_parts = [f"{np_emo} +{np_gain}", f"{xu_emo} +{xu_gain}"]
+    # ghép phần thưởng
+    reward_parts = [
+        f"{np_emo} +{np_gain}",
+        f"{xu_emo} +{xu_gain}",
+    ]
+    # thêm tạp vật từng phẩm
     for r in ["S", "A", "B", "C", "D"]:
-        if drop_counter[r] > 0:
-            reward_parts.append(f"{tap_emo[r]} +{drop_counter[r]}")
-    summary += "\n" + "  |  ".join(reward_parts)
+        cnt = drop_counter[r]
+        if cnt > 0:
+            reward_parts.append(f"{tap_emo[r]} +{cnt}")
 
-    # lấy lại diễn biến lượt cuối để vẫn hiển thị
-    # (emb hiện giờ bạn đang tạo trong vòng lặp, ở đây tạo cái mới)
-    final_desc = emb.description  # emb của lượt cuối trong code cũ
+    final += "\n" + "  |  ".join(reward_parts)
 
-    # gắn tổng kết vào embed hiện tại
-    final_emb = discord.Embed(
-        title=emb.title,
-        description=f"{final_desc}\n\n**Hoàn thành**:\n{summary}",
-        color=emb.color,
-    )
+    await ctx.send(final)
 
-    # giữ ảnh battle cuối
-    final_file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
-    await msg.edit(embed=final_emb, attachments=[final_file])
+
+
+
+
+
+
+
+
 
 
 # ====================================================================================================================================
@@ -6889,8 +6821,6 @@ BOT_OWNER_ID = 821066331826421840  # 👈 thay bằng ID thật của bạn
 
 @bot.command(name="thongbao")
 async def cmd_thongbao(ctx, *, text: str):
-    global NEED_SAVE
-
     """Chỉ chủ bot mới có thể thay đổi thông báo footer toàn hệ thống"""
     if ctx.author.id != BOT_OWNER_ID:
         await ctx.reply("❌ Bạn đang cố thực hiện lệnh không có", mention_author=False)
@@ -6923,38 +6853,16 @@ async def on_message(message):
 
         # ✅ Ghi log nhiệm vụ "Gửi 50 tin nhắn trong server"
         quest_runtime_increment(user, "messages_today", 1)
-        NEED_SAVE = True
+        save_data(data)
 
     # Cho phép các lệnh bot hoạt động bình thường
     await bot.process_commands(message)
-# ==================================================
-
-# =========================================================
-# VÒNG TỰ LƯU DATA 5 GIÂY / LẦN
-# =========================================================
-import asyncio
-
-async def auto_save_loop():
-    global NEED_SAVE, data
-    while True:
-        await asyncio.sleep(5)
-        if NEED_SAVE:
-            save_data(data)
-            NEED_SAVE = False
-
-@bot.event
-async def on_ready():
-    print("✅ Bot ready")
-
-    # Nếu on_ready của bạn đã có nội dung khác, chỉ cần thêm dòng này vào cuối on_ready:
-    bot.loop.create_task(auto_save_loop())
-# =========================================================
-
-
-
-#==================================================================================
+# ====================================================================================================================================
 # 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
 # ====================================================================================================================================
+
+
+
 
 
 
