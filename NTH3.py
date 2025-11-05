@@ -6724,22 +6724,25 @@ async def cmd_opb(ctx: commands.Context):
         turn += 1
         await asyncio.sleep(OPB_TURN_DELAY)
 
-    # ----------------- TỔNG KẾT -----------------
+     # ===== tổng kết =====
     killed = sum(1 for m in monsters if m["ko"])
     exp_gain = 18 * max(1, killed)
     user["exp"] += exp_gain
 
+    # lên cấp nếu đủ exp
     leveled = False
     while user["exp"] >= get_exp_required_for_level(user["level"]):
         user["exp"] -= get_exp_required_for_level(user["level"])
         user["level"] += 1
         leveled = True
 
+    # kinh tế
     np_gain = 40 * killed
     xu_gain = 8 * killed
     user["ngan_phi"] += np_gain
     user["xu"] += xu_gain
 
+    # tạp vật theo phẩm quái
     tv = user.setdefault("tap_vat", {})
     for r in ["S", "A", "B", "C", "D"]:
         tv.setdefault(r, 0)
@@ -6747,38 +6750,47 @@ async def cmd_opb(ctx: commands.Context):
     drop_counter = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0}
     for m in monsters:
         if m["ko"]:
-            rar = m["rarity"]
-            drop_counter[rar] += 1
-            tv[rar] = int(tv.get(rar, 0)) + 1
+            rr = m["rarity"]
+            drop_counter[rr] += 1
+            tv[rr] = int(tv.get(rr, 0)) + 1
 
     save_data(data)
 
+    # emoji
     np_emo = globals().get("NP_EMOJI", "📦")
     xu_emo = globals().get("XU_EMOJI", "🪙")
     tap_emo = globals().get("TAP_VAT_EMOJI", {
         "S": "💎", "A": "💍", "B": "🐚", "C": "🪨", "D": "🪵"
     })
 
-    final = (
+    # ghép dòng tổng kết
+    summary = (
         f"⚔️ Đánh {killed}/3 quái → nhận **{exp_gain} EXP**.\n"
         f"📈 EXP: {user['exp']}/{get_exp_required_for_level(user['level'])} • Cấp: **{user['level']}**"
     )
     if leveled:
-        final += " 🎉 Lên cấp!"
+        summary += " 🎉 Lên cấp!"
 
-    reward_parts = [
-        f"{np_emo} +{np_gain}",
-        f"{xu_emo} +{xu_gain}",
-    ]
+    reward_parts = [f"{np_emo} +{np_gain}", f"{xu_emo} +{xu_gain}"]
     for r in ["S", "A", "B", "C", "D"]:
-        cnt = drop_counter[r]
-        if cnt > 0:
-            reward_parts.append(f"{tap_emo[r]} +{cnt}")
+        if drop_counter[r] > 0:
+            reward_parts.append(f"{tap_emo[r]} +{drop_counter[r]}")
+    summary += "\n" + "  |  ".join(reward_parts)
 
-    final += "\n" + "  |  ".join(reward_parts)
+    # lấy lại diễn biến lượt cuối để vẫn hiển thị
+    # (emb hiện giờ bạn đang tạo trong vòng lặp, ở đây tạo cái mới)
+    final_desc = emb.description  # emb của lượt cuối trong code cũ
 
-    await ctx.send(final)
+    # gắn tổng kết vào embed hiện tại
+    final_emb = discord.Embed(
+        title=emb.title,
+        description=f"{final_desc}\n\n**Hoàn thành**:\n{summary}",
+        color=emb.color,
+    )
 
+    # giữ ảnh battle cuối
+    final_file = discord.File(io.BytesIO(img_bytes), filename="battle.png")
+    await msg.edit(embed=final_emb, attachments=[final_file])
 
 
 # ====================================================================================================================================
