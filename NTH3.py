@@ -4572,7 +4572,6 @@ async def cmd_obantrangbi(ctx, *args):
 @bot.command(name="thao", aliases=["othao"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_othao(ctx, item_id: str = None):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
 
     if item_id is None:
         await ctx.reply("📝 Cách dùng: `thao <ID>` (xem ID trong `okho`).", mention_author=False)
@@ -4618,7 +4617,7 @@ async def cmd_othao(ctx, item_id: str = None):
     # tháo
     user["equipped"][slot_key] = None
     target["equipped"] = False
-    NEED_SAVE = True
+    save_data(data)
 
 
     emb = make_embed(
@@ -4908,7 +4907,6 @@ PHAI_LABEL_FROM_KEY = {
 @bot.command(name="mac", aliases=["omac"])
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_omac(ctx, item_id: str = None):
-    global NEED_SAVE   # 👈 để dưới def là đúng rồi
 
     if not item_id:
         await ctx.reply("📝 Cách dùng: `mac <ID>` (xem ID trong `okho`).", mention_author=False)
@@ -4979,7 +4977,8 @@ async def cmd_omac(ctx, item_id: str = None):
     # ===== mặc =====
     item["equipped"] = True
     user["equipped"][slot] = item["id"]
-    NEED_SAVE = True
+    save_data(data)
+
 
     emo = RARITY_EMOJI.get(item.get("rarity", "D"), "🔸")
     emb = make_embed(
