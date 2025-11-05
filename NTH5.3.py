@@ -6622,8 +6622,6 @@ def render_battle_image(user_name: str,
 @bot.command(name="opb", aliases=["pb"])
 @commands.cooldown(1, 8, commands.BucketType.user)
 async def cmd_opb(ctx: commands.Context):
-    global NEED_SAVE
-
     uid = str(ctx.author.id)
     data = ensure_user(uid)
     user = data["users"][uid]
@@ -6783,7 +6781,7 @@ async def cmd_opb(ctx: commands.Context):
             drop_counter[rr] += 1
             tv[rr] = int(tv.get(rr, 0)) + 1
 
-    NEED_SAVE = True
+    save_data(data)
 
     # emoji
     np_emo = globals().get("NP_EMOJI", "📦")
