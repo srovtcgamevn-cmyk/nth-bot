@@ -1059,7 +1059,7 @@ ADMIN_WHITELIST = {
     "saoluuantoan","osaoluuantoan"
     "xuatdata","oxuatdata"
     "osaoluuantoan","saoluuantoan"
-
+    "othongbao",
 
 
 }
@@ -1079,6 +1079,8 @@ GAMEPLAY_REQUIRE = {
     "obxh",
     "omonphai",
     "obantrangbi",
+    "opb",
+
 
 
 }
@@ -6410,10 +6412,16 @@ from discord.ext import commands
 
 OPB_TURN_DELAY = 3.0  # giây giữa các lượt
 
-def _load_font(size=20):
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_PATH = os.path.join(BASE_DIR, "DejaVuSans.ttf")
+
+def load_font(size=20):
     try:
-        return ImageFont.truetype("arial.ttf", size)
+        return ImageFont.truetype(FONT_PATH, size)
     except Exception:
+        # fallback để tránh crash nếu Railway đọc lỗi font
         return ImageFont.load_default()
 
 # tên phái có dấu để hiện lên ảnh
@@ -6753,6 +6761,73 @@ async def cmd_opb(ctx: commands.Context):
 # ====================================================================================================================================
 
 
+# =========================================================
+# 0. THÔNG BÁO TOÀN BOT
+# =========================================================
+import json
+import os
+
+GLOBAL_NOTICE_FILE = "data/global_notice.json"
+
+# load thông báo nếu đã từng lưu
+if os.path.exists(GLOBAL_NOTICE_FILE):
+    try:
+        with open(GLOBAL_NOTICE_FILE, "r", encoding="utf-8") as f:
+            _tmp = json.load(f)
+            GLOBAL_FOOTER_TEXT = _tmp.get("footer", " ")
+    except Exception:
+        GLOBAL_FOOTER_TEXT = " "
+else:
+    # mặc định nếu chưa có
+    GLOBAL_FOOTER_TEXT = "Đã có thêm tính năng đi Phó Bản — dùng lệnh opb"
+
+
+def set_global_footer(text: str):
+    """lưu xuống file để restart bot vẫn còn"""
+    global GLOBAL_FOOTER_TEXT
+    GLOBAL_FOOTER_TEXT = text
+    os.makedirs("data", exist_ok=True)
+    with open(GLOBAL_NOTICE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"footer": text}, f, ensure_ascii=False, indent=2)
+
+
+# =========================================================
+# 1. HÀM make_embed BỌC LẠI
+# =========================================================
+# nếu bạn đã có make_embed rồi thì sửa lại như vầy
+def make_embed(title, description=None, color=0x2ECC71, footer=None, fields=None):
+    import discord
+    emb = discord.Embed(title=title, description=description or "", color=color)
+
+    if fields:
+        for name, value, inline in fields:
+            emb.add_field(name=name, value=value, inline=inline)
+
+    # GLOBAL_FOOTER_TEXT phải được khai báo ở ngoài trước
+    if footer and GLOBAL_FOOTER_TEXT.strip():
+        emb.set_footer(text=f"{footer}\n{GLOBAL_FOOTER_TEXT}")
+    elif footer:
+        emb.set_footer(text=footer)
+    elif GLOBAL_FOOTER_TEXT.strip():
+        emb.set_footer(text=GLOBAL_FOOTER_TEXT)
+
+    return emb
+
+
+# =========================================================
+# LỆNH: othongbao <nội dung> — chỉ chủ bot được phép dùng
+# =========================================================
+BOT_OWNER_ID = 821066331826421840  # 👈 thay bằng ID thật của bạn
+
+@bot.command(name="thongbao")
+async def cmd_thongbao(ctx, *, text: str):
+    """Chỉ chủ bot mới có thể thay đổi thông báo footer toàn hệ thống"""
+    if ctx.author.id != BOT_OWNER_ID:
+        await ctx.reply("❌ Bạn đang cố thực hiện lệnh không có", mention_author=False)
+        return
+
+    set_global_footer(text)
+    await ctx.reply(f"✅ Đã cập nhật thông báo chung:\n> {text}", mention_author=False)
 
 
 
@@ -6785,6 +6860,10 @@ async def on_message(message):
 # ====================================================================================================================================
 # 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
 # ====================================================================================================================================
+
+
+
+
 
 
 
