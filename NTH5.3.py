@@ -140,7 +140,7 @@ def total_backup_stats_v16():
 # - Nếu chạy Railway: bạn set env DATA_DIR=/data và mount volume vào /data
 
 # Giới hạn số lượng backup thủ công (manual) cần giữ lại
-MAX_MANUAL_BACKUPS = 10
+MAX_MANUAL_BACKUPS = 2
 
 def _cleanup_old_backups_limit():
     """
