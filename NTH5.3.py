@@ -2400,58 +2400,44 @@ async def cmd_osaoluu_antoan(ctx):
 
 
 
-# =============== XOÁ TOÀN BỘ BACKUP/SNAPSHOT (THỦ CÔNG + TỰ ĐỘNG) ===============
+# ================== XOÁ BACKUP (THỦ CÔNG + TỰ ĐỘNG) ==================
 from discord.ext import tasks
 import os, shutil
 
-# 🧹 HÀM DỌN DÙNG CHUNG
 def run_xoabackup():
     """
-    XÓA SẠCH các thư mục backup để giải phóng dung lượng.
-    KHÔNG đụng tới data.json chính.
+    GIẢI PHÓNG DUNG LƯỢNG.
+    Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
+    KHÔNG xoá data.json chính.
     """
-    # thư mục gốc bạn đang dùng
     backup_root = os.path.join(BASE_DATA_DIR, "backups")
-    snapshot_root = os.path.join(BASE_DATA_DIR, "snapshots")
-
-    # xoá /backups
     try:
         if os.path.isdir(backup_root):
-            shutil.rmtree(backup_root)
-            print(f"[XOABACKUP] Đã xoá toàn bộ: {backup_root}")
+            shutil.rmtree(backup_root)   # 👈 y như bản cũ của bạn
+            print(f"[XOABACKUP] Đã xoá toàn bộ thư mục: {backup_root}")
         os.makedirs(backup_root, exist_ok=True)
+        print("[XOABACKUP] Đã tạo lại thư mục backups rỗng.")
     except Exception as e:
-        print(f"[XOABACKUP] Lỗi xoá {backup_root}: {e}")
+        print(f"[XOABACKUP] Lỗi khi xoá backup: {e}")
 
-    # xoá /snapshots (nếu có)
-    try:
-        if os.path.isdir(snapshot_root):
-            shutil.rmtree(snapshot_root)
-            print(f"[XOABACKUP] Đã xoá toàn bộ: {snapshot_root}")
-        os.makedirs(snapshot_root, exist_ok=True)
-    except Exception as e:
-        print(f"[XOABACKUP] Lỗi xoá {snapshot_root}: {e}")
-
-# 💬 LỆNH THỦ CÔNG
 @bot.command(name="xoabackup", aliases=["oxoabackup"])
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def cmd_xoabackup(ctx):
     run_xoabackup()
     await ctx.reply(
-        "🧹 Đã xoá SẠCH backup/snapshot.\n"
-        "📦 `data.json` vẫn còn.\n"
-        "💡 Kiểm tra lại dung lượng volume trên Railway.",
+        "🧹 Đã xoá toàn bộ backup cũ (startup / pre-save / manual / ...).\n"
+        "📦 File dữ liệu chính `data.json` vẫn còn nguyên.",
         mention_author=False
     )
 
-# 🔁 TỰ ĐỘNG XOÁ MỖI 10 PHÚT
 @tasks.loop(minutes=10)
 async def auto_xoabackup_task():
     await bot.wait_until_ready()
-    print("[AUTO-XOABACKUP] Dọn backup/snapshot tự động...")
+    print("[AUTO-XOABACKUP] Dọn backup tự động...")
     run_xoabackup()
     print("[AUTO-XOABACKUP] Xong.")
+
 
 
 
