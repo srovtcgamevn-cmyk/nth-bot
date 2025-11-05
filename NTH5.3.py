@@ -3833,7 +3833,7 @@ async def cmd_omo(ctx, *args):
             if tv_all[rr] > 0:
                 tv_lines.append(f"{TAP_VAT_EMOJI[rr]} x{tv_all[rr]}")
         if tv_lines:
-            reward_lines.append("🧩 " + "  ".join(tv_lines))
+            reward_lines.append("📦 " + "  ".join(tv_lines))
 
         emb.add_field(name="Phần thưởng", value="\n".join(reward_lines), inline=False)
 
@@ -3855,6 +3855,7 @@ async def cmd_omo(ctx, *args):
 
         await ctx.send(embed=emb)
         return
+
 
     # ====== omo <rarity> ... ======
     if len(argv) >= 1 and argv[0] in {"d", "c", "b", "a", "s"}:
@@ -3898,7 +3899,7 @@ async def cmd_omo(ctx, *args):
         ]
         tv_lines = [f"{TAP_VAT_EMOJI[rr]} x{tv_cnt[rr]}" for rr in ["S", "A", "B", "C", "D"] if tv_cnt[rr] > 0]
         if tv_lines:
-            reward_lines.append("🧩 " + "  ".join(tv_lines))
+            reward_lines.append("📦 " + "  ".join(tv_lines))
         emb.add_field(name="Phần thưởng", value="\n".join(reward_lines), inline=False)
 
         if items:
@@ -3917,6 +3918,7 @@ async def cmd_omo(ctx, *args):
 
         await ctx.send(embed=emb)
         return
+
 
     # ====== omo mặc định ======
     r_found = _pick_highest_available_rarity(user)
@@ -3938,7 +3940,7 @@ async def cmd_omo(ctx, *args):
     reward_lines = [
         f"{NP_EMOJI} **{format_num(gp)}**",
         f"{XU_EMOJI} **{format_num(xu_gain)}**",
-        f"🧩 {TAP_VAT_EMOJI[tv['rarity']]} x{tv['count']}",
+        f"📦 {TAP_VAT_EMOJI[tv['rarity']]} x{tv['count']}",
     ]
     emb.add_field(name="Phần thưởng", value="\n".join(reward_lines), inline=False)
 
@@ -3955,6 +3957,8 @@ async def cmd_omo(ctx, *args):
     await ctx.send(embed=emb)
 
 
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 
 
 import random
@@ -4508,6 +4512,8 @@ async def cmd_oban(ctx, *args):
         return
 
     await ctx.reply("Dùng: `oban` (bán hết) hoặc `oban <D|C|B|A|S> all`", mention_author=False)
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 
 # ---------------------------------------------------------------------------------
 # M. LỆNH OBANTRANGBI – BÁN TRANG BỊ → XU
@@ -4638,6 +4644,8 @@ async def cmd_othao(ctx, item_id: str = None):
         footer=ctx.author.display_name
     )
     await ctx.send(embed=emb)
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 
 
 
@@ -4997,6 +5005,8 @@ async def cmd_omac(ctx, item_id: str = None):
         footer=ctx.author.display_name,
     )
     await ctx.send(embed=emb)
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 # ------------------------------------------------
 
 
@@ -5515,7 +5525,8 @@ def _open_one_chest(user: dict, r: str):
 
 
 
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 # ====================================================================================================================================
 # 🧍 XEM BẮT ĐẦU
 # ====================================================================================================================================
@@ -5701,7 +5712,8 @@ async def cmd_oxem(ctx, item_id: str = None):
 
     emb = _build_item_embed(ctx, it, user_display_name=ctx.author.display_name)
     await ctx.send(embed=emb)
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 # ====================================================================================================================================
 # 🧍 XEM KẾT THÚC
 # ====================================================================================================================================
@@ -5885,7 +5897,8 @@ async def cmd_omonphai(ctx):
     view = PhaiView(uid, cur)
     await ctx.reply(embed=emb, view=view, mention_author=False)
 
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 
 
 
@@ -5980,6 +5993,8 @@ async def cmd_ol(ctx):
             await msg.edit(embed=emb)
     except Exception:
         pass
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 # ====================================================================================================================================
 # 🧍 KHÁM PHÁ KẾT THÚC
 # ====================================================================================================================================
@@ -6287,7 +6302,8 @@ async def cmd_odt(ctx, amount: str = None):
         content=(ctx.author.mention if jackpot_announce else None),
         embed=emb
     )
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 # ====================================================================================================================================
 # 🧍 ĐỔ THẠCH KẾT THÚC
 # ====================================================================================================================================
@@ -6423,7 +6439,8 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
     except Exception:
         # Người nhận khóa DM, bỏ qua
         pass
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 # ====================================================================================================================================
 # 🧍 TẶNG TIỀN KẾT THÚC
 # ====================================================================================================================================
@@ -6504,7 +6521,6 @@ RARITY_BAR_COLOR = {
     "A": (170, 90, 245),
     "S": (245, 200, 60),
 }
-
 
 # ---------------------------------------------------------
 # 3) EXP CẦN CHO MỖI LEVEL
@@ -6931,8 +6947,8 @@ async def cmd_opb(ctx: commands.Context):
     await msg.edit(embed=final_emb, attachments=[final_file])
 
 
-
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 
 
 # ====================================================================================================================================
@@ -7013,7 +7029,8 @@ async def cmd_thongbao(ctx, *, text: str):
     set_global_footer(text)
     await ctx.reply(f"✅ Đã cập nhật thông báo chung:\n> {text}", mention_author=False)
 
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 
 
 
@@ -7418,7 +7435,8 @@ async def cmd_onhiemvu(ctx: commands.Context):
     )
     await ctx.reply(embed=emb, mention_author=False)
 
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 #===========================================================
 # ======= AUTO-CLAIM / AUTO-REWARD FOR DAILY MISSIONS =======
 # - Giữ nguyên data structure hiện có; chỉ tự trả thưởng khi mission.done == True và claimed == False
@@ -7520,7 +7538,8 @@ async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
                 print(f"[ERROR] _auto_claim_missions error: {e}")
             except Exception:
                 pass
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 #===========================================================
 # ======= END AUTO-CLAIM BLOCK =======
 #===========================================================
@@ -7543,7 +7562,8 @@ async def testnhiemvusos(ctx):
     save_data(data)
     await ctx.reply("Đã ép 5/5 và chạy auto-claim. Dùng `oncheck_tien` để xem số dư.", mention_author=False)
 
-
+    # 5) LƯU FILE NGAY TẠI ĐÂY
+    save_data(data)
 
 # ====================================================================================================================================
 # 🧍 NHIỆM VỤ KẾT THÚC
