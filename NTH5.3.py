@@ -947,37 +947,42 @@ AUTO_BACKUP_CHANNEL_ID = 821066331826421840
 AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
 AUTO_REPORT_INTERVAL_MINUTES = 60    # báo lên kênh tối đa 1 lần mỗi Y phút
 
+# Bộ nhớ runtime
 _last_report_ts = 0
 _auto_backup_started = False
 
-# ------------------ TASK BACKUP ------------------
+
 @tasks.loop(minutes=1)
 async def auto_backup_task():
     """
-    Tick mỗi 1 phút, đủ X phút thì backup.
-    Sau khi backup sẽ dọn bớt file cũ, chỉ giữ 10 cái mới nhất.
+    Vòng lặp chạy mỗi 1 phút.
+    - đủ X phút thì backup
+    - backup xong dọn bớt, chỉ giữ 10 file mới nhất
     """
-    global _last_report_ts, AUTO_BACKUP_INTERVAL_MINUTES, AUTO_REPORT_INTERVAL_MINUTES
+    global _last_report_ts
+    global AUTO_BACKUP_INTERVAL_MINUTES
+    global AUTO_REPORT_INTERVAL_MINUTES
 
-    # tạo bộ đếm phút lần đầu
+    # bộ đếm phút
     if not hasattr(auto_backup_task, "_minutes_since_backup"):
         auto_backup_task._minutes_since_backup = 0
 
     auto_backup_task._minutes_since_backup += 1
 
-    # chưa đủ phút thì thoát
+    # chưa đủ phút thì thôi
     if auto_backup_task._minutes_since_backup < AUTO_BACKUP_INTERVAL_MINUTES:
         return
 
-    # đủ rồi → reset đếm
+    # đủ phút → reset đếm
     auto_backup_task._minutes_since_backup = 0
 
     try:
-        # 1) snapshot
+        # 1) tạo snapshot
         data_now = load_data()
         filename = snapshot_data_v16(data_now, tag="auto", subkey="manual")
 
-        # 2) dọn bớt bản cũ
+        # 2) dọn bớt snapshot cũ — đây là phần quan trọng
+        # đoán thư mục snapshot nằm ở đây, bạn đổi lại nếu khác
         SNAP_DIRS = [
             "/mnt/volume/snapshots",
             "/mnt/volume/backups",
@@ -988,13 +993,14 @@ async def auto_backup_task():
                     glob.glob(os.path.join(snap_dir, "*.json")),
                     key=os.path.getmtime
                 )
+                # giữ lại 10 file mới nhất
                 for f in files[:-10]:
                     try:
                         os.remove(f)
                     except Exception as e:
                         print(f"[AUTO-BACKUP] không xóa được {f}: {e}")
 
-        # 3) báo
+        # 3) in log + gửi lên kênh nếu tới giờ
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = (
             f"✅ **Tự động sao lưu dữ liệu thành công!**\n"
@@ -1003,14 +1009,18 @@ async def auto_backup_task():
             f"⏱️ Chu kỳ backup hiện tại: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
             f"📣 Chu kỳ báo cáo hiện tại: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần"
         )
+
         print(f"[AUTO-BACKUP] {msg}")
 
         now_ts = time.time()
         elapsed_since_report_min = (now_ts - _last_report_ts) / 60.0
         if elapsed_since_report_min >= AUTO_REPORT_INTERVAL_MINUTES:
-            channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
-            if channel:
-                await channel.send(msg)
+            try:
+                channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
+                if channel:
+                    await channel.send(msg)
+            except Exception as e:
+                print(f"[AUTO-BACKUP] ⚠️ Lỗi gửi thông báo Discord: {e}")
             _last_report_ts = now_ts
 
     except Exception as e:
@@ -1025,26 +1035,43 @@ async def before_auto_backup():
     _last_report_ts = 0
     print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
 
-# ------------------ LỆNH CẤU HÌNH ------------------
 
-BOT_OWNERS = {821066331826421840}
+# =================LỆNH THAY ĐỔI THỜI GIAN SAO LƯU TỰ ĐỘNG======================
+
 
 @bot.command(name="thoigiansaoluu", aliases=["backupconfig"])
 @owner_only()
 @commands.cooldown(1, 5, commands.BucketType.user)
 async def cmd_thoigiansaoluu(ctx, backup_minutes: int = None, report_minutes: int = None):
-    global AUTO_BACKUP_INTERVAL_MINUTES, AUTO_REPORT_INTERVAL_MINUTES
+    """
+    Cấu hình hệ thống auto backup:
+    - backup_minutes: mỗi bao nhiêu phút thì tạo 1 bản backup mới.
+    - report_minutes: mỗi bao nhiêu phút thì cho phép gửi 1 thông báo vào kênh.
 
+    Ví dụ:
+    `thoigiansaoluu 10 60`
+    -> Sao lưu mỗi 10 phút
+    -> Chỉ báo lên kênh mỗi 60 phút (ít spam thông báo)
+
+    Nếu bạn gọi không đủ tham số, bot sẽ chỉ hiển thị cấu hình hiện tại.
+    """
+
+    global AUTO_BACKUP_INTERVAL_MINUTES
+    global AUTO_REPORT_INTERVAL_MINUTES
+
+    # Nếu không truyền tham số -> chỉ show cấu hình hiện tại
     if backup_minutes is None or report_minutes is None:
         await ctx.reply(
             "📊 Cấu hình Auto Backup hiện tại:\n"
             f"- Chu kỳ backup: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
             f"- Chu kỳ báo cáo: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần\n"
-            "👉 Dùng: `thoigiansaoluu <phút_backup> <phút_báo>`",
+            "👉 Dùng: `thoigiansaoluu <phút_backup> <phút_báo>`\n"
+            "Ví dụ: `thoigiansaoluu 10 60`",
             mention_author=False
         )
         return
 
+    # Validate
     if backup_minutes < 1:
         await ctx.reply("❗ Chu kỳ backup phải >= 1 phút.", mention_author=False)
         return
@@ -1052,19 +1079,24 @@ async def cmd_thoigiansaoluu(ctx, backup_minutes: int = None, report_minutes: in
         await ctx.reply("❗ Chu kỳ báo cáo phải >= 1 phút.", mention_author=False)
         return
 
+    # Cập nhật giá trị
     AUTO_BACKUP_INTERVAL_MINUTES = backup_minutes
     AUTO_REPORT_INTERVAL_MINUTES = report_minutes
 
-    # reset đếm để áp dụng ngay
+    # reset bộ đếm phút để áp dụng ngay
     if hasattr(auto_backup_task, "_minutes_since_backup"):
         auto_backup_task._minutes_since_backup = 0
 
     await ctx.reply(
         "✅ ĐÃ CẬP NHẬT CẤU HÌNH AUTO BACKUP!\n"
         f"- Sao lưu mỗi **{AUTO_BACKUP_INTERVAL_MINUTES} phút/lần**\n"
-        f"- Gửi thông báo tối đa mỗi **{AUTO_REPORT_INTERVAL_MINUTES} phút/lần**",
+        f"- Gửi thông báo tối đa mỗi **{AUTO_REPORT_INTERVAL_MINUTES} phút/lần**\n"
+        "📦 Lưu ý: Bot sẽ áp dụng cấu hình mới ngay lập tức.",
         mention_author=False
     )
+
+# =================LỆNH THAY ĐỔI THỜI GIAN SAO LƯU TỰ ĐỘNG======================
+
 
 
 # =================LỆNH THAY ĐỔI THỜI GIAN SAO LƯU TỰ ĐỘNG======================
