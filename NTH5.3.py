@@ -895,6 +895,7 @@ async def on_ready():
     - Log bot ready
     - Chụp snapshot 'startup' (như cũ)
     - Khởi động vòng auto_backup_task nếu chưa chạy
+    - Khởi động auto xoá backup 10 phút/lần
     """
     global _auto_backup_started
 
@@ -921,6 +922,12 @@ async def on_ready():
         except RuntimeError:
             # Nếu Discord reconnect và task đã start rồi -> bỏ qua
             pass
+
+    # Khởi động auto xoá backup 10 phút/lần
+    if not auto_xoabackup_task.is_running():
+        auto_xoabackup_task.start()
+        print("[AUTO-XOABACKUP] started.")
+
 # ===================================
 # 🧩 BOT & CẤU HÌNH CHUNG — KẾT THÚC
 # ===================================
