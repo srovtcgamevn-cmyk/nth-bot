@@ -1958,29 +1958,94 @@ async def cmd_tachdata(ctx):
 # ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG (BẢN AN TOÀN) ==================
 
 
-@bot.command(name="eptachdata", aliases=["oeptachdata"])
+# =============== TÁCH DATA THÔNG MINH + QUÉT USER RỖNG ===============
+
+def is_empty_user(u: dict) -> bool:
+    """Tạm coi user rỗng nếu không có gì đáng giá."""
+    if not u:
+        return True
+    # chỉ có đúng mỗi id
+    if list(u.keys()) == ["id"]:
+        return True
+    # không có tiền, không có rương, không có đồ
+    if u.get("xu", 0) == 0 and u.get("ngan_phi", 0) == 0 and not u.get("items") and not u.get("rungs"):
+        return True
+    return False
+
+
+@bot.command(name="tachdatapro", aliases=["otachdatapro"])
 @owner_only()
-async def cmd_eptachdata(ctx):
+async def cmd_tachdatapro(ctx):
     """
-    Ép tách lại toàn bộ user từ data.json ra /users/, GHI ĐÈ file cũ.
-    Chỉ dùng khi /users/ đã lỡ tạo file rỗng trước đó.
+    Tách toàn bộ user từ data.json ra /users/ nhưng ưu tiên dữ liệu đầy hơn:
+    - Nếu data.json có user đầy -> ghi
+    - Nếu data.json rỗng nhưng /users/ đang có file đầy -> giữ file cũ
+    - Nếu cả hai đều rỗng -> chấp nhận rỗng
     """
     data = load_data()
     users = data.get("users", {})
     count_all = 0
-    count_written = 0
+    count_from_data = 0
+    count_keep_old = 0
+    count_empty = 0
 
     for uid, udata in users.items():
         count_all += 1
-        # ghi đè luôn
-        save_user_data(uid, udata)
-        count_written += 1
+
+        # đọc file user hiện có (nếu có)
+        existing = load_user_data(uid)  # hàm của bạn, nếu chưa có sẽ trả None
+
+        # chọn nguồn dữ liệu tốt hơn
+        if not is_empty_user(udata):
+            # dữ liệu trong data.json ok
+            src = udata
+            count_from_data += 1
+        else:
+            # data.json rỗng, thử lấy bản hiện có
+            if existing and not is_empty_user(existing):
+                src = existing
+                count_keep_old += 1
+            else:
+                # bó tay, cả hai đều rỗng
+                src = udata
+                count_empty += 1
+
+        save_user_data(uid, src)
 
     await ctx.reply(
-        f"✅ (FORCE) Đã quét {count_all} user trong data.json, ghi đè {count_written} file trong /users.",
+        (
+            "✅ Tách thông minh xong.\n"
+            f"- Quét: {count_all} user trong data.json\n"
+            f"- Ghi theo data.json: {count_from_data}\n"
+            f"- Giữ dữ liệu cũ trong /users/: {count_keep_old}\n"
+            f"- Vẫn rỗng (cả 2 đều rỗng): {count_empty}"
+        ),
         mention_author=False,
     )
 
+
+@bot.command(name="xemtrong")
+@owner_only()
+async def cmd_xemtrong(ctx):
+    """Quét thư mục /users/ xem còn user nào rỗng không."""
+    empty_ids = []
+    for fname in os.listdir(USERS_DIR):
+        if not fname.endswith(".json"):
+            continue
+        uid = fname[:-5]
+        u = load_user_data(uid)
+        if not u or is_empty_user(u):
+            empty_ids.append(uid)
+
+    if not empty_ids:
+        await ctx.reply("✅ Không phát hiện user rỗng trong /users/.", mention_author=False)
+    else:
+        show = "\n".join(empty_ids[:50])
+        more = "" if len(empty_ids) <= 50 else f"\n... và {len(empty_ids) - 50} user nữa."
+        await ctx.reply(
+            f"⚠️ Có {len(empty_ids)} user đang rỗng trong /users/:\n{show}{more}",
+            mention_author=False,
+        )
 
 
 # ==================SAO LƯU==================================
