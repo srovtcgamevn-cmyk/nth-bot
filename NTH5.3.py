@@ -1942,6 +1942,8 @@ async def cmd_tachdata(ctx):
         save_user_data(uid, udata)
         count += 1
     await ctx.reply(f"✅ Đã tách {count} user ra thư mục /users", mention_author=False)
+    await ctx.reply("⚠️ Lệnh này chỉ dùng 1 lần duy nhất để chuyển dữ liệu cũ → tách user.\nKhông cần dùng lại sau khi đã chuyển xong.", mention_author=False)
+
 
 # ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG ==================
 
