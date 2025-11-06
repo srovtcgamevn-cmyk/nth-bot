@@ -2429,25 +2429,39 @@ async def cmd_xoabackup(ctx):
 from discord.ext import tasks
 import os, shutil
 
-# ================== XOÁ BACKUP DÙNG CHUNG ==================
-def run_xoabackup_manual():
+# ================== XOÁ TOÀN BỘ BACKUP (THỦ CÔNG + TỰ ĐỘNG) ==================
+from discord.ext import tasks
+import os, shutil
+
+# 💬 LỆNH THỦ CÔNG
+@bot.command(name="xoabackup", aliases=["oxoabackup"])
+@owner_only()
+@commands.cooldown(1, 10, commands.BucketType.user)
+async def cmd_xoabackup(ctx):
     """
+    GIẢI PHÓNG DUNG LƯỢNG THỦ CÔNG.
     Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
-    KHÔNG xoá data.json chính.
-    Dùng chung cho lệnh tay và auto.
+    KHÔNG xoá file data.json chính.
     """
     backup_root = os.path.join(BASE_DATA_DIR, "backups")
-    if os.path.isdir(backup_root):
-        shutil.rmtree(backup_root)
-        print(f"[XOABACKUP] Đã xoá toàn bộ: {backup_root}")
-    os.makedirs(backup_root, exist_ok=True)
-    print("[XOABACKUP] Đã tạo lại thư mục backups rỗng.")
+    try:
+        if os.path.isdir(backup_root):
+            shutil.rmtree(backup_root)
+        os.makedirs(backup_root, exist_ok=True)
+        await ctx.reply(
+            "🧹 Đã xoá toàn bộ backup cũ (startup / pre-save / manual / ...).\n"
+            "📦 File dữ liệu chính `data.json` vẫn còn nguyên.\n"
+            "💡 Gợi ý: kiểm tra lại dung lượng volume trên Railway.",
+            mention_author=False
+        )
+    except Exception as e:
+        await ctx.reply(f"❌ Không thể xoá backup: {e}", mention_author=False)
 
 
-# =============== TỰ ĐỘNG GỌI LẠI HÀM TRÊN 10 PHÚT 1 LẦN =================
+# =============== TỰ ĐỘNG XOÁ BACKUP MỖI 10 PHÚT =================
 @tasks.loop(minutes=10)
 async def auto_xoabackup_task():
-    # chờ bot login xong để có BASE_DATA_DIR, bot...
+    """Tự động xoá toàn bộ thư mục backup mỗi 10 phút."""
     await bot.wait_until_ready()
     backup_root = os.path.join(BASE_DATA_DIR, "backups")
     try:
@@ -2457,7 +2471,6 @@ async def auto_xoabackup_task():
         print("[AUTO-XOABACKUP] Đã xoá toàn bộ backup cũ.")
     except Exception as e:
         print(f"[AUTO-XOABACKUP] Lỗi khi xoá backup tự động: {e}")
-
 
 
 # ================== XUẤT FILE BACKUP ZIP ==================
