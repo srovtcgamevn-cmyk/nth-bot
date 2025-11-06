@@ -5905,21 +5905,38 @@ async def cmd_omonphai(ctx):
 # ====================================================================================================================================
 # 🧍 KHÁM PHÁ BẮT ĐẦU
 # ====================================================================================================================================
-
-COOLDOWN_OL = 10
+# thời gian chờ lệnh ol
+COOLDOWN_OL = 10  # giây
 
 @bot.command(name="l", aliases=["ol"])
 async def cmd_ol(ctx):
+    import time, random
+
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
 
-    if "touch_user_activity" in globals():
-        touch_user_activity(ctx, user)
+    # đảm bảo có đủ cấu trúc
+    user.setdefault("rungs", {})
+    for r in ["S", "A", "B", "C", "D"]:
+        user["rungs"].setdefault(r, 0)
 
+    user.setdefault("stats", {})
+    user.setdefault("cooldowns", {})
+    user["cooldowns"].setdefault("ol", 0)
+
+    # nếu bạn có hàm hoạt động gần đây thì giữ
+    if "touch_user_activity" in globals():
+        try:
+            touch_user_activity(ctx, user)
+        except Exception:
+            pass
+
+    # check cooldown
     now = time.time()
     if now < user["cooldowns"]["ol"]:
-        await ctx.reply(f"⏳ Hãy chờ {int(user['cooldowns']['ol'] - now)} giây nữa.", mention_author=False)
+        wait_sec = int(user["cooldowns"]["ol"] - now)
+        await ctx.reply(f"⏳ Hãy chờ {wait_sec} giây nữa.", mention_author=False)
         return
 
     # chọn phẩm
@@ -5938,17 +5955,26 @@ async def cmd_ol(ctx):
         else:
             rarity = "D"
 
+    # chọn map (nếu có)
     if "MAP_POOL" in globals():
         map_loc = random.choice(MAP_POOL)
     else:
         map_loc = "Biện Kinh"
 
+    # cộng rương
     user["rungs"][rarity] += 1
     user["stats"]["ol_count"] = int(user["stats"].get("ol_count", 0)) + 1
-    quest_runtime_increment(user, "ol_today", 1)
-    user["cooldowns"]["ol"] = now + COOLDOWN_OL
-    save_data(data)
+    # nếu bạn có hệ thống nhiệm vụ runtime
+    if "quest_runtime_increment" in globals():
+        try:
+            quest_runtime_increment(user, "ol_today", 1)
+        except Exception:
+            pass
 
+    # đặt lại cooldown
+    user["cooldowns"]["ol"] = now + COOLDOWN_OL
+
+    # ---------- hiển thị ----------
     rarity_name = {
         "D": "Phổ Thông",
         "C": "Hiếm",
@@ -5957,29 +5983,37 @@ async def cmd_ol(ctx):
         "S": "Truyền Thuyết",
     }[rarity]
 
-    chest_emo = RARITY_CHEST_EMOJI.get(rarity, "🎁")
-    title = f"**[{map_loc}]** **{ctx.author.display_name}** thu được Rương {rarity_name} {chest_emo} x1"
+    chest_emo = globals().get("RARITY_CHEST_EMOJI", {}).get(rarity, "🎁")
+    rarity_color = globals().get("RARITY_COLOR", {}).get(rarity, 0x95A5A6)
 
     desc = ""
     if "get_loot_description" in globals():
-        desc = get_loot_description(map_loc, rarity)
+        try:
+            desc = get_loot_description(map_loc, rarity)
+        except Exception:
+            desc = ""
+
+    title = f"**[{map_loc}]** **{ctx.author.display_name}** thu được Rương {rarity_name} {chest_emo} x1"
 
     emb = make_embed(
         title=title,
         description=desc,
-        color=RARITY_COLOR.get(rarity, 0x95A5A6),
+        color=rarity_color,
         footer=ctx.author.display_name
     )
 
+    # nếu bạn có hệ thống ảnh bản đồ thì giữ
     if "images_enabled_global" in globals() and images_enabled_global():
         try:
-            img = MAP_IMAGES.get(rarity, IMG_BANDO_DEFAULT)
-            emb.set_image(url=img)
+            img = globals().get("MAP_IMAGES", {}).get(rarity, globals().get("IMG_BANDO_DEFAULT"))
+            if img:
+                emb.set_image(url=img)
         except Exception:
             pass
 
     msg = await ctx.send(embed=emb)
 
+    # nếu bạn muốn tự ẩn ảnh sau vài giây:
     try:
         await asyncio.sleep(3)
         if emb.image:
@@ -5987,6 +6021,10 @@ async def cmd_ol(ctx):
             await msg.edit(embed=emb)
     except Exception:
         pass
+
+    # ---------- LƯU DỮ LIỆU MỘT LẦN Ở CUỐI ----------
+    save_data(data)
+
 # ====================================================================================================================================
 # 🧍 KHÁM PHÁ KẾT THÚC
 # ====================================================================================================================================
