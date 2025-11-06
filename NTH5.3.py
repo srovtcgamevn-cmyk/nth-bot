@@ -28,24 +28,18 @@
 # - bộ công cụ backup v16
 # - hàm load/save/ensure user
 # =================================================================================================
-import os, io, json, time, random, asyncio, logging, hashlib, tempfile, shutil
+import os, io, json, time, random, asyncio, logging, hashlib, tempfile
 from glob import glob
 from datetime import datetime
 import discord
 from discord.ext import commands
 import aiohttp
-from discord.ext import tasks
-
-
 
 logging.getLogger("discord").setLevel(logging.WARNING)
 
-intents = discord.Intents.default()
-intents.message_content = True  # 👈 BẮT BUỘC để nhận chat
-bot = commands.Bot(command_prefix="o", intents=intents)
-INTENTS = intents
-
-
+INTENTS = discord.Intents.default()
+INTENTS.message_content = True
+INTENTS.members = True
 
 # ----------- QUAN TRỌNG CHO RAILWAY VOLUME -------------
 # BASE_DATA_DIR: thư mục dữ liệu vĩnh viễn
@@ -131,51 +125,6 @@ def total_backup_stats_v16():
         "bytes": total_bytes,
         "latest": latest[1] if latest else None
     }
-
-
-
-
-# ================== HỆ THỐNG LƯU FILE RIÊNG CHO MỖI NGƯỜI ==================
-import os, json
-
-USERS_DIR = os.path.join(BASE_DATA_DIR, "users")
-os.makedirs(USERS_DIR, exist_ok=True)
-
-
-def load_user_data(user_id: str) -> dict | None:
-    """
-    Đọc dữ liệu riêng cho từng user.
-    - Nếu file chưa tồn tại: trả về None (để hàm ensure_user lấy từ data.json cũ)
-    - Nếu file tồn tại: trả về dict dữ liệu user đó.
-    """
-    path = os.path.join(USERS_DIR, f"{user_id}.json")
-    if not os.path.exists(path):
-        return None  # ❗ KHÔNG tạo user rỗng ở đây để tránh mất dữ liệu cũ
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"[load_user_data] ⚠️ Lỗi đọc {path}: {e}")
-        return None
-
-
-def save_user_data(user_id: str, data: dict):
-    """
-    Lưu dữ liệu riêng của 1 user vào file /users/<id>.json
-    - Tự động tạo thư mục nếu chưa có.
-    """
-    try:
-        os.makedirs(USERS_DIR, exist_ok=True)
-        path = os.path.join(USERS_DIR, f"{user_id}.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"[save_user_data] ⚠️ Lỗi lưu {user_id}: {e}")
-
-# ================== HỆ THỐNG LƯU FILE RIÊNG CHO MỖI NGƯỜI ==================
-
-
-
 
 
 
@@ -312,31 +261,25 @@ def save_data(data):
 def ensure_user(user_id: str):
     """
     Đảm bảo user tồn tại trong data["users"].
-    ƯU TIÊN: nếu đã có file riêng /users/<id>.json thì dùng file đó.
-    Nếu chưa có thì tạo giống cấu trúc cũ.
-    Sau đó đồng bộ lại vào data["users"] để code cũ vẫn chạy.
+    KHÔNG phụ thuộc ctx ở đây (để không phải sửa toàn file),
+    việc ghi name / guild_id / last_active sẽ được cập nhật riêng
+    bên trong từng lệnh gameplay khi có ctx.
+
+    Trả về: data (toàn bộ), và luôn đảm bảo khung stats mới.
     """
     data = load_data()
     users = data.setdefault("users", {})
 
-    # 1) thử đọc từ file riêng trước
-    file_user = load_user_data(user_id)
-    if file_user is not None:
-        # đã có file riêng → đồng bộ vào data và trả
-        users[user_id] = file_user
-        return data
-
-    # 2) nếu chưa có file riêng thì xử lý theo cách cũ của bạn
     if user_id not in users:
         users[user_id] = {
             "ngan_phi": STARTING_NP,
-            "rungs": {"D": 0, "C": 0, "B": 0, "A": 0, "S": 0},
+            "rungs": {"D":0,"C":0,"B":0,"A":0,"S":0},
             "items": [],
             "equipped": {
                 "slot_vukhi": None,
                 "slot_aogiap": None
             },
-            "cooldowns": {"ol": 0},
+            "cooldowns": {"ol":0},
             "stats": {
                 "opened": 0,
                 "ol_count": 0,
@@ -352,44 +295,39 @@ def ensure_user(user_id: str):
             "minigames": {
                 "odt": {"win_streak": 0, "loss_streak": 0}
             },
+            # thông tin phục vụ thống kê toàn hệ thống
             "name": "",
             "guild_id": 0,
             "last_active": 0
         }
-        # tạo file riêng luôn để từ giờ đọc nhanh
-        save_user_data(user_id, users[user_id])
         save_data(data)
-        return data
+    else:
+        # đảm bảo các key mới tồn tại kể cả user cũ
+        u = users[user_id]
+        u.setdefault("rungs", {"D":0,"C":0,"B":0,"A":0,"S":0})
+        u.setdefault("items", [])
+        u.setdefault("equipped", {})
+        u["equipped"].setdefault("slot_vukhi", None)
+        u["equipped"].setdefault("slot_aogiap", None)
+        u.setdefault("cooldowns", {}).setdefault("ol", 0)
+        st = u.setdefault("stats", {})
+        st.setdefault("opened", 0)
+        st.setdefault("ol_count", 0)
+        st.setdefault("odt_count", 0)
+        st.setdefault("ngan_phi_earned_total", 0)
+        st.setdefault("odt_np_spent_total", 0)
+        st.setdefault("odt_np_earned_total", 0)
+        st.setdefault("sold_count", 0)
+        st.setdefault("sold_value_total", 0)
+        u.setdefault("claimed_missions", [])
+        u.setdefault("achievements", [])
+        mg = u.setdefault("minigames", {})
+        mg.setdefault("odt", {"win_streak": 0, "loss_streak": 0})
+        u.setdefault("name", "")
+        u.setdefault("guild_id", 0)
+        u.setdefault("last_active", 0)
+        save_data(data)
 
-    # 3) user đã có trong data.json nhưng là user cũ → bổ sung key mới
-    u = users[user_id]
-    u.setdefault("ngan_phi", STARTING_NP)
-    u.setdefault("rungs", {"D":0,"C":0,"B":0,"A":0,"S":0})
-    u.setdefault("items", [])
-    u.setdefault("equipped", {})
-    u["equipped"].setdefault("slot_vukhi", None)
-    u["equipped"].setdefault("slot_aogiap", None)
-    u.setdefault("cooldowns", {}).setdefault("ol", 0)
-    st = u.setdefault("stats", {})
-    st.setdefault("opened", 0)
-    st.setdefault("ol_count", 0)
-    st.setdefault("odt_count", 0)
-    st.setdefault("ngan_phi_earned_total", 0)
-    st.setdefault("odt_np_spent_total", 0)
-    st.setdefault("odt_np_earned_total", 0)
-    st.setdefault("sold_count", 0)
-    st.setdefault("sold_value_total", 0)
-    u.setdefault("claimed_missions", [])
-    u.setdefault("achievements", [])
-    mg = u.setdefault("minigames", {})
-    mg.setdefault("odt", {"win_streak": 0, "loss_streak": 0})
-    u.setdefault("name", "")
-    u.setdefault("guild_id", 0)
-    u.setdefault("last_active", 0)
-
-    # đồng bộ ra file riêng + file tổng
-    save_user_data(user_id, u)
-    save_data(data)
     return data
 
 
@@ -413,6 +351,10 @@ def touch_user_activity(ctx, user_dict: dict):
         user_dict["last_active"] = int(time.time())
     except Exception:
         pass
+
+
+
+
 
 #=================GHI LẠI DATA =================
 
@@ -936,6 +878,16 @@ def images_enabled_global() -> bool:
 # =========================
 
 
+# ===================================
+# 🧩 BOT & CẤU HÌNH CHUNG — BẮT ĐẦU
+# ===================================
+bot = commands.Bot(
+    command_prefix=commands.when_mentioned_or("o","O"),
+    intents=INTENTS,
+    help_command=None,
+    case_insensitive=True
+)
+
 # ====================== KÍCH HOẠT TỰ ĐỘNG KHI BOT READY ======================
 
 @bot.event
@@ -987,10 +939,99 @@ async def on_ready():
 
 
 
+# ===============================================
+# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
+# ===============================================
+from discord.ext import tasks
+import time
+
+# 🧭 Kênh Discord để gửi thông báo
+AUTO_BACKUP_CHANNEL_ID = 1433207596898193479  
+
+# ⏱ Thời gian mặc định (có thể thay đổi lúc chạy bằng lệnh othoigiansaoluu)
+AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
+AUTO_REPORT_INTERVAL_MINUTES = 60    # báo lên kênh tối đa 1 lần mỗi Y phút
+
+# Bộ nhớ runtime
+_last_report_ts = 0  # timestamp giây lần cuối đã báo
+_auto_backup_started = False  # để đảm bảo chỉ start loop 1 lần
+
+@tasks.loop(minutes=1)
+async def auto_backup_task():
+    """
+    Vòng lặp chạy mỗi 1 phút.
+    - Tự đếm phút để biết khi nào cần backup.
+    - Backup xong thì quyết định có báo vào kênh hay không.
+    """
+    global _last_report_ts
+    global AUTO_BACKUP_INTERVAL_MINUTES
+    global AUTO_REPORT_INTERVAL_MINUTES
+
+    # setup biến đếm phút từ lần backup gần nhất
+    if not hasattr(auto_backup_task, "_minutes_since_backup"):
+        auto_backup_task._minutes_since_backup = 0
+
+    auto_backup_task._minutes_since_backup += 1
+
+    # chưa đủ thời gian -> thôi
+    if auto_backup_task._minutes_since_backup < AUTO_BACKUP_INTERVAL_MINUTES:
+        return
+
+    # reset đếm vì sắp backup
+    auto_backup_task._minutes_since_backup = 0
+
+    # Thực hiện backup
+    try:
+        data_now = load_data()
+        filename = snapshot_data_v16(data_now, tag="auto", subkey="manual")
+
+        # Dọn backup cũ (giữ lại 10 bản manual mới nhất)
+        try:
+            _cleanup_old_backups_limit()
+        except Exception as e:
+            print(f"[AUTO-BACKUP] ⚠️ Lỗi dọn backup cũ: {e}")
+
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = (
+            f"✅ **Tự động sao lưu dữ liệu thành công!**\n"
+            f"📦 File: `{os.path.basename(filename)}`\n"
+            f"🕐 Thời gian backup: {current_time}\n"
+            f"⏱️ Chu kỳ backup hiện tại: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
+            f"📣 Chu kỳ báo cáo hiện tại: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần"
+        )
+
+        print(f"[AUTO-BACKUP] {msg}")
+
+        # Có nên báo vào kênh không?
+        now_ts = time.time()
+        elapsed_since_report_min = (now_ts - _last_report_ts) / 60.0
+
+        if elapsed_since_report_min >= AUTO_REPORT_INTERVAL_MINUTES:
+            try:
+                channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
+                if channel:
+                    await channel.send(msg)
+                else:
+                    print("[AUTO-BACKUP] ⚠️ Không tìm thấy kênh Discord để gửi thông báo.")
+            except Exception as e:
+                print(f"[AUTO-BACKUP] ⚠️ Lỗi gửi thông báo Discord: {e}")
+
+            _last_report_ts = now_ts  # đánh dấu lần báo gần nhất
+
+    except Exception as e:
+        print(f"[AUTO-BACKUP] ❌ Lỗi khi tạo backup tự động: {e}")
 
 
-
-
+@auto_backup_task.before_loop
+async def before_auto_backup():
+    # đợi bot kết nối xong discord
+    await bot.wait_until_ready()
+    # khởi tạo lại bộ đếm phút
+    auto_backup_task._minutes_since_backup = 0
+    # lần đầu start thì cho phép báo ngay
+    global _last_report_ts
+    _last_report_ts = 0
+    print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
 
 
 
@@ -1007,24 +1048,29 @@ async def cmd_opingg(ctx):
 
 
 
+# ===============================================
+# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
+# ===============================================
+
+
+
+
 # =================================================
 # 🧱 QUẢN LÝ — ADMIN (module-style)
 # =================================================
 from discord import ui, ButtonStyle, Interaction
 
 ADMIN_WHITELIST = {
-    "setbot", "osetbot",
-    "lenhquantri", "saoluu", "listbackup", "xemsaoluu",
-    "phuchoi", "resetdata", "resetuser",
-    "addtien", "addruong",
-    "gianlan", "thabong", "phattu",
-    "batanh", "pingg",
-    "lenh", "olenh",
-    "saoluuantoan", "osaoluuantoan",
-    "xuatdata", "oxuatdata",
-    "xoabackup", "oxoabackup",
-    "thoigiansaoluu", "backupconfig",
-    "tachdata", "otachdata",
+    "setbot","osetbot",
+    "lenhquantri","saoluu","listbackup","xemsaoluu",
+    "phuchoi","resetdata","resetuser",
+    "addtien","addruong",
+    "gianlan","thabong","phattu",
+    "batanh","pingg",
+    "lenh","olenh"
+    "saoluuantoan","osaoluuantoan"
+    "xuatdata","oxuatdata"
+    "osaoluuantoan","saoluuantoan"
     "othongbao",
 
 
@@ -1441,10 +1487,6 @@ async def on_command_error(ctx: commands.Context, error):
         )
         return
 
-
-# ====================================================================================================================================
-
-
 @bot.check
 async def global_channel_check(ctx: commands.Context):
     if not ctx.guild:  # DM
@@ -1471,12 +1513,6 @@ async def global_channel_check(ctx: commands.Context):
                 await ctx.send(msg)
             return False
     return True
-
-
-# ====================================================================================================================================
-
-
-
 # ====================================================================================================================================
 # 🧍 BOT EVENT
 # ====================================================================================================================================
@@ -1816,14 +1852,11 @@ async def cmd_othongtinmc(ctx):
 
 
 
-# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================
 
-# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================
 
-# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================
 
-# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================
 
+# =============================================================
 
 @bot.command(name="testdata")
 @owner_only()
@@ -1927,128 +1960,10 @@ async def cmd_khoiphucfile(ctx):
         mention_author=False
     )
 
-
-# ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG (BẢN AN TOÀN) ==================
-@bot.command(name="tachdata", aliases=["otachdata"])
-@owner_only()
-async def cmd_tachdata(ctx):
-    """
-    Chạy để đổ tất cả user trong data.json ra /users/<id>.json.
-    - Nếu file user đã tồn tại rồi thì không ghi đè (để không làm mất dữ liệu mới).
-    """
-    data = load_data()
-    users = data.get("users", {})
-    count_all = 0
-    count_created = 0
-    for uid, udata in users.items():
-        count_all += 1
-        path = os.path.join(USERS_DIR, f"{uid}.json")
-
-        # nếu đã có file rồi thì bỏ qua để không đè dữ liệu mới
-        if os.path.exists(path):
-            continue
-
-        save_user_data(uid, udata)
-        count_created += 1
-
-    await ctx.reply(
-        f"✅ Đã quét {count_all} user trong data.json, tạo mới {count_created} file trong /users.",
-        mention_author=False,
-    )
-# ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG (BẢN AN TOÀN) ==================
-
-
-# =============== TÁCH DATA THÔNG MINH + QUÉT USER RỖNG ===============
-
-def is_empty_user(u: dict) -> bool:
-    """Tạm coi user rỗng nếu không có gì đáng giá."""
-    if not u:
-        return True
-    # chỉ có đúng mỗi id
-    if list(u.keys()) == ["id"]:
-        return True
-    # không có tiền, không có rương, không có đồ
-    if u.get("xu", 0) == 0 and u.get("ngan_phi", 0) == 0 and not u.get("items") and not u.get("rungs"):
-        return True
-    return False
-
-
-@bot.command(name="tachdatapro", aliases=["otachdatapro"])
-@owner_only()
-async def cmd_tachdatapro(ctx):
-    """
-    Tách toàn bộ user từ data.json ra /users/ nhưng ưu tiên dữ liệu đầy hơn:
-    - Nếu data.json có user đầy -> ghi
-    - Nếu data.json rỗng nhưng /users/ đang có file đầy -> giữ file cũ
-    - Nếu cả hai đều rỗng -> chấp nhận rỗng
-    """
-    data = load_data()
-    users = data.get("users", {})
-    count_all = 0
-    count_from_data = 0
-    count_keep_old = 0
-    count_empty = 0
-
-    for uid, udata in users.items():
-        count_all += 1
-
-        # đọc file user hiện có (nếu có)
-        existing = load_user_data(uid)  # hàm của bạn, nếu chưa có sẽ trả None
-
-        # chọn nguồn dữ liệu tốt hơn
-        if not is_empty_user(udata):
-            # dữ liệu trong data.json ok
-            src = udata
-            count_from_data += 1
-        else:
-            # data.json rỗng, thử lấy bản hiện có
-            if existing and not is_empty_user(existing):
-                src = existing
-                count_keep_old += 1
-            else:
-                # bó tay, cả hai đều rỗng
-                src = udata
-                count_empty += 1
-
-        save_user_data(uid, src)
-
-    await ctx.reply(
-        (
-            "✅ Tách thông minh xong.\n"
-            f"- Quét: {count_all} user trong data.json\n"
-            f"- Ghi theo data.json: {count_from_data}\n"
-            f"- Giữ dữ liệu cũ trong /users/: {count_keep_old}\n"
-            f"- Vẫn rỗng (cả 2 đều rỗng): {count_empty}"
-        ),
-        mention_author=False,
-    )
-
-
-@bot.command(name="xemtrong")
-@owner_only()
-async def cmd_xemtrong(ctx):
-    """Quét thư mục /users/ xem còn user nào rỗng không."""
-    empty_ids = []
-    for fname in os.listdir(USERS_DIR):
-        if not fname.endswith(".json"):
-            continue
-        uid = fname[:-5]
-        u = load_user_data(uid)
-        if not u or is_empty_user(u):
-            empty_ids.append(uid)
-
-    if not empty_ids:
-        await ctx.reply("✅ Không phát hiện user rỗng trong /users/.", mention_author=False)
-    else:
-        show = "\n".join(empty_ids[:50])
-        more = "" if len(empty_ids) <= 50 else f"\n... và {len(empty_ids) - 50} user nữa."
-        await ctx.reply(
-            f"⚠️ Có {len(empty_ids)} user đang rỗng trong /users/:\n{show}{more}",
-            mention_author=False,
-        )
-
-
 # ==================SAO LƯU==================================
+
+
+
 
 
 @bot.command(name="saoluu")
@@ -2184,6 +2099,117 @@ async def cmd_oxemsaoluu(ctx):
     )
     await ctx.reply(msg, mention_author=False)
 
+@bot.command(name="batanh")
+@owner_only()
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_batanh(ctx, mode: str = None):
+    data = load_data()
+    cfg = data.setdefault("config", {})
+    if mode is None:
+        status = "BẬT" if cfg.get("images_enabled", True) else "TẮT"
+        await ctx.reply(
+            f"Hiển thị ảnh hiện tại: {status}",
+            mention_author=False
+        )
+        return
+    m = (mode or "").strip().lower()
+    if m in ("on","bật","bat","enable","enabled","true","1"):
+        cfg["images_enabled"] = True
+        save_data(data)
+        await ctx.reply(
+            "✅ Đã BẬT hiển thị ảnh.",
+            mention_author=False
+        )
+        return
+    if m in ("off","tắt","tat","disable","disabled","false","0"):
+        cfg["images_enabled"] = False
+        save_data(data)
+        await ctx.reply(
+            "✅ Đã TẮT hiển thị ảnh.",
+            mention_author=False
+        )
+        return
+    await ctx.reply(
+        "Dùng: `obatanh on` hoặc `obatanh off`.",
+        mention_author=False
+    )
+
+@bot.command(name="addtien")
+@owner_only()
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_addtien(ctx, member: discord.Member, so: str):
+    try:
+        amount = int(str(so).replace(",", "").strip())
+        if amount <= 0:
+            raise ValueError()
+    except Exception:
+        await ctx.reply(
+            "⚠️ Số lượng không hợp lệ. Ví dụ: `oaddtien @user 1,000,000`.",
+            mention_author=False
+        )
+        return
+    data = load_data()
+    u, path = _get_user_ref(data, member)
+    bal = get_balance(u)
+    set_balance(u, bal + amount)
+    save_data(data)
+    await ctx.reply(
+        f"✅ Cộng `{format_num(amount)}` NP cho `{member.display_name}` — Tổng: `{format_num(get_balance(u))}`",
+        mention_author=False
+    )
+
+@bot.command(name="addruong")
+@owner_only()
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_addruong(ctx, member: discord.Member, pham: str, so: str):
+    pham = pham.strip().upper()
+    if pham not in {"D","C","B","A","S"}:
+        await ctx.reply(
+            "Phẩm rương không hợp lệ. Dùng: D/C/B/A/S",
+            mention_author=False
+        )
+        return
+    try:
+        amount = int(str(so).replace(",", "").strip())
+        if amount <= 0:
+            raise ValueError()
+    except Exception:
+        await ctx.reply(
+            "⚠️ Số lượng không hợp lệ. Ví dụ: `oaddruong @user S 3`.",
+            mention_author=False
+        )
+        return
+    if amount > 100:
+        await ctx.reply(
+            "⚠️ Tối đa **10 rương** mỗi lần.",
+            mention_author=False
+        )
+        return
+    data = load_data()
+    u, path = _get_user_ref(data, member)
+    r = ensure_rungs(u)
+    r[pham] = int(r.get(pham, 0)) + amount
+    save_data(data)
+    await ctx.reply(
+        f"✅ Đã cấp `{format_num(amount)}` rương **{pham}** cho `{member.display_name}` — Tổng: `{format_num(r[pham])}`",
+        mention_author=False
+    )
+
+@bot.command(name="xtien")
+@owner_only()
+@commands.cooldown(1, 3, commands.BucketType.user)
+async def cmd_oxtien(ctx, member: discord.Member):
+    data = load_data()
+    u, path = _get_user_ref(data, member)
+    keys = {k: u[k] for k in ("ngan_phi","ngan_phieu") if k in u}
+    rinfo = u.get("rungs", {})
+    bal = int(u.get("ngan_phi", u.get("ngan_phieu", 0)))
+    await ctx.reply(
+        f"🧩 Path: **{path}**\n"
+        f"💰 Số dư: **{format_num(bal)}** (keys: {keys})\n"
+        f"🎁 Rương: {rinfo}",
+        mention_author=False
+    )
 
 
 #===========PHỤC HỒI==========================
@@ -2478,239 +2504,9 @@ async def cmd_xuatdata(ctx):
 # =================== /BACKUP & XUẤT DỮ LIỆU ===================
 
 
-# ===============================================
-# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
-# ===============================================
-from discord.ext import tasks
-import time
-
-# 🧭 Kênh Discord để gửi thông báo
-AUTO_BACKUP_CHANNEL_ID = 1433207596898193479  
-
-# ⏱ Thời gian mặc định (có thể thay đổi lúc chạy bằng lệnh othoigiansaoluu)
-AUTO_BACKUP_INTERVAL_MINUTES = 10    # sao lưu mỗi X phút
-AUTO_REPORT_INTERVAL_MINUTES = 60    # báo lên kênh tối đa 1 lần mỗi Y phút
-
-# Bộ nhớ runtime
-_last_report_ts = 0  # timestamp giây lần cuối đã báo
-_auto_backup_started = False  # để đảm bảo chỉ start loop 1 lần
-
-@tasks.loop(minutes=1)
-async def auto_backup_task():
-    """
-    Vòng lặp chạy mỗi 1 phút.
-    - Tự đếm phút để biết khi nào cần backup.
-    - Backup xong thì quyết định có báo vào kênh hay không.
-    """
-    global _last_report_ts
-    global AUTO_BACKUP_INTERVAL_MINUTES
-    global AUTO_REPORT_INTERVAL_MINUTES
-
-    # setup biến đếm phút từ lần backup gần nhất
-    if not hasattr(auto_backup_task, "_minutes_since_backup"):
-        auto_backup_task._minutes_since_backup = 0
-
-    auto_backup_task._minutes_since_backup += 1
-
-    # chưa đủ thời gian -> thôi
-    if auto_backup_task._minutes_since_backup < AUTO_BACKUP_INTERVAL_MINUTES:
-        return
-
-    # reset đếm vì sắp backup
-    auto_backup_task._minutes_since_backup = 0
-
-    # Thực hiện backup
-    try:
-        data_now = load_data()
-        filename = snapshot_data_v16(data_now, tag="auto", subkey="manual")
-
-        # Dọn backup cũ (giữ lại 10 bản manual mới nhất)
-        try:
-            _cleanup_old_backups_limit()
-        except Exception as e:
-            print(f"[AUTO-BACKUP] ⚠️ Lỗi dọn backup cũ: {e}")
-
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = (
-            f"✅ **Tự động sao lưu dữ liệu thành công!**\n"
-            f"📦 File: `{os.path.basename(filename)}`\n"
-            f"🕐 Thời gian backup: {current_time}\n"
-            f"⏱️ Chu kỳ backup hiện tại: {AUTO_BACKUP_INTERVAL_MINUTES} phút/lần\n"
-            f"📣 Chu kỳ báo cáo hiện tại: {AUTO_REPORT_INTERVAL_MINUTES} phút/lần"
-        )
-
-        print(f"[AUTO-BACKUP] {msg}")
-
-        # Có nên báo vào kênh không?
-        now_ts = time.time()
-        elapsed_since_report_min = (now_ts - _last_report_ts) / 60.0
-
-        if elapsed_since_report_min >= AUTO_REPORT_INTERVAL_MINUTES:
-            try:
-                channel = bot.get_channel(AUTO_BACKUP_CHANNEL_ID)
-                if channel:
-                    await channel.send(msg)
-                else:
-                    print("[AUTO-BACKUP] ⚠️ Không tìm thấy kênh Discord để gửi thông báo.")
-            except Exception as e:
-                print(f"[AUTO-BACKUP] ⚠️ Lỗi gửi thông báo Discord: {e}")
-
-            _last_report_ts = now_ts  # đánh dấu lần báo gần nhất
-
-    except Exception as e:
-        print(f"[AUTO-BACKUP] ❌ Lỗi khi tạo backup tự động: {e}")
-
-
-@auto_backup_task.before_loop
-async def before_auto_backup():
-    # đợi bot kết nối xong discord
-    await bot.wait_until_ready()
-    # khởi tạo lại bộ đếm phút
-    auto_backup_task._minutes_since_backup = 0
-    # lần đầu start thì cho phép báo ngay
-    global _last_report_ts
-    _last_report_ts = 0
-    print("[AUTO-BACKUP] Vòng lặp chuẩn bị chạy (mỗi 1 phút tick).")
-
-# ===============================================
-# 🔄 TỰ ĐỘNG SAO LƯU DỮ LIỆU + THÔNG BÁO KÊNH (CÓ CẤU HÌNH)
-# ===============================================
-
-
-# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================
-
-# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================
-
-# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================
-
-# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================# ========TẤT CẢ LIÊN QUAN ĐẾN SAO LƯU DATA NGƯỜI CHƠI======================
-
-
-
-
-
-
-
-
 # ====================================================================================================================================
 # 🧍 QUẢN LÝ — CHỦ BOT (module-style)
 # ====================================================================================================================================
-
-@bot.command(name="batanh")
-@owner_only()
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_batanh(ctx, mode: str = None):
-    data = load_data()
-    cfg = data.setdefault("config", {})
-    if mode is None:
-        status = "BẬT" if cfg.get("images_enabled", True) else "TẮT"
-        await ctx.reply(
-            f"Hiển thị ảnh hiện tại: {status}",
-            mention_author=False
-        )
-        return
-    m = (mode or "").strip().lower()
-    if m in ("on","bật","bat","enable","enabled","true","1"):
-        cfg["images_enabled"] = True
-        save_data(data)
-        await ctx.reply(
-            "✅ Đã BẬT hiển thị ảnh.",
-            mention_author=False
-        )
-        return
-    if m in ("off","tắt","tat","disable","disabled","false","0"):
-        cfg["images_enabled"] = False
-        save_data(data)
-        await ctx.reply(
-            "✅ Đã TẮT hiển thị ảnh.",
-            mention_author=False
-        )
-        return
-    await ctx.reply(
-        "Dùng: `obatanh on` hoặc `obatanh off`.",
-        mention_author=False
-    )
-
-@bot.command(name="addtien")
-@owner_only()
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_addtien(ctx, member: discord.Member, so: str):
-    try:
-        amount = int(str(so).replace(",", "").strip())
-        if amount <= 0:
-            raise ValueError()
-    except Exception:
-        await ctx.reply(
-            "⚠️ Số lượng không hợp lệ. Ví dụ: `oaddtien @user 1,000,000`.",
-            mention_author=False
-        )
-        return
-    data = load_data()
-    u, path = _get_user_ref(data, member)
-    bal = get_balance(u)
-    set_balance(u, bal + amount)
-    save_data(data)
-    await ctx.reply(
-        f"✅ Cộng `{format_num(amount)}` NP cho `{member.display_name}` — Tổng: `{format_num(get_balance(u))}`",
-        mention_author=False
-    )
-
-@bot.command(name="addruong")
-@owner_only()
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_addruong(ctx, member: discord.Member, pham: str, so: str):
-    pham = pham.strip().upper()
-    if pham not in {"D","C","B","A","S"}:
-        await ctx.reply(
-            "Phẩm rương không hợp lệ. Dùng: D/C/B/A/S",
-            mention_author=False
-        )
-        return
-    try:
-        amount = int(str(so).replace(",", "").strip())
-        if amount <= 0:
-            raise ValueError()
-    except Exception:
-        await ctx.reply(
-            "⚠️ Số lượng không hợp lệ. Ví dụ: `oaddruong @user S 3`.",
-            mention_author=False
-        )
-        return
-    if amount > 100:
-        await ctx.reply(
-            "⚠️ Tối đa **10 rương** mỗi lần.",
-            mention_author=False
-        )
-        return
-    data = load_data()
-    u, path = _get_user_ref(data, member)
-    r = ensure_rungs(u)
-    r[pham] = int(r.get(pham, 0)) + amount
-    save_data(data)
-    await ctx.reply(
-        f"✅ Đã cấp `{format_num(amount)}` rương **{pham}** cho `{member.display_name}` — Tổng: `{format_num(r[pham])}`",
-        mention_author=False
-    )
-
-@bot.command(name="xtien")
-@owner_only()
-@commands.cooldown(1, 3, commands.BucketType.user)
-async def cmd_oxtien(ctx, member: discord.Member):
-    data = load_data()
-    u, path = _get_user_ref(data, member)
-    keys = {k: u[k] for k in ("ngan_phi","ngan_phieu") if k in u}
-    rinfo = u.get("rungs", {})
-    bal = int(u.get("ngan_phi", u.get("ngan_phieu", 0)))
-    await ctx.reply(
-        f"🧩 Path: **{path}**\n"
-        f"💰 Số dư: **{format_num(bal)}** (keys: {keys})\n"
-        f"🎁 Rương: {rinfo}",
-        mention_author=False
-    )
-
-
-
-
 # ====================================================================================================================================
 # 🧍 KẾT TRÚC KHU VỰC CẤU HÌNH BOT CÁC THỨ Ở BÊN DƯỚI LÀ CÁC LỆNH TÍNH NĂNG
 # ====================================================================================================================================
@@ -3949,7 +3745,7 @@ def _open_one_chest(user, r: str):
 async def cmd_omo(ctx, *args):
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = load_user_data(user_id)
+    user = data["users"][user_id]
     _ensure_economy_fields(user)
     argv = [a.strip().lower() for a in args]
 
@@ -4645,7 +4441,7 @@ async def cmd_oban(ctx, *args):
     """
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = load_user_data(user_id)
+    user = data["users"][user_id]
     _ensure_economy_fields(user)
     args = [a.lower() for a in args]
 
@@ -4714,7 +4510,7 @@ async def cmd_obantrangbi(ctx, *args):
     """
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = load_user_data(user_id)
+    user = data["users"][user_id]
     _ensure_economy_fields(user)
     args = [a.lower() for a in args]
 
@@ -4783,7 +4579,7 @@ async def cmd_othao(ctx, item_id: str = None):
 
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = load_user_data(user_id)
+    user = data["users"][user_id]
 
     # phòng dữ liệu cũ
     if "equipped" not in user:
@@ -5857,7 +5653,7 @@ class OxemAllView(discord.ui.View):
 async def cmd_oxem(ctx, item_id: str = None):
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = load_user_data(user_id)
+    user = data["users"][user_id]
 
     # oxem all
     if item_id is not None and item_id.lower() == "all":
@@ -6009,7 +5805,7 @@ class PhaiView(discord.ui.View):
             # gán phái
             user["class"] = self.phai_key
             user["phai_last_change_ts"] = now.timestamp()
-            save_user_data(user_id, user)
+            save_data(data)
 
             desc = PHAI_INFO.get(self.phai_key, "Môn phái.")
             await interaction.response.send_message(
@@ -6098,7 +5894,7 @@ async def cmd_ol(ctx):
 
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = load_user_data(user_id)
+    user = data["users"][user_id]
 
     # đảm bảo có đủ cấu trúc
     user.setdefault("rungs", {})
@@ -6207,7 +6003,7 @@ async def cmd_ol(ctx):
         pass
 
     # ---------- LƯU DỮ LIỆU MỘT LẦN Ở CUỐI ----------
-    save_user_data(user_id, user)
+    save_data(data)
 
 # ====================================================================================================================================
 # 🧍 KHÁM PHÁ KẾT THÚC
@@ -6345,7 +6141,7 @@ def _try_jackpot(data: dict, member: discord.Member) -> int:
 async def cmd_odt(ctx, amount: str = None):
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = load_user_data(user_id)
+    user = data["users"][user_id]
     odt_state = _odt_init_state(user)
 
     # cập nhật log hoạt động
@@ -6400,7 +6196,7 @@ async def cmd_odt(ctx, amount: str = None):
 
     # trừ tiền trước khi biết kết quả
     user["ngan_phi"] = bal - amount_val
-    save_user_data(user_id, user)
+    save_data(data)
 
     outcome = _odt_pick_outcome(odt_state)
     try:
@@ -6458,7 +6254,7 @@ async def cmd_odt(ctx, amount: str = None):
             except Exception:
                 pass
 
-        save_user_data(user_id, user)
+        save_data(data)
 
     else:
         # THẮNG
@@ -6491,7 +6287,7 @@ async def cmd_odt(ctx, amount: str = None):
             )
 
         _jp_open_window_if_needed(_jp(data), time.time())
-        save_user_data(user_id, user)
+        save_data(data)
 
     # footer hiển thị quỹ jackpot + người trúng gần nhất
     jp_now = _jp(data)
@@ -6608,7 +6404,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
     quest_runtime_increment(sender, "give_today", 1)
 
     # Lưu lại sau khi cập nhật hết
-    save_user_data(user_id, user)
+    save_data(data)
 
 
     # ==================================================================
@@ -6621,7 +6417,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 
     # tăng biến đếm nhiệm vụ "tang_today"
     quest_runtime_increment(sender_user, "tang_today", 1)
-    save_user_data(user_id, user)
+    save_data(data)
     # ==================================================================
 
 
@@ -7123,7 +6919,7 @@ async def cmd_opb(ctx: commands.Context):
             tv[r] = int(tv.get(r, 0)) + cnt
 
     # 5) LƯU FILE NGAY TẠI ĐÂY
-    save_user_data(user_id, user)
+    save_data(data)
 
     # emoji
     np_emo = globals().get("NP_EMOJI", "📦")
@@ -7171,7 +6967,7 @@ async def cmd_opb(ctx: commands.Context):
 
 
     # 5) LƯU FILE NGAY TẠI ĐÂY
-    save_user_data(user_id, user)
+    save_data(data)
 
 
 
@@ -7527,7 +7323,7 @@ async def cmd_onhiemvu(ctx: commands.Context):
 
     # đảm bảo user tồn tại
     data = ensure_user(user_id)
-    user = load_user_data(user_id)
+    user = data["users"][user_id]
 
     # log hoạt động
     touch_user_activity(ctx, user)
@@ -7542,7 +7338,7 @@ async def cmd_onhiemvu(ctx: commands.Context):
     await _check_and_announce_completion(ctx.author, dq)
 
     # lưu mọi thay đổi (dm_message_id, completion_announced, ...)
-    save_user_data(user_id, user)
+    save_data(data)
 
     # embed trả lời công khai trong kênh
     desc_text, _ = _build_daily_text(user, dq)
@@ -7603,7 +7399,7 @@ async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
     # Nếu có claim con thì lưu data (save once)
     if claimed_any:
         try:
-            save_user_data(user_id, user)
+            save_data(data)
         except Exception:
             pass
 
@@ -7622,7 +7418,7 @@ async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
 
             # save data
             try:
-                save_user_data(user_id, user)
+                save_data(data)
             except Exception:
                 pass
 
@@ -7678,7 +7474,7 @@ async def testnhiemvusos(ctx):
         m["done"] = True
         m["claimed"] = False
     dq["full_done"] = True
-    save_user_data(user_id, user)
+    save_data(data)
     await _auto_claim_missions(ctx, data, user, dq)
     save_data(data)
     await ctx.reply("Đã ép 5/5 và chạy auto-claim. Dùng `oncheck_tien` để xem số dư.", mention_author=False)
@@ -7784,44 +7580,28 @@ async def cmd_thongbao(ctx, *, text: str):
 # ====================================================================================================================================
 @bot.event
 async def on_message(message):
-    # bỏ qua tin nhắn của bot
+    # Bỏ qua tin nhắn của bot
     if message.author.bot:
         return
 
-    # xử lý phần ghi log / nhiệm vụ theo user
+    # Chỉ tính khi chat trong server (không tính DM)
     if message.guild:
-        try:
-            uid = str(message.author.id)
+        uid = str(message.author.id)
+        data = ensure_user(uid)
+        user = data["users"][uid]
 
-            # đảm bảo user tồn tại trong data tổng
-            data = ensure_user(uid)
+        # ✅ Ghi log nhiệm vụ "Gửi 50 tin nhắn trong server"
+        quest_runtime_increment(user, "messages_today", 1)
+        save_data(data)
 
-            # lấy user từ data tổng
-            user = data["users"][uid]
-
-            # (tùy bạn) tăng nhiệm vụ chat
-            # nếu user bị thiếu field thì dòng này dễ lỗi, nên để trong try
-            quest_runtime_increment(user, "messages_today", 1)
-
-            # lưu lại user riêng
-            save_user_data(uid, user)
-
-        except Exception as e:
-            # ĐỪNG để lỗi này chặn lệnh
-            print(f"[on_message] lỗi với user {message.author.id}: {e}")
-
-    # DÙ CÓ LỖI TRÊN ĐI NỮA thì vẫn cho xử lý lệnh
+    # Cho phép các lệnh bot hoạt động bình thường
     await bot.process_commands(message)
-
-
 # ====================================================================================================================================
 # 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
 # ====================================================================================================================================
 
 
-@bot.command(name="check")
-async def cmd_check(ctx):
-    await ctx.reply("✅ bot nhận lệnh rồi", mention_author=False)
+
 
 
 
