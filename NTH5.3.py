@@ -888,6 +888,8 @@ bot = commands.Bot(
     case_insensitive=True
 )
 
+# ====================== KÍCH HOẠT TỰ ĐỘNG KHI BOT READY ======================
+
 @bot.event
 async def on_ready():
     """
@@ -901,14 +903,14 @@ async def on_ready():
 
     print(f"✅ Bot ready: {bot.user} (id: {bot.user.id})")
 
-    # Snapshot khởi động (giữ nguyên logic cũ của bạn)
+    # === Snapshot khởi động (giữ nguyên logic cũ của bạn) ===
     try:
         data = load_data()
         snapshot_data_v16(data, tag="startup", subkey="startup")
     except Exception:
         pass
 
-    # Khởi động vòng auto backup 1 lần duy nhất
+    # === Khởi động auto backup 1 lần duy nhất ===
     if not _auto_backup_started:
         try:
             auto_backup_task.start()
@@ -923,10 +925,13 @@ async def on_ready():
             # Nếu Discord reconnect và task đã start rồi -> bỏ qua
             pass
 
-    # Khởi động auto xoá backup 10 phút/lần
-    if not auto_xoabackup_task.is_running():
-        auto_xoabackup_task.start()
-        print("[AUTO-XOABACKUP] started.")
+    # === Khởi động auto xoá backup 10 phút/lần ===
+    try:
+        if not auto_xoabackup_task.is_running():
+            auto_xoabackup_task.start()
+            print("[AUTO-XOABACKUP] Đã khởi động auto xoá backup (mỗi 10 phút).")
+    except Exception as e:
+        print(f"[AUTO-XOABACKUP] Không thể khởi động: {e}")
 
 # ===================================
 # 🧩 BOT & CẤU HÌNH CHUNG — KẾT THÚC
