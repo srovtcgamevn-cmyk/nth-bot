@@ -2399,45 +2399,6 @@ async def cmd_osaoluu_antoan(ctx):
         )
 
 
-
-# ================== XOÁ TOÀN BỘ BACKUP ==================
-
-@bot.command(name="xoabackup", aliases=["oxoabackup"])
-@owner_only()
-@commands.cooldown(1, 10, commands.BucketType.user)
-async def cmd_xoabackup(ctx):
-    """
-    GIẢI PHÓNG DUNG LƯỢNG.
-    Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
-    KHÔNG xoá data.json chính.
-    Nên chạy `osaoluuantoan` trước để chắc chắn luôn còn 1 bản backup mới nhất.
-    """
-    import shutil
-    backup_root = os.path.join(BASE_DATA_DIR, "backups")
-    try:
-        if os.path.isdir(backup_root):
-            shutil.rmtree(backup_root)
-        os.makedirs(backup_root, exist_ok=True)
-        await ctx.reply(
-            "🧹 Đã xoá toàn bộ backup cũ (startup / pre-save / manual / ...).\n"
-            "📦 File dữ liệu chính data.json vẫn còn nguyên.\n"
-            "💡 Gợi ý: kiểm tra lại dung lượng volume trên Railway.",
-            mention_author=False
-        )
-    except Exception as e:
-        await ctx.reply(
-            f"❌ Không thể xoá backup: {e}",
-            mention_author=False
-        )
-
-
-from discord.ext import tasks
-import os, shutil
-
-# ================== XOÁ TOÀN BỘ BACKUP (THỦ CÔNG + TỰ ĐỘNG) ==================
-from discord.ext import tasks
-import os, shutil
-
 # 💬 LỆNH THỦ CÔNG
 @bot.command(name="xoabackup", aliases=["oxoabackup"])
 @owner_only()
@@ -2466,7 +2427,6 @@ async def cmd_xoabackup(ctx):
 # =============== TỰ ĐỘNG XOÁ BACKUP MỖI 10 PHÚT =================
 @tasks.loop(minutes=10)
 async def auto_xoabackup_task():
-    """Tự động xoá toàn bộ thư mục backup mỗi 10 phút."""
     await bot.wait_until_ready()
     backup_root = os.path.join(BASE_DATA_DIR, "backups")
     try:
@@ -2476,6 +2436,8 @@ async def auto_xoabackup_task():
         print("[AUTO-XOABACKUP] Đã xoá toàn bộ backup cũ.")
     except Exception as e:
         print(f"[AUTO-XOABACKUP] Lỗi khi xoá backup tự động: {e}")
+
+
 
 
 # ================== XUẤT FILE BACKUP ZIP ==================
