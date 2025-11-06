@@ -35,11 +35,15 @@ import discord
 from discord.ext import commands
 import aiohttp
 
+
 logging.getLogger("discord").setLevel(logging.WARNING)
 
-INTENTS = discord.Intents.default()
-INTENTS.message_content = True
-INTENTS.members = True
+intents = discord.Intents.default()
+intents.message_content = True  # 👈 BẮT BUỘC để nhận chat
+bot = commands.Bot(command_prefix="o", intents=intents)
+INTENTS = intents
+
+
 
 # ----------- QUAN TRỌNG CHO RAILWAY VOLUME -------------
 # BASE_DATA_DIR: thư mục dữ liệu vĩnh viễn
@@ -125,6 +129,43 @@ def total_backup_stats_v16():
         "bytes": total_bytes,
         "latest": latest[1] if latest else None
     }
+
+
+
+
+# ================== HỆ THỐNG LƯU FILE RIÊNG CHO MỖI NGƯỜI ==================
+import os, json
+
+USERS_DIR = os.path.join(BASE_DATA_DIR, "users")
+os.makedirs(USERS_DIR, exist_ok=True)
+
+def load_user_data(user_id: str) -> dict:
+    """Đọc dữ liệu riêng cho từng user (nếu chưa có thì tạo mới)."""
+    path = os.path.join(USERS_DIR, f"{user_id}.json")
+    if not os.path.exists(path):
+        return {
+            "id": user_id,
+            "rungs": {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0},
+            "items": [],
+            "stats": {},
+            "cooldowns": {},
+            "xu": 0,
+            "ngan_phi": 0,
+            "level": 1,
+            "exp": 0,
+        }
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_user_data(user_id: str, data: dict):
+    """Lưu dữ liệu riêng của 1 user vào file /users/<id>.json"""
+    path = os.path.join(USERS_DIR, f"{user_id}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# ================== HỆ THỐNG LƯU FILE RIÊNG CHO MỖI NGƯỜI ==================
+
+
 
 
 
@@ -261,25 +302,31 @@ def save_data(data):
 def ensure_user(user_id: str):
     """
     Đảm bảo user tồn tại trong data["users"].
-    KHÔNG phụ thuộc ctx ở đây (để không phải sửa toàn file),
-    việc ghi name / guild_id / last_active sẽ được cập nhật riêng
-    bên trong từng lệnh gameplay khi có ctx.
-
-    Trả về: data (toàn bộ), và luôn đảm bảo khung stats mới.
+    ƯU TIÊN: nếu đã có file riêng /users/<id>.json thì dùng file đó.
+    Nếu chưa có thì tạo giống cấu trúc cũ.
+    Sau đó đồng bộ lại vào data["users"] để code cũ vẫn chạy.
     """
     data = load_data()
     users = data.setdefault("users", {})
 
+    # 1) thử đọc từ file riêng trước
+    file_user = load_user_data(user_id)
+    if file_user is not None:
+        # đã có file riêng → đồng bộ vào data và trả
+        users[user_id] = file_user
+        return data
+
+    # 2) nếu chưa có file riêng thì xử lý theo cách cũ của bạn
     if user_id not in users:
         users[user_id] = {
             "ngan_phi": STARTING_NP,
-            "rungs": {"D":0,"C":0,"B":0,"A":0,"S":0},
+            "rungs": {"D": 0, "C": 0, "B": 0, "A": 0, "S": 0},
             "items": [],
             "equipped": {
                 "slot_vukhi": None,
                 "slot_aogiap": None
             },
-            "cooldowns": {"ol":0},
+            "cooldowns": {"ol": 0},
             "stats": {
                 "opened": 0,
                 "ol_count": 0,
@@ -295,39 +342,44 @@ def ensure_user(user_id: str):
             "minigames": {
                 "odt": {"win_streak": 0, "loss_streak": 0}
             },
-            # thông tin phục vụ thống kê toàn hệ thống
             "name": "",
             "guild_id": 0,
             "last_active": 0
         }
+        # tạo file riêng luôn để từ giờ đọc nhanh
+        save_user_data(user_id, users[user_id])
         save_data(data)
-    else:
-        # đảm bảo các key mới tồn tại kể cả user cũ
-        u = users[user_id]
-        u.setdefault("rungs", {"D":0,"C":0,"B":0,"A":0,"S":0})
-        u.setdefault("items", [])
-        u.setdefault("equipped", {})
-        u["equipped"].setdefault("slot_vukhi", None)
-        u["equipped"].setdefault("slot_aogiap", None)
-        u.setdefault("cooldowns", {}).setdefault("ol", 0)
-        st = u.setdefault("stats", {})
-        st.setdefault("opened", 0)
-        st.setdefault("ol_count", 0)
-        st.setdefault("odt_count", 0)
-        st.setdefault("ngan_phi_earned_total", 0)
-        st.setdefault("odt_np_spent_total", 0)
-        st.setdefault("odt_np_earned_total", 0)
-        st.setdefault("sold_count", 0)
-        st.setdefault("sold_value_total", 0)
-        u.setdefault("claimed_missions", [])
-        u.setdefault("achievements", [])
-        mg = u.setdefault("minigames", {})
-        mg.setdefault("odt", {"win_streak": 0, "loss_streak": 0})
-        u.setdefault("name", "")
-        u.setdefault("guild_id", 0)
-        u.setdefault("last_active", 0)
-        save_data(data)
+        return data
 
+    # 3) user đã có trong data.json nhưng là user cũ → bổ sung key mới
+    u = users[user_id]
+    u.setdefault("ngan_phi", STARTING_NP)
+    u.setdefault("rungs", {"D":0,"C":0,"B":0,"A":0,"S":0})
+    u.setdefault("items", [])
+    u.setdefault("equipped", {})
+    u["equipped"].setdefault("slot_vukhi", None)
+    u["equipped"].setdefault("slot_aogiap", None)
+    u.setdefault("cooldowns", {}).setdefault("ol", 0)
+    st = u.setdefault("stats", {})
+    st.setdefault("opened", 0)
+    st.setdefault("ol_count", 0)
+    st.setdefault("odt_count", 0)
+    st.setdefault("ngan_phi_earned_total", 0)
+    st.setdefault("odt_np_spent_total", 0)
+    st.setdefault("odt_np_earned_total", 0)
+    st.setdefault("sold_count", 0)
+    st.setdefault("sold_value_total", 0)
+    u.setdefault("claimed_missions", [])
+    u.setdefault("achievements", [])
+    mg = u.setdefault("minigames", {})
+    mg.setdefault("odt", {"win_streak": 0, "loss_streak": 0})
+    u.setdefault("name", "")
+    u.setdefault("guild_id", 0)
+    u.setdefault("last_active", 0)
+
+    # đồng bộ ra file riêng + file tổng
+    save_user_data(user_id, u)
+    save_data(data)
     return data
 
 
@@ -351,10 +403,6 @@ def touch_user_activity(ctx, user_dict: dict):
         user_dict["last_active"] = int(time.time())
     except Exception:
         pass
-
-
-
-
 
 #=================GHI LẠI DATA =================
 
@@ -878,16 +926,6 @@ def images_enabled_global() -> bool:
 # =========================
 
 
-# ===================================
-# 🧩 BOT & CẤU HÌNH CHUNG — BẮT ĐẦU
-# ===================================
-bot = commands.Bot(
-    command_prefix=commands.when_mentioned_or("o","O"),
-    intents=INTENTS,
-    help_command=None,
-    case_insensitive=True
-)
-
 # ====================== KÍCH HOẠT TỰ ĐỘNG KHI BOT READY ======================
 
 @bot.event
@@ -1061,16 +1099,18 @@ async def cmd_opingg(ctx):
 from discord import ui, ButtonStyle, Interaction
 
 ADMIN_WHITELIST = {
-    "setbot","osetbot",
-    "lenhquantri","saoluu","listbackup","xemsaoluu",
-    "phuchoi","resetdata","resetuser",
-    "addtien","addruong",
-    "gianlan","thabong","phattu",
-    "batanh","pingg",
-    "lenh","olenh"
-    "saoluuantoan","osaoluuantoan"
-    "xuatdata","oxuatdata"
-    "osaoluuantoan","saoluuantoan"
+    "setbot", "osetbot",
+    "lenhquantri", "saoluu", "listbackup", "xemsaoluu",
+    "phuchoi", "resetdata", "resetuser",
+    "addtien", "addruong",
+    "gianlan", "thabong", "phattu",
+    "batanh", "pingg",
+    "lenh", "olenh",
+    "saoluuantoan", "osaoluuantoan",
+    "xuatdata", "oxuatdata",
+    "xoabackup", "oxoabackup",
+    "thoigiansaoluu", "backupconfig",
+    "tachdata", "otachdata",
     "othongbao",
 
 
@@ -1487,6 +1527,10 @@ async def on_command_error(ctx: commands.Context, error):
         )
         return
 
+
+# ====================================================================================================================================
+
+
 @bot.check
 async def global_channel_check(ctx: commands.Context):
     if not ctx.guild:  # DM
@@ -1513,6 +1557,12 @@ async def global_channel_check(ctx: commands.Context):
                 await ctx.send(msg)
             return False
     return True
+
+
+# ====================================================================================================================================
+
+
+
 # ====================================================================================================================================
 # 🧍 BOT EVENT
 # ====================================================================================================================================
@@ -1960,10 +2010,26 @@ async def cmd_khoiphucfile(ctx):
         mention_author=False
     )
 
+
+# ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG ==================
+@bot.command(name="tachdata", aliases=["otachdata"])
+@owner_only()
+async def cmd_tachdata(ctx):
+    """
+    Chạy 1 lần để tách tất cả user từ data.json sang /users/<id>.json.
+    """
+    data = load_data()
+    users = data.get("users", {})
+    count = 0
+    for uid, udata in users.items():
+        save_user_data(uid, udata)
+        count += 1
+    await ctx.reply(f"✅ Đã tách {count} user ra thư mục /users", mention_author=False)
+
+# ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG ==================
+
+
 # ==================SAO LƯU==================================
-
-
-
 
 
 @bot.command(name="saoluu")
@@ -3745,7 +3811,7 @@ def _open_one_chest(user, r: str):
 async def cmd_omo(ctx, *args):
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = data["users"][user_id]
+    user = load_user_data(user_id)
     _ensure_economy_fields(user)
     argv = [a.strip().lower() for a in args]
 
@@ -4441,7 +4507,7 @@ async def cmd_oban(ctx, *args):
     """
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = data["users"][user_id]
+    user = load_user_data(user_id)
     _ensure_economy_fields(user)
     args = [a.lower() for a in args]
 
@@ -4510,7 +4576,7 @@ async def cmd_obantrangbi(ctx, *args):
     """
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = data["users"][user_id]
+    user = load_user_data(user_id)
     _ensure_economy_fields(user)
     args = [a.lower() for a in args]
 
@@ -4579,7 +4645,7 @@ async def cmd_othao(ctx, item_id: str = None):
 
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = data["users"][user_id]
+    user = load_user_data(user_id)
 
     # phòng dữ liệu cũ
     if "equipped" not in user:
@@ -5653,7 +5719,7 @@ class OxemAllView(discord.ui.View):
 async def cmd_oxem(ctx, item_id: str = None):
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = data["users"][user_id]
+    user = load_user_data(user_id)
 
     # oxem all
     if item_id is not None and item_id.lower() == "all":
@@ -5805,7 +5871,7 @@ class PhaiView(discord.ui.View):
             # gán phái
             user["class"] = self.phai_key
             user["phai_last_change_ts"] = now.timestamp()
-            save_data(data)
+            save_user_data(user_id, user)
 
             desc = PHAI_INFO.get(self.phai_key, "Môn phái.")
             await interaction.response.send_message(
@@ -5894,7 +5960,7 @@ async def cmd_ol(ctx):
 
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = data["users"][user_id]
+    user = load_user_data(user_id)
 
     # đảm bảo có đủ cấu trúc
     user.setdefault("rungs", {})
@@ -6003,7 +6069,7 @@ async def cmd_ol(ctx):
         pass
 
     # ---------- LƯU DỮ LIỆU MỘT LẦN Ở CUỐI ----------
-    save_data(data)
+    save_user_data(user_id, user)
 
 # ====================================================================================================================================
 # 🧍 KHÁM PHÁ KẾT THÚC
@@ -6141,7 +6207,7 @@ def _try_jackpot(data: dict, member: discord.Member) -> int:
 async def cmd_odt(ctx, amount: str = None):
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
-    user = data["users"][user_id]
+    user = load_user_data(user_id)
     odt_state = _odt_init_state(user)
 
     # cập nhật log hoạt động
@@ -6196,7 +6262,7 @@ async def cmd_odt(ctx, amount: str = None):
 
     # trừ tiền trước khi biết kết quả
     user["ngan_phi"] = bal - amount_val
-    save_data(data)
+    save_user_data(user_id, user)
 
     outcome = _odt_pick_outcome(odt_state)
     try:
@@ -6254,7 +6320,7 @@ async def cmd_odt(ctx, amount: str = None):
             except Exception:
                 pass
 
-        save_data(data)
+        save_user_data(user_id, user)
 
     else:
         # THẮNG
@@ -6287,7 +6353,7 @@ async def cmd_odt(ctx, amount: str = None):
             )
 
         _jp_open_window_if_needed(_jp(data), time.time())
-        save_data(data)
+        save_user_data(user_id, user)
 
     # footer hiển thị quỹ jackpot + người trúng gần nhất
     jp_now = _jp(data)
@@ -6404,7 +6470,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
     quest_runtime_increment(sender, "give_today", 1)
 
     # Lưu lại sau khi cập nhật hết
-    save_data(data)
+    save_user_data(user_id, user)
 
 
     # ==================================================================
@@ -6417,7 +6483,7 @@ async def cmd_otang(ctx, member: discord.Member = None, so: str = None):
 
     # tăng biến đếm nhiệm vụ "tang_today"
     quest_runtime_increment(sender_user, "tang_today", 1)
-    save_data(data)
+    save_user_data(user_id, user)
     # ==================================================================
 
 
@@ -6919,7 +6985,7 @@ async def cmd_opb(ctx: commands.Context):
             tv[r] = int(tv.get(r, 0)) + cnt
 
     # 5) LƯU FILE NGAY TẠI ĐÂY
-    save_data(data)
+    save_user_data(user_id, user)
 
     # emoji
     np_emo = globals().get("NP_EMOJI", "📦")
@@ -6967,7 +7033,7 @@ async def cmd_opb(ctx: commands.Context):
 
 
     # 5) LƯU FILE NGAY TẠI ĐÂY
-    save_data(data)
+    save_user_data(user_id, user)
 
 
 
@@ -7323,7 +7389,7 @@ async def cmd_onhiemvu(ctx: commands.Context):
 
     # đảm bảo user tồn tại
     data = ensure_user(user_id)
-    user = data["users"][user_id]
+    user = load_user_data(user_id)
 
     # log hoạt động
     touch_user_activity(ctx, user)
@@ -7338,7 +7404,7 @@ async def cmd_onhiemvu(ctx: commands.Context):
     await _check_and_announce_completion(ctx.author, dq)
 
     # lưu mọi thay đổi (dm_message_id, completion_announced, ...)
-    save_data(data)
+    save_user_data(user_id, user)
 
     # embed trả lời công khai trong kênh
     desc_text, _ = _build_daily_text(user, dq)
@@ -7399,7 +7465,7 @@ async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
     # Nếu có claim con thì lưu data (save once)
     if claimed_any:
         try:
-            save_data(data)
+            save_user_data(user_id, user)
         except Exception:
             pass
 
@@ -7418,7 +7484,7 @@ async def _auto_claim_missions(ctx, data: dict, user: dict, dq: dict):
 
             # save data
             try:
-                save_data(data)
+                save_user_data(user_id, user)
             except Exception:
                 pass
 
@@ -7474,7 +7540,7 @@ async def testnhiemvusos(ctx):
         m["done"] = True
         m["claimed"] = False
     dq["full_done"] = True
-    save_data(data)
+    save_user_data(user_id, user)
     await _auto_claim_missions(ctx, data, user, dq)
     save_data(data)
     await ctx.reply("Đã ép 5/5 và chạy auto-claim. Dùng `oncheck_tien` để xem số dư.", mention_author=False)
@@ -7580,28 +7646,37 @@ async def cmd_thongbao(ctx, *, text: str):
 # ====================================================================================================================================
 @bot.event
 async def on_message(message):
-    # Bỏ qua tin nhắn của bot
+    # bỏ qua tin nhắn của bot
     if message.author.bot:
         return
 
-    # Chỉ tính khi chat trong server (không tính DM)
+    # chỉ ghi nhiệm vụ khi chat trong server
     if message.guild:
         uid = str(message.author.id)
+
+        # hàm này của bạn hình như sẽ đảm bảo user tồn tại trong data
         data = ensure_user(uid)
+
+        # lấy object user ra từ data
         user = data["users"][uid]
 
-        # ✅ Ghi log nhiệm vụ "Gửi 50 tin nhắn trong server"
+        # tăng nhiệm vụ chat
         quest_runtime_increment(user, "messages_today", 1)
-        save_data(data)
 
-    # Cho phép các lệnh bot hoạt động bình thường
+        # lưu lại user vừa sửa
+        save_user_data(uid, user)
+
+    # rất quan trọng: để lệnh hoạt động
     await bot.process_commands(message)
+
 # ====================================================================================================================================
 # 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
 # ====================================================================================================================================
 
 
-
+@bot.command(name="check")
+async def cmd_check(ctx):
+    await ctx.reply("✅ bot nhận lệnh rồi", mention_author=False)
 
 
 
