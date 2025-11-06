@@ -1958,6 +1958,31 @@ async def cmd_tachdata(ctx):
 # ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG (BẢN AN TOÀN) ==================
 
 
+@bot.command(name="eptachdata", aliases=["oeptachdata"])
+@owner_only()
+async def cmd_eptachdata(ctx):
+    """
+    Ép tách lại toàn bộ user từ data.json ra /users/, GHI ĐÈ file cũ.
+    Chỉ dùng khi /users/ đã lỡ tạo file rỗng trước đó.
+    """
+    data = load_data()
+    users = data.get("users", {})
+    count_all = 0
+    count_written = 0
+
+    for uid, udata in users.items():
+        count_all += 1
+        # ghi đè luôn
+        save_user_data(uid, udata)
+        count_written += 1
+
+    await ctx.reply(
+        f"✅ (FORCE) Đã quét {count_all} user trong data.json, ghi đè {count_written} file trong /users.",
+        mention_author=False,
+    )
+
+
+
 # ==================SAO LƯU==================================
 
 
