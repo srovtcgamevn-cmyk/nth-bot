@@ -7788,24 +7788,31 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # chỉ ghi nhiệm vụ khi chat trong server
+    # xử lý phần ghi log / nhiệm vụ theo user
     if message.guild:
-        uid = str(message.author.id)
+        try:
+            uid = str(message.author.id)
 
-        # hàm này của bạn hình như sẽ đảm bảo user tồn tại trong data
-        data = ensure_user(uid)
+            # đảm bảo user tồn tại trong data tổng
+            data = ensure_user(uid)
 
-        # lấy object user ra từ data
-        user = data["users"][uid]
+            # lấy user từ data tổng
+            user = data["users"][uid]
 
-        # tăng nhiệm vụ chat
-        quest_runtime_increment(user, "messages_today", 1)
+            # (tùy bạn) tăng nhiệm vụ chat
+            # nếu user bị thiếu field thì dòng này dễ lỗi, nên để trong try
+            quest_runtime_increment(user, "messages_today", 1)
 
-        # lưu lại user vừa sửa
-        save_user_data(uid, user)
+            # lưu lại user riêng
+            save_user_data(uid, user)
 
-    # rất quan trọng: để lệnh hoạt động
+        except Exception as e:
+            # ĐỪNG để lỗi này chặn lệnh
+            print(f"[on_message] lỗi với user {message.author.id}: {e}")
+
+    # DÙ CÓ LỖI TRÊN ĐI NỮA thì vẫn cho xử lý lệnh
     await bot.process_commands(message)
+
 
 # ====================================================================================================================================
 # 💬 GHI NHẬT KÝ TIN NHẮN TRONG SERVER (NHIỆM VỤ CHAT)
