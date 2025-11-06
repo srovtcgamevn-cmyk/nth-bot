@@ -28,7 +28,7 @@
 # - bộ công cụ backup v16
 # - hàm load/save/ensure user
 # =================================================================================================
-import os, io, json, time, random, asyncio, logging, hashlib, tempfile
+import os, io, json, time, random, asyncio, logging, hashlib, tempfile, shutil
 from glob import glob
 from datetime import datetime
 import discord
