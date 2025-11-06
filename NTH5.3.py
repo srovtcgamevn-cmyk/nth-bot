@@ -888,8 +888,6 @@ bot = commands.Bot(
     case_insensitive=True
 )
 
-# ====================== KÍCH HOẠT TỰ ĐỘNG KHI BOT READY ======================
-
 @bot.event
 async def on_ready():
     """
@@ -903,14 +901,14 @@ async def on_ready():
 
     print(f"✅ Bot ready: {bot.user} (id: {bot.user.id})")
 
-    # === Snapshot khởi động (giữ nguyên logic cũ của bạn) ===
+    # Snapshot khởi động (giữ nguyên logic cũ của bạn)
     try:
         data = load_data()
         snapshot_data_v16(data, tag="startup", subkey="startup")
     except Exception:
         pass
 
-    # === Khởi động auto backup 1 lần duy nhất ===
+    # Khởi động vòng auto backup 1 lần duy nhất
     if not _auto_backup_started:
         try:
             auto_backup_task.start()
@@ -925,13 +923,13 @@ async def on_ready():
             # Nếu Discord reconnect và task đã start rồi -> bỏ qua
             pass
 
-    # === Khởi động auto xoá backup 10 phút/lần ===
-    try:
-        if not auto_xoabackup_task.is_running():
-            auto_xoabackup_task.start()
-            print("[AUTO-XOABACKUP] Đã khởi động auto xoá backup (mỗi 10 phút).")
-    except Exception as e:
-        print(f"[AUTO-XOABACKUP] Không thể khởi động: {e}")
+    # Khởi động auto xoá backup 10 phút/lần
+    if not auto_xoabackup_task.is_running():
+        auto_xoabackup_task.start()
+        print("[AUTO-XOABACKUP] started.")
+
+
+
 
 # ===================================
 # 🧩 BOT & CẤU HÌNH CHUNG — KẾT THÚC
@@ -2399,16 +2397,20 @@ async def cmd_osaoluu_antoan(ctx):
         )
 
 
-# 💬 LỆNH THỦ CÔNG
+
+# ================== XOÁ TOÀN BỘ BACKUP ==================
+
 @bot.command(name="xoabackup", aliases=["oxoabackup"])
 @owner_only()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def cmd_xoabackup(ctx):
     """
-    GIẢI PHÓNG DUNG LƯỢNG THỦ CÔNG.
+    GIẢI PHÓNG DUNG LƯỢNG.
     Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
-    KHÔNG xoá file data.json chính.
+    KHÔNG xoá data.json chính.
+    Nên chạy `osaoluuantoan` trước để chắc chắn luôn còn 1 bản backup mới nhất.
     """
+    import shutil
     backup_root = os.path.join(BASE_DATA_DIR, "backups")
     try:
         if os.path.isdir(backup_root):
@@ -2416,27 +2418,43 @@ async def cmd_xoabackup(ctx):
         os.makedirs(backup_root, exist_ok=True)
         await ctx.reply(
             "🧹 Đã xoá toàn bộ backup cũ (startup / pre-save / manual / ...).\n"
-            "📦 File dữ liệu chính `data.json` vẫn còn nguyên.\n"
+            "📦 File dữ liệu chính data.json vẫn còn nguyên.\n"
             "💡 Gợi ý: kiểm tra lại dung lượng volume trên Railway.",
             mention_author=False
         )
     except Exception as e:
-        await ctx.reply(f"❌ Không thể xoá backup: {e}", mention_author=False)
+        await ctx.reply(
+            f"❌ Không thể xoá backup: {e}",
+            mention_author=False
+        )
 
 
-# =============== TỰ ĐỘNG XOÁ BACKUP MỖI 10 PHÚT =================
+
+from discord.ext import tasks
+import os, shutil
+
+# ================== XOÁ BACKUP DÙNG CHUNG ==================
+def run_xoabackup_manual():
+    """
+    Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
+    KHÔNG xoá data.json chính.
+    Dùng chung cho lệnh tay và auto.
+    """
+    backup_root = os.path.join(BASE_DATA_DIR, "backups")
+    if os.path.isdir(backup_root):
+        shutil.rmtree(backup_root)
+        print(f"[XOABACKUP] Đã xoá toàn bộ: {backup_root}")
+    os.makedirs(backup_root, exist_ok=True)
+    print("[XOABACKUP] Đã tạo lại thư mục backups rỗng.")
+
+
+# ================== TỰ ĐỘNG XOÁ MỖI 10 PHÚT ==================
 @tasks.loop(minutes=10)
 async def auto_xoabackup_task():
+    # chờ bot kết nối xong
     await bot.wait_until_ready()
-    backup_root = os.path.join(BASE_DATA_DIR, "backups")
-    try:
-        if os.path.isdir(backup_root):
-            shutil.rmtree(backup_root)
-        os.makedirs(backup_root, exist_ok=True)
-        print("[AUTO-XOABACKUP] Đã xoá toàn bộ backup cũ.")
-    except Exception as e:
-        print(f"[AUTO-XOABACKUP] Lỗi khi xoá backup tự động: {e}")
-
+    run_xoabackup_manual()
+    print("[AUTO-XOABACKUP] Đã xoá backup tự động (10 phút).")
 
 
 
@@ -5885,38 +5903,21 @@ async def cmd_omonphai(ctx):
 # ====================================================================================================================================
 # 🧍 KHÁM PHÁ BẮT ĐẦU
 # ====================================================================================================================================
-# thời gian chờ lệnh ol
-COOLDOWN_OL = 10  # giây
+
+COOLDOWN_OL = 10
 
 @bot.command(name="l", aliases=["ol"])
 async def cmd_ol(ctx):
-    import time, random
-
     user_id = str(ctx.author.id)
     data = ensure_user(user_id)
     user = data["users"][user_id]
 
-    # đảm bảo có đủ cấu trúc
-    user.setdefault("rungs", {})
-    for r in ["S", "A", "B", "C", "D"]:
-        user["rungs"].setdefault(r, 0)
-
-    user.setdefault("stats", {})
-    user.setdefault("cooldowns", {})
-    user["cooldowns"].setdefault("ol", 0)
-
-    # nếu bạn có hàm hoạt động gần đây thì giữ
     if "touch_user_activity" in globals():
-        try:
-            touch_user_activity(ctx, user)
-        except Exception:
-            pass
+        touch_user_activity(ctx, user)
 
-    # check cooldown
     now = time.time()
     if now < user["cooldowns"]["ol"]:
-        wait_sec = int(user["cooldowns"]["ol"] - now)
-        await ctx.reply(f"⏳ Hãy chờ {wait_sec} giây nữa.", mention_author=False)
+        await ctx.reply(f"⏳ Hãy chờ {int(user['cooldowns']['ol'] - now)} giây nữa.", mention_author=False)
         return
 
     # chọn phẩm
@@ -5935,26 +5936,17 @@ async def cmd_ol(ctx):
         else:
             rarity = "D"
 
-    # chọn map (nếu có)
     if "MAP_POOL" in globals():
         map_loc = random.choice(MAP_POOL)
     else:
         map_loc = "Biện Kinh"
 
-    # cộng rương
     user["rungs"][rarity] += 1
     user["stats"]["ol_count"] = int(user["stats"].get("ol_count", 0)) + 1
-    # nếu bạn có hệ thống nhiệm vụ runtime
-    if "quest_runtime_increment" in globals():
-        try:
-            quest_runtime_increment(user, "ol_today", 1)
-        except Exception:
-            pass
-
-    # đặt lại cooldown
+    quest_runtime_increment(user, "ol_today", 1)
     user["cooldowns"]["ol"] = now + COOLDOWN_OL
+    save_data(data)
 
-    # ---------- hiển thị ----------
     rarity_name = {
         "D": "Phổ Thông",
         "C": "Hiếm",
@@ -5963,37 +5955,29 @@ async def cmd_ol(ctx):
         "S": "Truyền Thuyết",
     }[rarity]
 
-    chest_emo = globals().get("RARITY_CHEST_EMOJI", {}).get(rarity, "🎁")
-    rarity_color = globals().get("RARITY_COLOR", {}).get(rarity, 0x95A5A6)
+    chest_emo = RARITY_CHEST_EMOJI.get(rarity, "🎁")
+    title = f"**[{map_loc}]** **{ctx.author.display_name}** thu được Rương {rarity_name} {chest_emo} x1"
 
     desc = ""
     if "get_loot_description" in globals():
-        try:
-            desc = get_loot_description(map_loc, rarity)
-        except Exception:
-            desc = ""
-
-    title = f"**[{map_loc}]** **{ctx.author.display_name}** thu được Rương {rarity_name} {chest_emo} x1"
+        desc = get_loot_description(map_loc, rarity)
 
     emb = make_embed(
         title=title,
         description=desc,
-        color=rarity_color,
+        color=RARITY_COLOR.get(rarity, 0x95A5A6),
         footer=ctx.author.display_name
     )
 
-    # nếu bạn có hệ thống ảnh bản đồ thì giữ
     if "images_enabled_global" in globals() and images_enabled_global():
         try:
-            img = globals().get("MAP_IMAGES", {}).get(rarity, globals().get("IMG_BANDO_DEFAULT"))
-            if img:
-                emb.set_image(url=img)
+            img = MAP_IMAGES.get(rarity, IMG_BANDO_DEFAULT)
+            emb.set_image(url=img)
         except Exception:
             pass
 
     msg = await ctx.send(embed=emb)
 
-    # nếu bạn muốn tự ẩn ảnh sau vài giây:
     try:
         await asyncio.sleep(3)
         if emb.image:
@@ -6001,10 +5985,6 @@ async def cmd_ol(ctx):
             await msg.edit(embed=emb)
     except Exception:
         pass
-
-    # ---------- LƯU DỮ LIỆU MỘT LẦN Ở CUỐI ----------
-    save_data(data)
-
 # ====================================================================================================================================
 # 🧍 KHÁM PHÁ KẾT THÚC
 # ====================================================================================================================================
