@@ -2419,6 +2419,33 @@ async def cmd_xoabackup(ctx):
         )
 
 
+from discord.ext import tasks
+import os, shutil
+
+# ================== XOÁ BACKUP DÙNG CHUNG ==================
+def run_xoabackup_manual():
+    """
+    Xóa toàn bộ thư mục backups (startup / pre-save / manual / ...).
+    KHÔNG xoá data.json chính.
+    Dùng chung cho lệnh tay và auto.
+    """
+    backup_root = os.path.join(BASE_DATA_DIR, "backups")
+    if os.path.isdir(backup_root):
+        shutil.rmtree(backup_root)
+        print(f"[XOABACKUP] Đã xoá toàn bộ: {backup_root}")
+    os.makedirs(backup_root, exist_ok=True)
+    print("[XOABACKUP] Đã tạo lại thư mục backups rỗng.")
+
+
+# ================== TỰ ĐỘNG XOÁ MỖI 10 PHÚT ==================
+@tasks.loop(minutes=10)
+async def auto_xoabackup_task():
+    # chờ bot kết nối xong
+    await bot.wait_until_ready()
+    run_xoabackup_manual()
+    print("[AUTO-XOABACKUP] Đã xoá backup tự động (10 phút).")
+
+
 
 # ================== XUẤT FILE BACKUP ZIP ==================
 
