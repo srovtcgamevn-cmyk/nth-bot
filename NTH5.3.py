@@ -1928,24 +1928,34 @@ async def cmd_khoiphucfile(ctx):
     )
 
 
-# ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG ==================
+# ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG (BẢN AN TOÀN) ==================
 @bot.command(name="tachdata", aliases=["otachdata"])
 @owner_only()
 async def cmd_tachdata(ctx):
     """
-    Chạy 1 lần để tách tất cả user từ data.json sang /users/<id>.json.
+    Chạy để đổ tất cả user trong data.json ra /users/<id>.json.
+    - Nếu file user đã tồn tại rồi thì không ghi đè (để không làm mất dữ liệu mới).
     """
     data = load_data()
     users = data.get("users", {})
-    count = 0
+    count_all = 0
+    count_created = 0
     for uid, udata in users.items():
+        count_all += 1
+        path = os.path.join(USERS_DIR, f"{uid}.json")
+
+        # nếu đã có file rồi thì bỏ qua để không đè dữ liệu mới
+        if os.path.exists(path):
+            continue
+
         save_user_data(uid, udata)
-        count += 1
-    await ctx.reply(f"✅ Đã tách {count} user ra thư mục /users", mention_author=False)
-    await ctx.reply("⚠️ Lệnh này chỉ dùng 1 lần duy nhất để chuyển dữ liệu cũ → tách user.\nKhông cần dùng lại sau khi đã chuyển xong.", mention_author=False)
+        count_created += 1
 
-
-# ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG ==================
+    await ctx.reply(
+        f"✅ Đã quét {count_all} user trong data.json, tạo mới {count_created} file trong /users.",
+        mention_author=False,
+    )
+# ================== TÁCH DỮ LIỆU NGƯỜI CHƠI TỪ data.json RA FILE RIÊNG (BẢN AN TOÀN) ==================
 
 
 # ==================SAO LƯU==================================
