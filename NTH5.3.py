@@ -34,6 +34,14 @@ from datetime import datetime
 import discord
 from discord.ext import commands
 import aiohttp
+import discord
+from discord.ext import commands
+
+INTENTS = discord.Intents.default()
+INTENTS.message_content = True
+INTENTS.members = True
+INTENTS.guilds = True
+
 
 
 logging.getLogger("discord").setLevel(logging.WARNING)
