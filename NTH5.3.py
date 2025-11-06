@@ -2444,13 +2444,19 @@ def run_xoabackup_manual():
     print("[XOABACKUP] Đã tạo lại thư mục backups rỗng.")
 
 
-# ================== TỰ ĐỘNG XOÁ MỖI 10 PHÚT ==================
+# =============== TỰ ĐỘNG GỌI LẠI HÀM TRÊN 10 PHÚT 1 LẦN =================
 @tasks.loop(minutes=10)
 async def auto_xoabackup_task():
-    # chờ bot kết nối xong
+    # chờ bot login xong để có BASE_DATA_DIR, bot...
     await bot.wait_until_ready()
-    run_xoabackup_manual()
-    print("[AUTO-XOABACKUP] Đã xoá backup tự động (10 phút).")
+    backup_root = os.path.join(BASE_DATA_DIR, "backups")
+    try:
+        if os.path.isdir(backup_root):
+            shutil.rmtree(backup_root)
+        os.makedirs(backup_root, exist_ok=True)
+        print("[AUTO-XOABACKUP] Đã xoá toàn bộ backup cũ.")
+    except Exception as e:
+        print(f"[AUTO-XOABACKUP] Lỗi khi xoá backup tự động: {e}")
 
 
 
