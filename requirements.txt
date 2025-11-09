@@ -9,3 +9,4 @@ openai
 pillow
 pytesseract
 aiohttp
+flask
