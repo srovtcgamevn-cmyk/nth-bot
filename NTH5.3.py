@@ -34,10 +34,17 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
-from flask import Flask, request, jsonify, render_template_string
+# ================== CẤU HÌNH CỨNG ==================
+# Token vẫn lấy từ biến môi trường cho an toàn
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 
-import discord
-from discord.ext import commands, tasks
+# Chủ bot đóng đinh luôn ở đây, KHÔNG dùng getenv nữa
+OWNER_DISCORD_ID = 821066331826421840
+
+print("DISCORD_TOKEN set?:", bool(DISCORD_TOKEN))
+print("OWNER_DISCORD_ID:", OWNER_DISCORD_ID)
+# ===================================================
+
 
 # ============================================================
 # CONFIG CHUNG
