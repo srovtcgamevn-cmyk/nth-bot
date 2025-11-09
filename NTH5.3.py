@@ -1089,13 +1089,13 @@ class PageView(discord.ui.View):
 @bot.command(name="lenh")
 async def cmd_lenh(ctx):
     await ctx.reply(
-        "📜 LỆNH NGƯỜI DÙNG:\n"
-        "/hoso – xem hồ sơ tu luyện\n"
-        "/bangcapdo – bảng exp lên cấp\n"
-        "/topnhiet – top nhiệt huyết (cá nhân)\n"
-        "/diemdanh – điểm danh theo team (nếu admin bật)\n"
-        "/bxhkimlan – xem các team điểm danh 7 ngày\n"
-        "/bxhkimlan @team – xem chi tiết 1 team"
+        "📜 LỆNH NGƯỜI DÙNG:\n\n"
+        "`/hoso` – Xem hồ sơ tu luyện\n"
+        "`/bangcapdo` – Bảng exp lên cấp\n"
+        "`/topnhiet` – Top nhiệt huyết (cá nhân)\n"
+        "`/diemdanh` – Điểm danh theo team (nếu admin bật)\n"
+        "`/bxhkimlan` – xem các team điểm danh 7 ngày\n"
+        "`/bxhkimlan` @team – xem chi tiết 1 team"
     )
 
 @bot.command(name="lenhadmin")
@@ -1104,14 +1104,14 @@ async def cmd_lenhadmin(ctx):
         await ctx.reply("⛔ Bạn không phải admin.")
         return
     await ctx.reply(
-        "🛠 LỆNH ADMIN:\n"
-        "/kenhchat [#k...] – quản lý kênh tính exp\n"
-        "/setdiemdanh @role... [#kenh] [giờ phút tối thiểu] – bật điểm danh\n"
-        "/thongke – thống kê exp theo cấp độ (10 người / trang)\n"
-        "/topnhiet [tuantruoc] – top nhiệt huyết\n"
-        "/setthuongcap <level> @role… – đạt lvl tặng nhiều role\n"
-        "/xemthuongcap – xem mốc thưởng + role thu hồi\n"
-        "/bxhkimlan – xem tổng quan team 7 ngày"
+        "🛠 LỆNH ADMIN:\n\n"
+        "`/kenhchat` [#k...] – Quản lý kênh tính exp\n"
+        "`/setdiemdanh` @role... [#kenh] [giờ phút tối thiểu] – Bật điểm danh\n"
+        "`/thongke` – Thống kê exp theo cấp độ (10 người / trang)\n"
+        "`/topnhiet` [tuantruoc] – Top nhiệt huyết\n"
+        "`/setthuongcap` <level> @role… – Đạt lvl tặng nhiều role\n"
+        "`/xemthuongcap` – Xem mốc thưởng + role thu hồi\n"
+        "`/bxhkimlan` – Xem tổng quan team 7 ngày"
     )
 
 @bot.command(name="lenhchubot")
@@ -1120,11 +1120,11 @@ async def cmd_lenhchubot(ctx):
         await ctx.reply("⛔ Không phải chủ bot.")
         return
     await ctx.reply(
-        "👑 LỆNH CHỦ BOT:\n"
-        "/setlink <link> [@role ...]\n"
-        "/xemlink\n"
-        "/xoalink <link>\n"
-        "/batbuff /tatbuff"
+        "👑 LỆNH CHỦ BOT:\n\n"
+        "`/setlink` <link> [@role ...]\n"
+        "`/xemlink`\n"
+        "`/xoalink` <link>\n"
+        "`/batbuff` /tatbuff"
     )
 
 # =============== /kenhchat ===============
