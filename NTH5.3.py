@@ -993,19 +993,22 @@ async def on_message(message: discord.Message):
 @bot.event
 async def on_ready():
     print("✅ Bot online:", bot.user)
+
+    # refresh link mời
     for g in bot.guilds:
         try:
             await refresh_invites_for_guild(g)
         except:
             pass
-    auto_weekly_reset.start()
-    auto_diemdanh_dm.start()
 
-@bot.event
-async def on_member_join(member: discord.Member):
-    code = await detect_used_invite(member)
-    if code:
-        await apply_buff_rule(member, code)
+    # khởi động các task nền
+    if not auto_weekly_reset.is_running():
+        auto_weekly_reset.start()
+    if not auto_diemdanh_dm.is_running():
+        auto_diemdanh_dm.start()
+    if not tick_voice_exp.is_running():
+        tick_voice_exp.start()
+
 
 # =============== VIEW KÊNH EXP ===============
 class KenhExpView(discord.ui.View):
@@ -1775,10 +1778,7 @@ async def tick_voice_exp():
 
     save_json(EXP_FILE, exp_data)
 
-@bot.event
-async def on_ready():
-    ...
-    tick_voice_exp.start()
+
 
 
 
