@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 Nghich Thuy Han New - BANG_CHU_SUPREME
-1 file duy nhất
+1 file duy nhất (bản đã chỉnh theo yêu cầu mới nhất)
+- Chat: 1 phút/lần mới cộng exp
+- Voice: 1 phút/lần mới cộng exp
 """
 
 import os, json, random, math, asyncio
@@ -93,6 +95,7 @@ def is_weekend_lock():
         return True
     return False
 
+# =============== BỘ TÊN ẢO (giữ theo file bạn) ===============
 # =============== BỘ TÊN ẢO ===============
 BASE_NAMES_WITH_ACCENT = [
     "AnAn",
@@ -707,7 +710,6 @@ POPULAR_NUMBERS = [
     "69", "99", "888", "123", "2007", "2008", "2005", "2009",
     "03", "07", "09", "2003", "2004", "97", "98"
 ]
-
 def get_used_names():
     return load_json(NAMES_FILE, {})
 
@@ -807,6 +809,7 @@ def ensure_user(exp_data, uid: str):
         }
     else:
         exp_data["users"][uid].setdefault("heat", 0.0)
+        exp_data["users"][uid].setdefault("last_msg", None)
 
 def add_heat(user_obj: dict, amount: float):
     user_obj["heat"] = float(min(10.0, user_obj.get("heat", 0.0) + amount))
@@ -832,7 +835,56 @@ def add_team_score(gid: int, rid: int, date: str, amount: float):
     r[date] = r.get(date, 0) + amount
     save_json(TEAMSCORE_FILE, ts)
 
-# =============== SỰ KIỆN VOICE: EXP VOICE + NHIỆT + ĐIỂM TEAM ===============
+# =============== CẤP ROLE KHI LÊN LEVEL (báo kênh + DM) ===============
+def try_grant_level_reward(member: discord.Member, new_total_exp: int):
+    level, to_next, _ = calc_level_from_total_exp(new_total_exp)
+
+    # thông báo kênh chung
+    announce_channel = None
+    if member.guild.system_channel:
+        announce_channel = member.guild.system_channel
+    else:
+        for ch in member.guild.text_channels:
+            if ch.permissions_for(member.guild.me).send_messages:
+                announce_channel = ch
+                break
+    if announce_channel is not None:
+        try:
+            asyncio.create_task(
+                announce_channel.send(f"⭐ {member.mention} vừa đạt **level {level}**! Tiếp tục tu luyện nhé!")
+            )
+        except:
+            pass
+
+    data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(member.guild.id), {})
+    val = g.get(str(level))
+    if not val:
+        return
+
+    if isinstance(val, int):
+        role_ids = [val]
+    else:
+        role_ids = list(val)
+
+    got_any = False
+    for rid in role_ids:
+        role = member.guild.get_role(rid)
+        if role and role not in member.roles:
+            asyncio.create_task(member.add_roles(role, reason=f"Đạt level {level}"))
+            got_any = True
+
+    if got_any:
+        try:
+            asyncio.create_task(
+                member.send(
+                    f"🎉 Chúc mừng bạn đã đạt **level {level}** ở máy chủ **{member.guild.name}** và đã được cấp role thưởng!"
+                )
+            )
+        except:
+            pass
+
+# =============== SỰ KIỆN VOICE: EXP VOICE 1 PHÚT ===============
 @bot.event
 async def on_voice_state_update(member, before, after):
     def open_mic(v):
@@ -855,7 +907,8 @@ async def on_voice_state_update(member, before, after):
         if start:
             secs = (now_utc() - start).total_seconds()
             if secs > 5:
-                bonus = int(secs // 30)
+                # 1 phút mới tính 1 lần
+                bonus = int(secs // 60)
                 exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
                 uid = str(member.id)
                 ensure_user(exp_data, uid)
@@ -867,8 +920,8 @@ async def on_voice_state_update(member, before, after):
                     u["exp_voice"] += bonus
                 u["voice_seconds_week"] += int(secs)
 
-                # nhiệt từ voice
-                heat_add = (secs / 600.0) * 0.2  # 10p = 0.2
+                # nhiệt từ voice: 10p = +0.2
+                heat_add = (secs / 600.0) * 0.2
                 add_heat(u, heat_add)
 
                 save_json(EXP_FILE, exp_data)
@@ -890,18 +943,7 @@ async def on_voice_state_update(member, before, after):
                         add_team_score(gid, int(rid), today, team_pts)
                         break
 
-def try_grant_level_reward(member: discord.Member, new_total_exp: int):
-    level, to_next, _ = calc_level_from_total_exp(new_total_exp)
-    data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
-    g = data["guilds"].get(str(member.guild.id), {})
-    rid = g.get(str(level))
-    if not rid:
-        return
-    role = member.guild.get_role(rid)
-    if role and role not in member.roles:
-        asyncio.create_task(member.add_roles(role, reason=f"Đạt level {level}"))
-
-# =============== SỰ KIỆN MESSAGE: EXP CHAT + NHIỆT + ĐIỂM TEAM ===============
+# =============== SỰ KIỆN MESSAGE: EXP CHAT 1 PHÚT ===============
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
@@ -918,15 +960,16 @@ async def on_message(message: discord.Message):
             ensure_user(exp_data, uid)
             u = exp_data["users"][uid]
             last = u.get("last_msg")
-            if not last or (now_utc() - datetime.fromisoformat(last)).total_seconds() >= 10:
+            # 1 phút mới cộng exp
+            if (not last) or (now_utc() - datetime.fromisoformat(last)).total_seconds() >= 60:
                 add_exp = random.randint(5, 15)
                 if team_boost_today(message.guild.id, message.author):
                     add_exp *= 2
                 u["exp_chat"] += add_exp
                 u["last_msg"] = now_utc().isoformat()
 
-                # nhiệt từ chat
-                add_heat(u, (add_exp / 20.0) * 0.1)
+                # nhiệt từ chat: 200 exp ≈ 1.0 nhiệt
+                add_heat(u, add_exp * 0.005)
 
                 save_json(EXP_FILE, exp_data)
                 total_now = u["exp_chat"] + u["exp_voice"]
@@ -1046,13 +1089,13 @@ class PageView(discord.ui.View):
 @bot.command(name="lenh")
 async def cmd_lenh(ctx):
     await ctx.reply(
-        "📜 LỆNH NGƯỜI DÙNG:\n\n"
-        "`/hoso` – Xem hồ sơ tu luyện\n"
-        "`/bangcapdo` – Bảng exp lên cấp\n"
-        "`/topnhiet` – Top nhiệt huyết (cá nhân)\n"
-        "`/diemdanh` – Điểm danh theo team (nếu admin bật)\n"
-        "`/bxhkimlan` – xem các team điểm danh 7 ngày\n"
-        "`/bxhkimlan` @team – Xem chi tiết 1 team"
+        "📜 LỆNH NGƯỜI DÙNG:\n"
+        "/hoso – xem hồ sơ tu luyện\n"
+        "/bangcapdo – bảng exp lên cấp\n"
+        "/topnhiet – top nhiệt huyết (cá nhân)\n"
+        "/diemdanh – điểm danh theo team (nếu admin bật)\n"
+        "/bxhkimlan – xem các team điểm danh 7 ngày\n"
+        "/bxhkimlan @team – xem chi tiết 1 team"
     )
 
 @bot.command(name="lenhadmin")
@@ -1061,14 +1104,14 @@ async def cmd_lenhadmin(ctx):
         await ctx.reply("⛔ Bạn không phải admin.")
         return
     await ctx.reply(
-        "🛠 LỆNH ADMIN:\n\n"
-        "`/kenhchat` [#k...] – Quản lý kênh tính exp\n"
-        "`/setdiemdanh` @role... [#kenh] [giờ phút tối thiểu] – Bật điểm danh\n"
-        "`/thongke` – Thống kê exp theo cấp độ\n"
-        "`/topnhiet` [tuantruoc] – Top nhiệt huyết\n"
-        "`/setthuongcap` <level> @role – Đạt lvl tặng role\n"
-        "`/xemthuongcap` – Xem mốc thưởng\n"
-        "`/bxhkimlan` – Xem tổng quan team 7 ngày"
+        "🛠 LỆNH ADMIN:\n"
+        "/kenhchat [#k...] – quản lý kênh tính exp\n"
+        "/setdiemdanh @role... [#kenh] [giờ phút tối thiểu] – bật điểm danh\n"
+        "/thongke – thống kê exp theo cấp độ (10 người / trang)\n"
+        "/topnhiet [tuantruoc] – top nhiệt huyết\n"
+        "/setthuongcap <level> @role… – đạt lvl tặng nhiều role\n"
+        "/xemthuongcap – xem mốc thưởng + role thu hồi\n"
+        "/bxhkimlan – xem tổng quan team 7 ngày"
     )
 
 @bot.command(name="lenhchubot")
@@ -1077,11 +1120,11 @@ async def cmd_lenhchubot(ctx):
         await ctx.reply("⛔ Không phải chủ bot.")
         return
     await ctx.reply(
-        "👑 LỆNH CHỦ BOT:\n\n"
-        "`/setlink` <link> [@role ...]\n"
-        "`/xemlink`\n"
-        "`/xoalink` <link>\n"
-        "`/batbuff` /tatbuff"
+        "👑 LỆNH CHỦ BOT:\n"
+        "/setlink <link> [@role ...]\n"
+        "/xemlink\n"
+        "/xoalink <link>\n"
+        "/batbuff /tatbuff"
     )
 
 # =============== /kenhchat ===============
@@ -1136,7 +1179,7 @@ async def cmd_bangcapdo(ctx, max_level: int=10):
         lines.append(f"- Level {lvl}: cần {need} exp (tổng tới đây: {total})")
     await ctx.reply("\n".join(lines))
 
-# =============== /thongke (exp) ===============
+# =============== /thongke ===============
 @bot.command(name="thongke")
 async def cmd_thongke(ctx):
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
@@ -1223,15 +1266,30 @@ async def cmd_topnhiet(ctx, mode: str=None):
     else:
         await ctx.reply(embed=pages[0], view=PageView(ctx, pages))
 
-# =============== /setthuongcap, /xemthuongcap ===============
+# =============== /setthuongcap, /xemthuongcap, /thuhoithuong ===============
 @bot.command(name="setthuongcap")
 @commands.has_permissions(manage_guild=True)
-async def cmd_setthuongcap(ctx, level: int, role: discord.Role):
+async def cmd_setthuongcap(ctx, level: int, *roles: discord.Role):
+    if not roles:
+        await ctx.reply("❌ Bạn phải tag ít nhất 1 role.")
+        return
+
     data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
     g = data["guilds"].setdefault(str(ctx.guild.id), {})
-    g[str(level)] = role.id
+
+    cur = g.get(str(level))
+    if isinstance(cur, int):
+        cur = [cur]
+
+    new_list = cur or []
+    for r in roles:
+        if r.id not in new_list:
+            new_list.append(r.id)
+
+    g[str(level)] = new_list
     save_json(LEVEL_REWARD_FILE, data)
-    await ctx.reply(f"✅ Khi đạt level {level} sẽ được role {role.mention}")
+
+    await ctx.reply(f"✅ Khi đạt level {level} sẽ được: {', '.join(r.mention for r in roles)}")
 
 @bot.command(name="xemthuongcap")
 async def cmd_xemthuongcap(ctx):
@@ -1240,11 +1298,48 @@ async def cmd_xemthuongcap(ctx):
     if not g:
         await ctx.reply("📭 Chưa có mốc thưởng.")
         return
+
     lines = ["🎁 Mốc thưởng cấp:"]
-    for lv, rid in sorted(g.items(), key=lambda x: int(x[0])):
-        r = ctx.guild.get_role(rid)
-        lines.append(f"- Level {lv} → {r.mention if r else rid}")
+    for lv, val in sorted(g.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 9999):
+        if lv == "weekly_revoke":
+            continue
+        if isinstance(val, int):
+            roles = [ctx.guild.get_role(val)]
+        else:
+            roles = [ctx.guild.get_role(rid) for rid in val]
+        r_txt = ", ".join(r.mention for r in roles if r) or "(role đã xoá)"
+        lines.append(f"- Level {lv} → {r_txt}")
+
+    revoke = g.get("weekly_revoke", [])
+    if revoke:
+        r_objs = [ctx.guild.get_role(rid) for rid in revoke]
+        lines.append("\n🧹 Role bị thu hồi thứ 2 14:00:")
+        lines.append(", ".join(r.mention for r in r_objs if r) or "(role đã xoá)")
+
     await ctx.reply("\n".join(lines))
+
+@bot.command(name="thuhoithuong")
+@commands.has_permissions(manage_guild=True)
+async def cmd_thuhoithuong(ctx, *roles: discord.Role):
+    if not roles:
+        await ctx.reply("❌ Bạn phải tag ít nhất 1 role để thu hồi.")
+        return
+
+    data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {})
+
+    current = g.get("weekly_revoke", [])
+    for r in roles:
+        if r.id not in current:
+            current.append(r.id)
+
+    g["weekly_revoke"] = current
+    save_json(LEVEL_REWARD_FILE, data)
+
+    await ctx.reply(
+        "✅ Đã ghi nhận danh sách role sẽ bị thu hồi thứ 2 14:00:\n" +
+        ", ".join(r.mention for r in roles)
+    )
 
 # =============== /setdiemdanh ===============
 @bot.command(name="setdiemdanh")
@@ -1383,7 +1478,7 @@ async def cmd_diemdanh(ctx):
         ch = ctx.guild.get_channel(conf.get("channel_id")) or ctx.channel
         await ch.send(f"🎉 Team **{conf.get('name','Team')}** đã kích hoạt x2 hôm nay!")
 
-# =============== /bxhkimlan (tổng & chi tiết) ===============
+# =============== /bxhkimlan (đã sửa cộng điểm quỹ đúng) ===============
 @bot.command(name="bxhkimlan")
 async def cmd_bxhkimlan(ctx, role: discord.Role=None):
     teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
@@ -1417,7 +1512,10 @@ async def cmd_bxhkimlan(ctx, role: discord.Role=None):
                 tot = info.get("total_at_day", 0)
                 chk = len(info.get("checked", []))
                 boosted = info.get("boost", False)
-                total_quy += score_guild.get(d, 0)
+
+                # sửa: điểm quỹ phải lấy theo role trước rồi tới ngày
+                total_quy += score_guild.get(rid, {}).get(d, 0)
+
                 if tot > 0:
                     rate = chk / tot
                     total_rate += rate
@@ -1480,7 +1578,9 @@ async def cmd_bxhkimlan(ctx, role: discord.Role=None):
         tot = info.get("total_at_day", 0)
         chk = len(info.get("checked", []))
         boosted = info.get("boost", False)
-        total_quy += score_guild.get(d, 0)
+
+        total_quy += score_guild.get(rid, {}).get(d, 0)
+
         wd = datetime.fromisoformat(d).weekday()
         thu = ["Thứ 2","Thứ 3","Thứ 4","Thứ 5","Thứ 6","Thứ 7","CN"][wd]
         if tot == 0:
@@ -1537,7 +1637,7 @@ async def auto_weekly_reset():
     last_reset = cfg.get("last_reset", "")
     today = now.date().isoformat()
 
-    # 00:00 thứ 7
+    # 00:00 thứ 7 -> reset tuần + khóa exp
     if now.weekday() == 5 and now.hour == 0 and last_reset != today:
         exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
         exp_data["prev_week"] = exp_data.get("users", {})
@@ -1548,11 +1648,28 @@ async def auto_weekly_reset():
         save_json(CONFIG_FILE, cfg)
         print("🔁 Reset tuần.")
 
-    # mở lại T2 14:00
+    # mở lại T2 14:00 + thu hồi role
     if now.weekday() == 0 and now.hour >= 14 and cfg.get("exp_locked", False):
         cfg["exp_locked"] = False
         save_json(CONFIG_FILE, cfg)
         print("🔓 Mở lại exp sau reset.")
+
+        level_data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
+        for guild in bot.guilds:
+            gconf = level_data["guilds"].get(str(guild.id), {})
+            revoke_list = gconf.get("weekly_revoke", [])
+            if not revoke_list:
+                continue
+            for member in guild.members:
+                if member.bot:
+                    continue
+                for rid in revoke_list:
+                    r = guild.get_role(rid)
+                    if r and r in member.roles:
+                        try:
+                            await member.remove_roles(r, reason="Thu hồi thưởng tuần")
+                        except:
+                            pass
 
 # =============== LỆNH CHỦ BOT: BUFF LINK ===============
 @bot.command(name="setlink")
