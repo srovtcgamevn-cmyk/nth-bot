@@ -1,76 +1,56 @@
-# ============================================================
-# BUFF_MEM_AO_v1_2.py
-# Phiên bản: v1_2
-# Ngày cập nhật: 2025-11-02
-#
-# Chức năng:
-# - Buff mem ảo cho server: auto đổi biệt danh thành tên kiểu Discord Việt,
-#   auto gán nhiều role, log lại nguồn invite.
-# - Chủ Bot có thể kiểm tra thành viên theo user / role / thời gian.
-#
-# Lệnh Chủ Bot:
-#   /setlink <invite_url> <@role1> <@role2> ...
-#   /xemlink
-#   /xoalink <invite_url>
-#   /batbuff
-#   /tatbuff
-#   /kiemtratv [@user] [role:@role] [gio:<số>] [ngay:<số>]
-#   /lenhchubot
-#
-# Yêu cầu:
-#   pip install discord.py==2.4.0
-#   Intents bật: SERVER MEMBERS INTENT, MESSAGE CONTENT INTENT
-#   Quyền bot: Manage Nicknames, Manage Roles, View Audit Log, Read/Send Messages
-#
-# Biến môi trường:
-#   DISCORD_TOKEN
-#   OWNER_DISCORD_ID
-#
-# Lưu trữ:
-#   data/invite_map.json
-#   data/buffmem_log.json
-#   data/names_used.json
-# ============================================================
+# -*- coding: utf-8 -*-
+"""
+Nghich Thuy Han New - BANG_CHU_SUPREME
+1 file duy nhất
+"""
 
-import os
-import json
-import random
-import asyncio
-from datetime import datetime, timezone, timedelta
+import os, json, random, math, asyncio
+from datetime import datetime, timedelta, timezone
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
+
+# =============== CẤU HÌNH CƠ BẢN ===============
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
+OWNER_DISCORD_ID = 821066331826421840  # ID của bạn
 
 DATA_DIR = "data"
-INVITE_MAP_FILE = os.path.join(DATA_DIR, "invite_map.json")
-LOG_FILE = os.path.join(DATA_DIR, "buffmem_log.json")
-USED_NAMES_FILE = os.path.join(DATA_DIR, "names_used.json")
-
 os.makedirs(DATA_DIR, exist_ok=True)
 
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
-OWNER_DISCORD_ID = 821066331826421840
+EXP_FILE          = os.path.join(DATA_DIR, "exp_week.json")
+BUFF_FILE         = os.path.join(DATA_DIR, "buff_links.json")
+NAMES_FILE        = os.path.join(DATA_DIR, "used_names.json")
+INVITES_FILE      = os.path.join(DATA_DIR, "invites_cache.json")
+CONFIG_FILE       = os.path.join(DATA_DIR, "config.json")
+TEAMCONF_FILE     = os.path.join(DATA_DIR, "team_config.json")
+ATTEND_FILE       = os.path.join(DATA_DIR, "attendance.json")
+TEAMSCORE_FILE    = os.path.join(DATA_DIR, "team_scores.json")
+LEVEL_REWARD_FILE = os.path.join(DATA_DIR, "level_rewards.json")
 
-# Intents
+default_files = [
+    (EXP_FILE,          {"users": {}, "prev_week": {}}),
+    (BUFF_FILE,         {"guilds": {}}),
+    (NAMES_FILE,        {}),
+    (INVITES_FILE,      {}),
+    (CONFIG_FILE,       {"guilds": {}, "exp_locked": False, "last_reset": ""}),
+    (TEAMCONF_FILE,     {"guilds": {}}),
+    (ATTEND_FILE,       {"guilds": {}}),
+    (TEAMSCORE_FILE,    {"guilds": {}}),
+    (LEVEL_REWARD_FILE, {"guilds": {}}),
+]
+for p, d in default_files:
+    if not os.path.exists(p):
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
+
 intents = discord.Intents.default()
-intents.members = True
 intents.guilds = True
-intents.invites = True
+intents.members = True
+intents.voice_states = True
 intents.message_content = True
+bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)
 
-bot = commands.Bot(
-    command_prefix="/",
-    intents=intents,
-    help_command=None
-)
-
-# Cache invite lúc trước join
-invite_cache = {}  # {guild_id_str: {code: uses_int, ...}}
-
-# ---------------------------
-# Helpers: load / save JSON
-# ---------------------------
-
+# =============== HÀM TIỆN ÍCH ===============
 def load_json(path, default):
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -82,59 +62,38 @@ def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def get_invite_map():
-    data = load_json(INVITE_MAP_FILE, {})
-    if "guilds" not in data:
-        data["guilds"] = {}
-    return data
+def now_utc():
+    return datetime.now(timezone.utc)
 
-def set_invite_map(data):
-    save_json(INVITE_MAP_FILE, data)
+def gmt7_now():
+    return now_utc() + timedelta(hours=7)
 
-def get_log_data():
-    # [
-    #   {
-    #     "time": "2025-11-02T18:41:10Z",
-    #     "guild_id": "...",
-    #     "user_id": "...",
-    #     "new_name": "...",
-    #     "role_ids": [...],
-    #     "invite_code": "..."
-    #   },
-    #   ...
-    # ]
-    return load_json(LOG_FILE, [])
+def today_str_gmt7():
+    return gmt7_now().date().isoformat()
 
-def set_log_data(data):
-    save_json(LOG_FILE, data)
+def is_owner(uid: int) -> bool:
+    return uid == OWNER_DISCORD_ID
 
-def get_used_names():
-    # { "<guild_id>": ["name1","name2",...] }
-    return load_json(USED_NAMES_FILE, {})
+def is_admin_ctx(ctx) -> bool:
+    return (
+        ctx.author.guild_permissions.manage_guild
+        or ctx.author.guild_permissions.administrator
+        or is_owner(ctx.author.id)
+    )
 
-def set_used_names(data):
-    save_json(USED_NAMES_FILE, data)
+# =============== KHÓA EXP THEO LỊCH ===============
+# T7, CN khóa
+# Thứ 2 trước 14h khóa
+def is_weekend_lock():
+    n = gmt7_now()
+    wd = n.weekday()        # Mon=0
+    if wd in (5, 6):        # T7, CN
+        return True
+    if wd == 0 and n.hour < 14:
+        return True
+    return False
 
-# ---------------------------
-# Quyền Chủ Bot
-# ---------------------------
-
-async def is_owner_user(ctx: commands.Context):
-    return ctx.author.id == OWNER_DISCORD_ID
-
-def only_owner():
-    async def predicate(ctx):
-        return await is_owner_user(ctx)
-    return commands.check(predicate)
-
-# ---------------------------
-# Sinh nickname kiểu Discord Việt
-# ---------------------------
-
-# ---------------------------
-# Sinh nickname kiểu Discord Việt (500 tên gốc, không trùng)
-# ---------------------------
-
+# =============== BỘ TÊN ẢO ===============
 BASE_NAMES_WITH_ACCENT = [
     "AnAn",
     "AnAnh",
@@ -749,537 +708,920 @@ POPULAR_NUMBERS = [
     "03", "07", "09", "2003", "2004", "97", "98"
 ]
 
+def get_used_names():
+    return load_json(NAMES_FILE, {})
 
-def pick_weighted_has_accent():
-    # ~60% có dấu / một phần dấu
-    return random.random() < 0.60
+def set_used_names(data):
+    save_json(NAMES_FILE, data)
 
-def build_base_name():
-    if pick_weighted_has_accent() and BASE_NAMES_WITH_ACCENT:
-        return random.choice(BASE_NAMES_WITH_ACCENT)
-    else:
-        return random.choice(BASE_NAMES_NO_ACCENT)
+def generate_nickname(gid: int) -> str:
+    used = get_used_names()
+    recent = used.get(str(gid), [])
+    for _ in range(60):
+        base = random.choice(BASE_NAMES_WITH_ACCENT if random.random()<0.6 else BASE_NAMES_NO_ACCENT)
+        name = base
+        style = random.randint(0, 5)
+        if style == 0:
+            name = f"{base}{random.choice(POPULAR_NUMBERS)}"
+        elif style == 1:
+            name = f"{base}{random.choice(SUFFIX_TOKENS)}"
+        elif style == 2:
+            name = f"{base}{random.choice(SUFFIX_TOKENS)}{random.choice(POPULAR_NUMBERS)}"
+        if random.random() < 0.25:
+            name = f"{name}{random.choice(DECOR_TOKENS)}"
+        name = name[:32]
+        if name not in recent:
+            recent.insert(0, name)
+            used[str(gid)] = recent[:200]
+            set_used_names(used)
+            return name
+    return base[:32]
 
-def maybe_mix_suffix(name: str) -> str:
-    style = random.randint(0, 6)
-    chosen_suffix = random.choice(SUFFIX_TOKENS)
-    chosen_num = random.choice(POPULAR_NUMBERS)
+# =============== BUFF MEM THEO LINK MỜI ===============
+invite_cache = {}
 
-    if style == 0:
-        out = f"{name}{chosen_num}"
-    elif style == 1:
-        out = f"{name}{chosen_suffix}"
-    elif style == 2:
-        out = f"{name}{chosen_suffix}{chosen_num}"
-    elif style == 3:
-        out = f"{name}_{chosen_suffix}"
-    elif style == 4:
-        out = f"{chosen_suffix}{name}"
-    elif style == 5:
-        if not name.lower().startswith("bé"):
-            out = f"bé{name}"
-        else:
-            out = name
-    else:
-        out = name
-    return out
+async def refresh_invites_for_guild(guild: discord.Guild):
+    invs = await guild.invites()
+    invite_cache[guild.id] = {i.code: i.uses for i in invs}
+    all_inv = load_json(INVITES_FILE, {})
+    all_inv[str(guild.id)] = invite_cache[guild.id]
+    save_json(INVITES_FILE, all_inv)
 
-def maybe_add_decor(name: str) -> str:
-    roll = random.random()
-    if roll < 0.3:
-        return f"{name}{random.choice(DECOR_TOKENS)}"
-    elif roll < 0.4:
-        return f"{random.choice(DECOR_TOKENS)}{name}"
-    elif roll < 0.5:
-        left = random.choice(DECOR_TOKENS)
-        right = random.choice(DECOR_TOKENS)
-        return f"{left}{name}{right}"
-    else:
-        return name
-
-def clamp_name(nick: str) -> str:
-    if len(nick) > 32:
-        return nick[:32]
-    return nick
-
-def generate_nickname(guild_id: int) -> str:
-    used_names = get_used_names()
-    recent_list = used_names.get(str(guild_id), [])
-
-    for _ in range(50):
-        base = build_base_name()
-        with_suffix = maybe_mix_suffix(base)
-        decorated = maybe_add_decor(with_suffix)
-        final_nick = clamp_name(decorated)
-
-        if final_nick not in recent_list:
-            recent_list.insert(0, final_nick)
-            recent_list = recent_list[:200]
-            used_names[str(guild_id)] = recent_list
-            set_used_names(used_names)
-            return final_nick
-
-    return clamp_name(with_suffix)
-
-# ---------------------------
-# Invite tracking
-# ---------------------------
-
-async def refresh_guild_invites(guild: discord.Guild):
-    gid = str(guild.id)
-    try:
-        invites = await guild.invites()
-    except discord.Forbidden:
-        invite_cache[gid] = {}
-        return
-    except Exception:
-        invite_cache[gid] = {}
-        return
-
-    invite_cache[gid] = {}
-    for inv in invites:
-        invite_cache[gid][inv.code] = inv.uses or 0
-
-def detect_used_invite_code(before_uses: dict, after_invites: list[discord.Invite]):
-    after_map = {}
-    for inv in after_invites:
-        after_map[inv.code] = inv.uses or 0
-
-    picked_code = None
-    for code, after_val in after_map.items():
-        before_val = before_uses.get(code, 0)
-        if after_val > before_val:
-            picked_code = code
+async def detect_used_invite(member: discord.Member):
+    after = await member.guild.invites()
+    before = invite_cache.get(member.guild.id, {})
+    used_code = None
+    for inv in after:
+        if inv.uses > before.get(inv.code, 0):
+            used_code = inv.code
             break
+    invite_cache[member.guild.id] = {i.code: i.uses for i in after}
+    all_inv = load_json(INVITES_FILE, {})
+    all_inv[str(member.guild.id)] = invite_cache[member.guild.id]
+    save_json(INVITES_FILE, all_inv)
+    return used_code
 
-    return picked_code, after_map
+async def apply_buff_rule(member: discord.Member, code: str):
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(member.guild.id))
+    if not g or not g.get("buff_enabled", True):
+        return
+    conf = g.get("links", {}).get(code)
+    if not conf:
+        return
+    nick = generate_nickname(member.guild.id)
+    try:
+        await member.edit(nick=nick, reason="buff mem")
+    except:
+        pass
+    for rid in conf.get("role_ids", []):
+        r = member.guild.get_role(rid)
+        if r:
+            try:
+                await member.add_roles(r)
+            except:
+                pass
 
-# ---------------------------
-# Events
-# ---------------------------
+# =============== EXP, LEVEL, NHIỆT, TEAM ===============
+def calc_level_from_total_exp(total_exp: int):
+    lvl = 0
+    spent = 0
+    while True:
+        need = 5 * (lvl ** 2) + 50 * lvl + 100
+        if total_exp < need:
+            return lvl, need - total_exp, spent
+        total_exp -= need
+        spent += need
+        lvl += 1
 
+voice_state_map = {}  # {guild_id: {user_id: start_time}}
+
+def ensure_user(exp_data, uid: str):
+    if uid not in exp_data["users"]:
+        exp_data["users"][uid] = {
+            "exp_chat": 0,
+            "exp_voice": 0,
+            "last_msg": None,
+            "voice_seconds_week": 0,
+            "heat": 0.0
+        }
+    else:
+        exp_data["users"][uid].setdefault("heat", 0.0)
+
+def add_heat(user_obj: dict, amount: float):
+    user_obj["heat"] = float(min(10.0, user_obj.get("heat", 0.0) + amount))
+
+def team_boost_today(gid: int, member: discord.Member):
+    att = load_json(ATTEND_FILE, {"guilds": {}})
+    teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
+    g_conf = teamconf["guilds"].get(str(gid), {})
+    g_att = att["guilds"].get(str(gid), {})
+    today = today_str_gmt7()
+    for rid, c in g_conf.get("teams", {}).items():
+        role = member.guild.get_role(int(rid))
+        if role and role in member.roles:
+            day_info = g_att.get(str(rid), {}).get(today, {})
+            if day_info.get("boost", False):
+                return True
+    return False
+
+def add_team_score(gid: int, rid: int, date: str, amount: float):
+    ts = load_json(TEAMSCORE_FILE, {"guilds": {}})
+    g = ts["guilds"].setdefault(str(gid), {})
+    r = g.setdefault(str(rid), {})
+    r[date] = r.get(date, 0) + amount
+    save_json(TEAMSCORE_FILE, ts)
+
+# =============== SỰ KIỆN VOICE: EXP VOICE + NHIỆT + ĐIỂM TEAM ===============
+@bot.event
+async def on_voice_state_update(member, before, after):
+    def open_mic(v):
+        return v.channel and not v.self_mute and not v.mute and not v.self_deaf and not v.deaf
+
+    gid = member.guild.id
+    voice_state_map.setdefault(gid, {})
+
+    if is_weekend_lock():
+        return
+
+    was = open_mic(before)
+    now = open_mic(after)
+
+    if now and not was:
+        # bắt đầu
+        voice_state_map[gid][member.id] = now_utc()
+    elif was and not now:
+        start = voice_state_map[gid].pop(member.id, None)
+        if start:
+            secs = (now_utc() - start).total_seconds()
+            if secs > 5:
+                bonus = int(secs // 30)
+                exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+                uid = str(member.id)
+                ensure_user(exp_data, uid)
+                u = exp_data["users"][uid]
+
+                if bonus > 0:
+                    if team_boost_today(gid, member):
+                        bonus *= 2
+                    u["exp_voice"] += bonus
+                u["voice_seconds_week"] += int(secs)
+
+                # nhiệt từ voice
+                heat_add = (secs / 600.0) * 0.2  # 10p = 0.2
+                add_heat(u, heat_add)
+
+                save_json(EXP_FILE, exp_data)
+                total_now = u["exp_chat"] + u["exp_voice"]
+                try_grant_level_reward(member, total_now)
+
+                # điểm team từ voice (nếu user active)
+                att = load_json(ATTEND_FILE, {"guilds": {}})
+                g_att = att["guilds"].get(str(gid), {})
+                today = today_str_gmt7()
+                for rid, daymap in g_att.items():
+                    di = daymap.get(today)
+                    if not di:
+                        continue
+                    if str(member.id) in di.get("active_members", []):
+                        team_pts = (secs / 60.0) * 0.2
+                        if di.get("boost", False):
+                            team_pts *= 2
+                        add_team_score(gid, int(rid), today, team_pts)
+                        break
+
+def try_grant_level_reward(member: discord.Member, new_total_exp: int):
+    level, to_next, _ = calc_level_from_total_exp(new_total_exp)
+    data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(member.guild.id), {})
+    rid = g.get(str(level))
+    if not rid:
+        return
+    role = member.guild.get_role(rid)
+    if role and role not in member.roles:
+        asyncio.create_task(member.add_roles(role, reason=f"Đạt level {level}"))
+
+# =============== SỰ KIỆN MESSAGE: EXP CHAT + NHIỆT + ĐIỂM TEAM ===============
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot or not message.guild:
+        return
+
+    if not is_weekend_lock():
+        cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False, "last_reset": ""})
+        gconf = cfg["guilds"].get(str(message.guild.id), {})
+        exp_chs = gconf.get("exp_channels", [])
+        allow = (not exp_chs) or (message.channel.id in exp_chs)
+        if allow:
+            exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+            uid = str(message.author.id)
+            ensure_user(exp_data, uid)
+            u = exp_data["users"][uid]
+            last = u.get("last_msg")
+            if not last or (now_utc() - datetime.fromisoformat(last)).total_seconds() >= 10:
+                add_exp = random.randint(5, 15)
+                if team_boost_today(message.guild.id, message.author):
+                    add_exp *= 2
+                u["exp_chat"] += add_exp
+                u["last_msg"] = now_utc().isoformat()
+
+                # nhiệt từ chat
+                add_heat(u, (add_exp / 20.0) * 0.1)
+
+                save_json(EXP_FILE, exp_data)
+                total_now = u["exp_chat"] + u["exp_voice"]
+                try_grant_level_reward(message.author, total_now)
+
+                # điểm team từ chat nếu active
+                att = load_json(ATTEND_FILE, {"guilds": {}})
+                g_att = att["guilds"].get(str(message.guild.id), {})
+                today = today_str_gmt7()
+                for rid, daymap in g_att.items():
+                    di = daymap.get(today)
+                    if not di:
+                        continue
+                    if str(message.author.id) in di.get("active_members", []):
+                        add_team_score(message.guild.id, int(rid), today, 0.1)
+                        break
+
+    await bot.process_commands(message)
+
+# =============== READY & JOIN ===============
 @bot.event
 async def on_ready():
-    print(f"✅ Bot buff mem ảo v1_2 đã sẵn sàng. Logged in as {bot.user} (id: {bot.user.id})")
+    print("✅ Bot online:", bot.user)
     for g in bot.guilds:
-        await refresh_guild_invites(g)
-
-@bot.event
-async def on_guild_join(guild: discord.Guild):
-    await refresh_guild_invites(guild)
+        try:
+            await refresh_invites_for_guild(g)
+        except:
+            pass
+    auto_weekly_reset.start()
+    auto_diemdanh_dm.start()
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    guild = member.guild
-    gid = str(guild.id)
+    code = await detect_used_invite(member)
+    if code:
+        await apply_buff_rule(member, code)
 
-    before_uses = invite_cache.get(gid, {}).copy()
+# =============== VIEW KÊNH EXP ===============
+class KenhExpView(discord.ui.View):
+    def __init__(self, ctx, cfg):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+        self.cfg = cfg
 
-    try:
-        invites_after = await guild.invites()
-    except discord.Forbidden:
-        invites_after = []
-    except Exception:
-        invites_after = []
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.ctx.author.id
 
-    code_used, after_map = detect_used_invite_code(before_uses, invites_after)
-    invite_cache[gid] = after_map
+    @discord.ui.button(label="➕ Set kênh này", style=discord.ButtonStyle.success)
+    async def set_this(self, interaction: discord.Interaction, button):
+        gid = str(self.ctx.guild.id)
+        g = self.cfg["guilds"].setdefault(gid, {})
+        lst = g.get("exp_channels", [])
+        if interaction.channel.id not in lst:
+            lst.append(interaction.channel.id)
+        g["exp_channels"] = lst
+        save_json(CONFIG_FILE, self.cfg)
+        await interaction.response.edit_message(content=f"✅ Đã set {interaction.channel.mention} tính exp", view=self)
 
-    if code_used is None:
+    @discord.ui.button(label="🗑 Xóa kênh này", style=discord.ButtonStyle.danger)
+    async def del_this(self, interaction: discord.Interaction, button):
+        gid = str(self.ctx.guild.id)
+        g = self.cfg["guilds"].setdefault(gid, {})
+        lst = g.get("exp_channels", [])
+        if interaction.channel.id in lst:
+            lst.remove(interaction.channel.id)
+        g["exp_channels"] = lst
+        save_json(CONFIG_FILE, self.cfg)
+        await interaction.response.edit_message(content=f"🗑 Đã xóa {interaction.channel.mention} khỏi exp", view=self)
+
+    @discord.ui.button(label="➕ Thêm kênh phụ", style=discord.ButtonStyle.secondary)
+    async def hint(self, interaction: discord.Interaction, button):
+        await interaction.response.send_message("👉 Thêm nhiều kênh: `/kenhchat #k1 #k2 #k3`", ephemeral=True)
+
+    @discord.ui.button(label="📜 Danh sách", style=discord.ButtonStyle.primary)
+    async def list_all(self, interaction: discord.Interaction, button):
+        gid = str(self.ctx.guild.id)
+        g = self.cfg["guilds"].setdefault(gid, {})
+        lst = g.get("exp_channels", [])
+        if not lst:
+            await interaction.response.send_message("📭 Chưa có kênh exp.", ephemeral=True)
+        else:
+            chans = []
+            for cid in lst:
+                c = self.ctx.guild.get_channel(cid)
+                if c:
+                    chans.append(c.mention)
+            await interaction.response.send_message("📜 Kênh exp: " + ", ".join(chans), ephemeral=True)
+
+# =============== PHÂN TRANG CHUNG ===============
+class PageView(discord.ui.View):
+    def __init__(self, ctx, pages):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+        self.pages = pages
+        self.index = 0
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.ctx.author.id
+
+    @discord.ui.button(label="⬅️", style=discord.ButtonStyle.secondary)
+    async def prev(self, interaction: discord.Interaction, button):
+        if self.index > 0:
+            self.index -= 1
+            await interaction.response.edit_message(embed=self.pages[self.index], view=self)
+        else:
+            await interaction.response.defer()
+
+    @discord.ui.button(label="➡️", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button):
+        if self.index < len(self.pages)-1:
+            self.index += 1
+            await interaction.response.edit_message(embed=self.pages[self.index], view=self)
+        else:
+            await interaction.response.defer()
+
+# =============== LỆNH NGƯỜI DÙNG / ADMIN / CHỦ BOT ===============
+@bot.command(name="lenh")
+async def cmd_lenh(ctx):
+    await ctx.reply(
+        "📜 LỆNH NGƯỜI DÙNG:\n"
+        "/hoso – xem hồ sơ tu luyện\n"
+        "/bangcapdo – bảng exp lên cấp\n"
+        "/topnhiet – top nhiệt huyết (cá nhân)\n"
+        "/diemdanh – điểm danh theo team (nếu admin bật)\n"
+        "/bxhkimlan – xem các team điểm danh 7 ngày\n"
+        "/bxhkimlan @team – xem chi tiết 1 team"
+    )
+
+@bot.command(name="lenhadmin")
+async def cmd_lenhadmin(ctx):
+    if not is_admin_ctx(ctx):
+        await ctx.reply("⛔ Bạn không phải admin.")
+        return
+    await ctx.reply(
+        "🛠 LỆNH ADMIN:\n"
+        "/kenhchat [#k...] – quản lý kênh tính exp\n"
+        "/setdiemdanh @role... [#kenh] [giờ phút tối thiểu] – bật điểm danh\n"
+        "/thongke – thống kê exp theo cấp độ\n"
+        "/topnhiet [tuantruoc] – top nhiệt huyết\n"
+        "/setthuongcap <level> @role – đạt lvl tặng role\n"
+        "/xemthuongcap – xem mốc thưởng\n"
+        "/bxhkimlan – xem tổng quan team 7 ngày"
+    )
+
+@bot.command(name="lenhchubot")
+async def cmd_lenhchubot(ctx):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Không phải chủ bot.")
+        return
+    await ctx.reply(
+        "👑 LỆNH CHỦ BOT:\n"
+        "/setlink <link> [@role ...]\n"
+        "/xemlink\n"
+        "/xoalink <link>\n"
+        "/batbuff /tatbuff"
+    )
+
+# =============== /kenhchat ===============
+@bot.command(name="kenhchat")
+@commands.has_permissions(manage_guild=True)
+async def cmd_kenhchat(ctx, *channels: discord.TextChannel):
+    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False, "last_reset": ""})
+    if channels:
+        gid = str(ctx.guild.id)
+        g = cfg["guilds"].setdefault(gid, {})
+        lst = g.get("exp_channels", [])
+        for ch in channels:
+            if ch.id not in lst:
+                lst.append(ch.id)
+        g["exp_channels"] = lst
+        save_json(CONFIG_FILE, cfg)
+        await ctx.reply("✅ Đã thêm kênh vào danh sách exp.")
+    else:
+        await ctx.reply("Quản lý kênh exp:", view=KenhExpView(ctx, cfg))
+
+# =============== /hoso ===============
+@bot.command(name="hoso")
+async def cmd_hoso(ctx, member: discord.Member=None):
+    if member is None:
+        member = ctx.author
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+    u = exp_data["users"].get(str(member.id))
+    if not u:
+        await ctx.reply("📭 Chưa có dữ liệu.")
+        return
+    total = u.get("exp_chat",0) + u.get("exp_voice",0)
+    level, to_next, spent = calc_level_from_total_exp(total)
+    exp_in_level = total - spent
+    heat = u.get("heat", 0.0)
+    await ctx.reply(
+        f"📄 Hồ sơ của {member.mention}:\n"
+        f"- Level: **{level}**\n"
+        f"- Tiến độ: {exp_in_level}/{exp_in_level + to_next} exp\n"
+        f"- Chat: {u.get('exp_chat',0)} | Voice: {u.get('exp_voice',0)}\n"
+        f"- Thoại: {math.floor(u.get('voice_seconds_week',0)/60)} phút\n"
+        f"- Nhiệt huyết: **{heat:.1f}/10**"
+    )
+
+# =============== /bangcapdo ===============
+@bot.command(name="bangcapdo")
+async def cmd_bangcapdo(ctx, max_level: int=10):
+    lines = ["📘 BẢNG EXP LÊN CẤP:"]
+    total = 0
+    for lvl in range(0, max_level+1):
+        need = 5*(lvl**2) + 50*lvl + 100
+        total += need
+        lines.append(f"- Level {lvl}: cần {need} exp (tổng tới đây: {total})")
+    await ctx.reply("\n".join(lines))
+
+# =============== /thongke (exp) ===============
+@bot.command(name="thongke")
+async def cmd_thongke(ctx):
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+    users = exp_data.get("users", {})
+    role_filter = ctx.message.role_mentions[0] if ctx.message.role_mentions else None
+    rows = []
+    for uid, info in users.items():
+        m = ctx.guild.get_member(int(uid))
+        if not m:
+            continue
+        if role_filter and role_filter not in m.roles:
+            continue
+        total = info.get("exp_chat",0) + info.get("exp_voice",0)
+        level, to_next, spent = calc_level_from_total_exp(total)
+        exp_in_level = total - spent
+        rows.append((
+            m,
+            total,
+            level,
+            exp_in_level,
+            exp_in_level + to_next,
+            math.floor(info.get("voice_seconds_week",0)/60),
+            info.get("heat",0.0)
+        ))
+    rows.sort(key=lambda x: x[1], reverse=True)
+    if not rows:
+        await ctx.reply("📭 Không có dữ liệu.")
         return
 
-    data = get_invite_map()
-    guild_conf = data["guilds"].get(gid)
-    if not guild_conf:
+    pages = []
+    per = 10
+    for i in range(0, len(rows), per):
+        chunk = rows[i:i+per]
+        e = discord.Embed(title="📑 THỐNG KÊ EXP", description=f"Trang {i//per + 1}", color=0x3498DB)
+        for idx,(m,total,lv,ein,eneed,vm,heat) in enumerate(chunk, start=i+1):
+            e.add_field(
+                name=f"{idx}. {m.display_name}",
+                value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
+                inline=False
+            )
+        pages.append(e)
+    if len(pages) == 1:
+        await ctx.reply(embed=pages[0])
+    else:
+        await ctx.reply(embed=pages[0], view=PageView(ctx, pages))
+
+# =============== /topnhiet ===============
+@bot.command(name="topnhiet")
+async def cmd_topnhiet(ctx, mode: str=None):
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+    if mode == "tuantruoc":
+        source = exp_data.get("prev_week", {})
+        title_suf = " (tuần trước)"
+    else:
+        source = exp_data.get("users", {})
+        title_suf = ""
+    rows = []
+    for uid, info in source.items():
+        m = ctx.guild.get_member(int(uid))
+        if not m:
+            continue
+        total = info.get("exp_chat",0) + info.get("exp_voice",0)
+        level, to_next, spent = calc_level_from_total_exp(total)
+        exp_in_level = total - spent
+        rows.append((m, info.get("heat",0.0), level, exp_in_level, exp_in_level+to_next, math.floor(info.get("voice_seconds_week",0)/60)))
+    rows.sort(key=lambda x: x[1], reverse=True)
+    if not rows:
+        await ctx.reply("📭 Không có dữ liệu.")
         return
+    pages = []
+    per = 10
+    for i in range(0, len(rows), per):
+        chunk = rows[i:i+per]
+        e = discord.Embed(title=f"🔥 TOP NHIỆT HUYẾT{title_suf}", description=f"Trang {i//per+1}", color=0xFF8C00)
+        for idx,(m,heat,lv,ein,eneed,vm) in enumerate(chunk, start=i+1):
+            e.add_field(
+                name=f"{idx}. {m.display_name}",
+                value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
+                inline=False
+            )
+        pages.append(e)
+    if len(pages) == 1:
+        await ctx.reply(embed=pages[0])
+    else:
+        await ctx.reply(embed=pages[0], view=PageView(ctx, pages))
 
-    if not guild_conf.get("buff_enabled", True):
+# =============== /setthuongcap, /xemthuongcap ===============
+@bot.command(name="setthuongcap")
+@commands.has_permissions(manage_guild=True)
+async def cmd_setthuongcap(ctx, level: int, role: discord.Role):
+    data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {})
+    g[str(level)] = role.id
+    save_json(LEVEL_REWARD_FILE, data)
+    await ctx.reply(f"✅ Khi đạt level {level} sẽ được role {role.mention}")
+
+@bot.command(name="xemthuongcap")
+async def cmd_xemthuongcap(ctx):
+    data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(ctx.guild.id), {})
+    if not g:
+        await ctx.reply("📭 Chưa có mốc thưởng.")
         return
+    lines = ["🎁 Mốc thưởng cấp:"]
+    for lv, rid in sorted(g.items(), key=lambda x: int(x[0])):
+        r = ctx.guild.get_role(rid)
+        lines.append(f"- Level {lv} → {r.mention if r else rid}")
+    await ctx.reply("\n".join(lines))
 
-    link_conf = guild_conf.get("links", {}).get(code_used)
-    if not link_conf or not link_conf.get("active", True):
-        return
-
-    role_ids = link_conf.get("role_ids", [])
-
-    # 1. gán tất cả role
-    for rid in role_ids:
-        r = guild.get_role(rid)
-        if r:
-            try:
-                await member.add_roles(r, reason="buff mem ảo auto-role")
-            except discord.Forbidden:
-                pass
-            except Exception:
-                pass
-        await asyncio.sleep(0.05)
-
-    # 2. đổi nickname
-    new_name = generate_nickname(member.guild.id)
-    try:
-        await member.edit(nick=new_name, reason="buff mem ảo auto-nick")
-    except discord.Forbidden:
-        pass
-    except Exception:
-        pass
-
-    # 3. log
-    logs = get_log_data()
-    log_entry = {
-        "time": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-        "guild_id": gid,
-        "user_id": str(member.id),
-        "new_name": new_name,
-        "role_ids": role_ids,
-        "invite_code": code_used
-    }
-    logs.append(log_entry)
-    logs = logs[-400:]  # giữ 400 record gần nhất
-    set_log_data(logs)
-
-    print(f"[BUFF] {member} -> '{new_name}' via {code_used} roles={role_ids}")
-
-# ---------------------------
-# Commands Chủ Bot
-# ---------------------------
-
-@bot.command(name="setlink")
-@only_owner()
-async def cmd_setlink(ctx: commands.Context, invite_url: str, *roles: discord.Role):
-    """
-    /setlink <invite_url> <@role1> <@role2> ...
-    Gán 1 link buff với 1 danh sách role.
-    """
+# =============== /setdiemdanh ===============
+@bot.command(name="setdiemdanh")
+@commands.has_permissions(manage_guild=True)
+async def cmd_setdiemdanh(ctx, *, _rest: str=""):
+    roles = ctx.message.role_mentions
+    channels = ctx.message.channel_mentions
+    parts = ctx.message.content.split()
+    nums = [p for p in parts if p.isdigit()]
+    start_hour = 20
+    start_min = 0
+    min_count = 9
+    if len(nums) >= 1: start_hour = int(nums[0])
+    if len(nums) >= 2: start_min = int(nums[1])
+    if len(nums) >= 3: min_count = int(nums[2])
     if not roles:
         await ctx.reply("❌ Bạn phải tag ít nhất 1 role.")
         return
+    channel = channels[0] if channels else None
 
-    code = invite_url.strip().split("/")[-1]
-    gid = str(ctx.guild.id)
-
-    data = get_invite_map()
-    if gid not in data["guilds"]:
-        data["guilds"][gid] = {
-            "buff_enabled": True,
-            "links": {}
+    tc = load_json(TEAMCONF_FILE, {"guilds": {}})
+    g = tc["guilds"].setdefault(str(ctx.guild.id), {"teams": {}})
+    for r in roles:
+        g["teams"][str(r.id)] = {
+            "name": r.name,
+            "channel_id": channel.id if channel else None,
+            "start_hour": start_hour,
+            "start_minute": start_min,
+            "min_count": min_count,
+            "max_tag": 3
         }
+    save_json(TEAMCONF_FILE, tc)
+    await ctx.reply(f"✅ Đã cấu hình điểm danh cho {len(roles)} role.")
 
-    data["guilds"][gid]["links"][code] = {
-        "role_ids": [r.id for r in roles],
-        "active": True
-    }
+# =============== /diemdanh ===============
+@bot.command(name="diemdanh")
+async def cmd_diemdanh(ctx):
+    if is_weekend_lock():
+        await ctx.reply("⛔ Cuối tuần nghỉ điểm danh.")
+        return
 
-    set_invite_map(data)
-    await refresh_guild_invites(ctx.guild)
+    member = ctx.author
+    guild_id = str(ctx.guild.id)
+    teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
+    att = load_json(ATTEND_FILE, {"guilds": {}})
+    teams = teamconf["guilds"].get(guild_id, {}).get("teams", {})
+    g_att = att["guilds"].setdefault(guild_id, {})
+    role_id = None
+    conf = None
+    for rid, c in teams.items():
+        role = ctx.guild.get_role(int(rid))
+        if role and role in member.roles:
+            role_id = int(rid)
+            conf = c
+            break
+    if not conf:
+        await ctx.reply("⛔ Bạn không thuộc team nào đang bật điểm danh.")
+        return
 
-    role_mentions = " ".join(r.mention for r in roles)
-    await ctx.reply(
-        f"✅ Đã gán link `{code}` với các role: {role_mentions}\n"
-        f"Ai join bằng link này sẽ được buff mem ảo."
-    )
+    now = gmt7_now()
+    if (now.hour, now.minute) < (conf.get("start_hour",20), conf.get("start_minute",0)):
+        await ctx.reply("⏰ Chưa tới giờ điểm danh.")
+        return
 
+    today = today_str_gmt7()
+    day_data = g_att.setdefault(str(role_id), {}).setdefault(today, {
+        "checked": [],
+        "dm_sent": [],
+        "tag_count": 0,
+        "boost": False,
+        "total_at_day": 0,
+        "active_members": []
+    })
+
+    role_obj = ctx.guild.get_role(role_id)
+    total_members = len(role_obj.members) if role_obj else 0
+    day_data["total_at_day"] = total_members
+
+    uid = str(member.id)
+    if uid in day_data["checked"]:
+        await ctx.reply("✅ Bạn đã điểm danh hôm nay rồi.")
+        return
+
+    # đánh dấu
+    day_data["checked"].append(uid)
+    if uid not in day_data["active_members"]:
+        day_data["active_members"].append(uid)
+
+    # cộng điểm team: điểm danh = +1
+    add_team_score(ctx.guild.id, role_id, today, 1)
+
+    # cộng nhiệt cá nhân
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+    ensure_user(exp_data, uid)
+    u = exp_data["users"][uid]
+    add_heat(u, 0.5)  # điểm danh = +0.5
+    save_json(EXP_FILE, exp_data)
+
+    g_att[str(role_id)][today] = day_data
+    att["guilds"][guild_id] = g_att
+    save_json(ATTEND_FILE, att)
+
+    checked = len(day_data["checked"])
+    await ctx.reply(f"✅ Điểm danh thành công cho **{conf.get('name','Team')}** ({checked}/{total_members})")
+
+    # tag nhắc những người chưa điểm danh
+    if day_data["tag_count"] < conf.get("max_tag",3) and role_obj:
+        not_checked = [m for m in role_obj.members if str(m.id) not in day_data["checked"]]
+        if not_checked:
+            ch = ctx.guild.get_channel(conf.get("channel_id")) or ctx.channel
+            await ch.send(
+                f"Các bạn thân yêu ơi! Đã đến giờ hoạt động team rồi, hãy online đi hoạt động cùng **{conf.get('name','Team')}** nha 💛\n"
+                f"Chưa điểm danh: {' '.join(m.mention for m in not_checked[:20])}"
+            )
+            day_data["tag_count"] += 1
+            g_att[str(role_id)][today] = day_data
+            att["guilds"][guild_id] = g_att
+            save_json(ATTEND_FILE, att)
+
+    # kiểm tra kích hoạt boost
+    need = conf.get("min_count", 9)
+    enough_count = checked >= need
+    enough_percent = total_members > 0 and checked / total_members >= 0.75
+    if not day_data.get("boost", False) and (enough_count or enough_percent):
+        day_data["boost"] = True
+        g_att[str(role_id)][today] = day_data
+        att["guilds"][guild_id] = g_att
+        save_json(ATTEND_FILE, att)
+        add_team_score(ctx.guild.id, role_id, today, 5)  # thưởng team
+        # thưởng thêm nhiệt cho người vừa kích hoạt
+        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+        ensure_user(exp_data, uid)
+        u = exp_data["users"][uid]
+        add_heat(u, 0.3)
+        save_json(EXP_FILE, exp_data)
+        ch = ctx.guild.get_channel(conf.get("channel_id")) or ctx.channel
+        await ch.send(f"🎉 Team **{conf.get('name','Team')}** đã kích hoạt x2 hôm nay!")
+
+# =============== /bxhkimlan (tổng & chi tiết) ===============
+@bot.command(name="bxhkimlan")
+async def cmd_bxhkimlan(ctx, role: discord.Role=None):
+    teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
+    att = load_json(ATTEND_FILE, {"guilds": {}})
+    teamscore = load_json(TEAMSCORE_FILE, {"guilds": {}})
+
+    gid = str(ctx.guild.id)
+    teams_conf = teamconf["guilds"].get(gid, {}).get("teams", {})
+    att_guild = att["guilds"].get(gid, {})
+    score_guild = teamscore["guilds"].get(gid, {})
+    today = today_str_gmt7()
+
+    # --- không tag -> tổng hợp tất cả team ---
+    if role is None:
+        if not teams_conf:
+            await ctx.reply("📭 Chưa có team nào.")
+            return
+        results = []
+        for rid, conf in teams_conf.items():
+            r_obj = ctx.guild.get_role(int(rid))
+            name = conf.get("name") or (r_obj.name if r_obj else f"Role {rid}")
+            role_days = att_guild.get(rid, {})
+            days = sorted(role_days.keys(), reverse=True)[:7]
+            total_quy = 0
+            total_rate = 0
+            count_day = 0
+            good_days = []
+            bad_days = []
+            for d in days:
+                info = role_days[d]
+                tot = info.get("total_at_day", 0)
+                chk = len(info.get("checked", []))
+                boosted = info.get("boost", False)
+                total_quy += score_guild.get(d, 0)
+                if tot > 0:
+                    rate = chk / tot
+                    total_rate += rate
+                    count_day += 1
+                    wd = datetime.fromisoformat(d).weekday()
+                    thu = ["T2","T3","T4","T5","T6","T7","CN"][wd]
+                    if chk == tot:
+                        good_days.append(f"{thu} {chk}/{tot}" + (" (x2)" if boosted else ""))
+                    else:
+                        bad_days.append(f"{thu} {chk}/{tot}")
+            avg = (total_rate / count_day * 100) if count_day else 0
+            results.append({
+                "name": name,
+                "quy": total_quy,
+                "good": good_days,
+                "bad": bad_days,
+                "avg": avg
+            })
+        results.sort(key=lambda x: x["quy"], reverse=True)
+        pages = []
+        per = 10
+        for i in range(0, len(results), per):
+            chunk = results[i:i+per]
+            e = discord.Embed(
+                title="📊 BẢNG ĐIỂM DANH CÁC TEAM (7 ngày)",
+                description=f"Trang {i//per + 1}",
+                color=0x2ecc71
+            )
+            for idx, t in enumerate(chunk, start=i+1):
+                good = ", ".join(t["good"]) if t["good"] else "—"
+                bad = ", ".join(t["bad"]) if t["bad"] else "—"
+                e.add_field(
+                    name=f"{idx}. {t['name']}",
+                    value=f"Ngày điểm danh: {good}\nNgày không đủ: {bad}\nTổng điểm quỹ: **{t['quy']:.1f}** | Tỷ lệ TB: **{t['avg']:.0f}%**",
+                    inline=False
+                )
+            pages.append(e)
+        if len(pages) == 1:
+            await ctx.reply(embed=pages[0])
+        else:
+            await ctx.reply(embed=pages[0], view=PageView(ctx, pages))
+        return
+
+    # --- có tag -> chi tiết 1 team ---
+    rid = str(role.id)
+    if rid not in teams_conf:
+        await ctx.reply("❌ Team này chưa được /setdiemdanh.")
+        return
+    role_days = att_guild.get(rid, {})
+    if not role_days:
+        await ctx.reply("📭 Team này chưa có dữ liệu.")
+        return
+    days = sorted(role_days.keys(), reverse=True)[:7]
+    lines = [f"📅 BẢNG ĐIỂM DANH TEAM **{role.name}**", f"Từ {days[-1]} → {days[0]}"]
+    total_quy = 0
+    hit = 0
+    dd_day = 0
+    for d in days:
+        info = role_days[d]
+        tot = info.get("total_at_day", 0)
+        chk = len(info.get("checked", []))
+        boosted = info.get("boost", False)
+        total_quy += score_guild.get(d, 0)
+        wd = datetime.fromisoformat(d).weekday()
+        thu = ["Thứ 2","Thứ 3","Thứ 4","Thứ 5","Thứ 6","Thứ 7","CN"][wd]
+        if tot == 0:
+            lines.append(f"{thu}: ❌ 0/0")
+        else:
+            dd_day += 1
+            if chk == tot:
+                icon = "✅"
+                hit += 1
+            elif chk == 0:
+                icon = "❌"
+            else:
+                icon = "⚠️"
+            extra = " (x2)" if boosted else ""
+            lines.append(f"{thu}: {icon} {chk}/{tot}{extra}")
+    rate = int(hit / dd_day * 100) if dd_day else 0
+    lines.append(f"\nTổng điểm quỹ: **{total_quy:.1f}**  |  Tỷ lệ điểm danh TB: **{rate}%**")
+    await ctx.reply("\n".join(lines))
+
+# =============== DM NHẮC ĐIỂM DANH ===============
+@tasks.loop(minutes=10)
+async def auto_diemdanh_dm():
+    if is_weekend_lock():
+        return
+    att = load_json(ATTEND_FILE, {"guilds": {}})
+    today = today_str_gmt7()
+    for guild in bot.guilds:
+        g_att = att["guilds"].get(str(guild.id), {})
+        for rid, daymap in g_att.items():
+            di = daymap.get(today)
+            if not di:
+                continue
+            role = guild.get_role(int(rid))
+            if not role:
+                continue
+            dm_sent = set(di.get("dm_sent", []))
+            not_checked = [m for m in role.members if str(m.id) not in di.get("checked", [])]
+            to_dm = [m for m in not_checked if str(m.id) not in dm_sent]
+            for m in to_dm[:10]:
+                try:
+                    await m.send(f"💛 Team **{role.name}** đang điểm danh, dùng /diemdanh nha.")
+                except:
+                    pass
+                di.setdefault("dm_sent", []).append(str(m.id))
+            g_att[rid][today] = di
+        att["guilds"][str(guild.id)] = g_att
+    save_json(ATTEND_FILE, att)
+
+# =============== RESET TUẦN ===============
+@tasks.loop(minutes=5)
+async def auto_weekly_reset():
+    now = gmt7_now()
+    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False, "last_reset": ""})
+    last_reset = cfg.get("last_reset", "")
+    today = now.date().isoformat()
+
+    # 00:00 thứ 7
+    if now.weekday() == 5 and now.hour == 0 and last_reset != today:
+        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+        exp_data["prev_week"] = exp_data.get("users", {})
+        exp_data["users"] = {}
+        save_json(EXP_FILE, exp_data)
+        cfg["last_reset"] = today
+        cfg["exp_locked"] = True
+        save_json(CONFIG_FILE, cfg)
+        print("🔁 Reset tuần.")
+
+    # mở lại T2 14:00
+    if now.weekday() == 0 and now.hour >= 14 and cfg.get("exp_locked", False):
+        cfg["exp_locked"] = False
+        save_json(CONFIG_FILE, cfg)
+        print("🔓 Mở lại exp sau reset.")
+
+# =============== LỆNH CHỦ BOT: BUFF LINK ===============
+@bot.command(name="setlink")
+async def cmd_setlink(ctx, invite_url: str, *roles: discord.Role):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot dùng được.")
+        return
+    code = invite_url.strip().split("/")[-1]
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {"buff_enabled": True, "links": {}})
+    g["links"][code] = {"role_ids": [r.id for r in roles], "active": True}
+    save_json(BUFF_FILE, data)
+    await ctx.reply("✅ Đã gán link buff.")
 
 @bot.command(name="xemlink")
-@only_owner()
-async def cmd_xemlink(ctx: commands.Context):
-    """
-    /xemlink
-    Xem tất cả link buff + role tương ứng
-    """
-    gid = str(ctx.guild.id)
-    data = get_invite_map()
-    guild_conf = data["guilds"].get(gid)
-
-    if not guild_conf or not guild_conf.get("links"):
-        await ctx.reply("📭 Chưa có link buff nào trong bang này.")
+async def cmd_xemlink(ctx):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot.")
         return
-
-    buff_enabled = guild_conf.get("buff_enabled", True)
-    status_txt = "BẬT" if buff_enabled else "TẮT"
-
-    lines = [f"Chế độ buff toàn bang: {status_txt}"]
-    for code, conf in guild_conf["links"].items():
-        active = conf.get("active", True)
-        role_ids = conf.get("role_ids", [])
-        role_mentions = []
-        for rid in role_ids:
-            r = ctx.guild.get_role(rid)
-            role_mentions.append(r.mention if r else str(rid))
-        lines.append(
-            f"- `{code}` -> Roles: {' '.join(role_mentions)} | Trạng thái: {'ON' if active else 'OFF'}"
-        )
-
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(ctx.guild.id))
+    if not g:
+        await ctx.reply("📭 Chưa có link.")
+        return
+    lines = [f"Buff: {'ON' if g.get('buff_enabled',True) else 'OFF'}"]
+    for code, conf in g.get("links", {}).items():
+        lines.append(f"- {code}: {conf}")
     await ctx.reply("\n".join(lines))
-
 
 @bot.command(name="xoalink")
-@only_owner()
-async def cmd_xoalink(ctx: commands.Context, invite_url: str):
-    """
-    /xoalink <invite_url>
-    Tắt 1 link buff cụ thể (active=false)
-    """
-    code = invite_url.strip().split("/")[-1]
-    gid = str(ctx.guild.id)
-
-    data = get_invite_map()
-    guild_conf = data["guilds"].get(gid)
-
-    if not guild_conf or code not in guild_conf.get("links", {}):
-        await ctx.reply("❌ Link này chưa được cấu hình.")
+async def cmd_xoalink(ctx, invite_url: str):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot.")
         return
-
-    guild_conf["links"][code]["active"] = False
-    data["guilds"][gid] = guild_conf
-    set_invite_map(data)
-
-    await ctx.reply(f"📴 Đã tắt link `{code}`. Link này sẽ không buff nữa.")
-
+    code = invite_url.strip().split("/")[-1]
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(ctx.guild.id))
+    if not g or code not in g.get("links", {}):
+        await ctx.reply("❌ Không có link này.")
+        return
+    g["links"][code]["active"] = False
+    save_json(BUFF_FILE, data)
+    await ctx.reply("✅ Đã tắt link này.")
 
 @bot.command(name="batbuff")
-@only_owner()
-async def cmd_batbuff(ctx: commands.Context):
-    """
-    /batbuff
-    Bật buff mem ảo toàn bang
-    """
-    gid = str(ctx.guild.id)
-    data = get_invite_map()
-    if gid not in data["guilds"]:
-        data["guilds"][gid] = {
-            "buff_enabled": True,
-            "links": {}
-        }
-    else:
-        data["guilds"][gid]["buff_enabled"] = True
-
-    set_invite_map(data)
-    await ctx.reply("✅ ĐÃ BẬT buff mem ảo cho bang này.")
-
+async def cmd_batbuff(ctx):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot.")
+        return
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {"buff_enabled": True, "links": {}})
+    g["buff_enabled"] = True
+    save_json(BUFF_FILE, data)
+    await ctx.reply("✅ Đã bật buff mem.")
 
 @bot.command(name="tatbuff")
-@only_owner()
-async def cmd_tatbuff(ctx: commands.Context):
-    """
-    /tatbuff
-    Tắt buff mem ảo toàn bang
-    """
-    gid = str(ctx.guild.id)
-    data = get_invite_map()
-    if gid not in data["guilds"]:
-        data["guilds"][gid] = {
-            "buff_enabled": False,
-            "links": {}
-        }
-    else:
-        data["guilds"][gid]["buff_enabled"] = False
-
-    set_invite_map(data)
-    await ctx.reply("⛔ ĐÃ TẮT buff mem ảo cho bang này.")
-
-
-# ========== /kiemtratv ==========
-
-@bot.command(name="kiemtratv")
-@only_owner()
-async def cmd_kiemtratv(ctx: commands.Context, *args):
-    """
-    /kiemtratv
-    /kiemtratv @user
-    /kiemtratv role:@role
-    /kiemtratv gio:12
-    /kiemtratv ngay:2
-    /kiemtratv role:@MemAo ngay:1
-    /kiemtratv @user ngay:7
-
-    Lọc log buff theo:
-    - user cụ thể
-    - role cụ thể
-    - khung thời gian giờ / ngày
-    - hoặc xem danh sách gần nhất
-    """
-
-    gid = str(ctx.guild.id)
-    logs = get_log_data()
-    # chỉ xem log của bang hiện tại
-    logs = [x for x in logs if x.get("guild_id") == gid]
-
-    target_user_id = None
-    target_role_id = None
-    max_age_hours = None  # số giờ tối đa
-    # parse args thô
-    for a in args:
-        # @user
-        if isinstance(a, discord.Member):
-            target_user_id = str(a.id)
-            continue
-        # role:@role
-        if isinstance(a, discord.Role):
-            target_role_id = a.id
-            continue
-        # gio:X
-        if isinstance(a, str) and a.lower().startswith("gio:"):
-            try:
-                h = int(a.split(":",1)[1])
-                max_age_hours = h
-            except:
-                pass
-            continue
-        # ngay:X
-        if isinstance(a, str) and a.lower().startswith("ngay:"):
-            try:
-                d = int(a.split(":",1)[1])
-                # nếu chưa có gio:, đổi sang giờ
-                if (max_age_hours is None) or (d*24 < max_age_hours):
-                    max_age_hours = d * 24
-            except:
-                pass
-            continue
-
-    # lọc theo thời gian
-    if max_age_hours is not None:
-        now_utc = datetime.now(timezone.utc)
-        cutoff = now_utc - timedelta(hours=max_age_hours)
-
-        def too_old(entry):
-            t = entry.get("time")
-            try:
-                # parse "2025-11-02T18:41:10Z"
-                dt = datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ")
-                dt = dt.replace(tzinfo=timezone.utc)
-                return dt < cutoff
-            except:
-                return False
-
-        logs = [x for x in logs if not too_old(x)]
-
-    # lọc theo user
-    if target_user_id is not None:
-        logs = [x for x in logs if x.get("user_id") == target_user_id]
-
-    # lọc theo role
-    if target_role_id is not None:
-        logs = [x for x in logs if target_role_id in x.get("role_ids", [])]
-
-    if not logs:
-        await ctx.reply("📭 Không tìm thấy thành viên phù hợp với điều kiện.")
+async def cmd_tatbuff(ctx):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot.")
         return
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {"buff_enabled": False, "links": {}})
+    g["buff_enabled"] = False
+    save_json(BUFF_FILE, data)
+    await ctx.reply("✅ Đã tắt buff mem.")
 
-    # Nếu user cụ thể -> show chi tiết 1 người mới nhất
-    if target_user_id is not None:
-        logs_user = logs[-1]  # record mới nhất
-        uid = logs_user.get("user_id")
-        member = ctx.guild.get_member(int(uid))
-        display_mention = f"<@{uid}>" if uid else "N/A"
-        new_name = logs_user.get("new_name", "N/A")
-        invite_code = logs_user.get("invite_code", "N/A")
-        ts_utc = logs_user.get("time", "N/A")
-        role_ids = logs_user.get("role_ids", [])
-
-        # build role list
-        role_mentions = []
-        for rid in role_ids:
-            r = ctx.guild.get_role(rid)
-            role_mentions.append(r.mention if r else str(rid))
-
-        # tính "bao lâu trước" (ước lượng giờ)
-        try:
-            dt = datetime.strptime(ts_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            now_utc = datetime.now(timezone.utc)
-            diff = now_utc - dt
-            hours_ago = int(diff.total_seconds() // 3600)
-            ago_txt = f"{hours_ago} giờ trước"
-            # giờ VN (GMT+7)
-            vn_time = (dt + timedelta(hours=7)).strftime("%Y-%m-%d %H:%M")
-        except:
-            ago_txt = "N/A"
-            vn_time = ts_utc
-
-        msg = (
-            "📜 KIỂM TRA THÀNH VIÊN\n"
-            f"👤 Thành viên: {display_mention} (ID: {uid})\n"
-            f"🏷️ Biệt danh sau buff: {new_name}\n"
-            f"🎭 Role được gán: {', '.join(role_mentions) if role_mentions else '—'}\n"
-            f"📨 Link mời: {invite_code}\n"
-            f"🕒 Thời điểm buff: {vn_time} (giờ GMT+7)\n"
-            f"⏳ Đã vào được: {ago_txt}\n"
-        )
-        await ctx.reply(msg)
-        return
-
-    # nếu không phải user cụ thể -> show danh sách
-    # lấy tối đa 20 gần nhất
-    slice_logs = logs[-20:]
-
-    lines = ["📊 DANH SÁCH THÀNH VIÊN BUFF GẦN NHẤT:"]
-    idx = 1
-    for entry in slice_logs[::-1]:  # đảo ngược để record mới nhất lên đầu
-        uid = entry.get("user_id")
-        display_mention = f"<@{uid}>" if uid else "N/A"
-        new_name = entry.get("new_name", "N/A")
-        invite_code = entry.get("invite_code", "N/A")
-        role_ids = entry.get("role_ids", [])
-        role_mentions = []
-        for rid in role_ids:
-            r = ctx.guild.get_role(rid)
-            role_mentions.append(r.mention if r else str(rid))
-
-        ts_utc = entry.get("time", "N/A")
-        # chuyển sang giờ VN gọn
-        try:
-            dt = datetime.strptime(ts_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-            vn_time = (dt + timedelta(hours=7)).strftime("%m-%d %H:%M")
-        except:
-            vn_time = ts_utc
-
-        lines.append(
-            f"{idx}. {display_mention} → \"{new_name}\" "
-            f"| Roles: {', '.join(role_mentions) if role_mentions else '—'} "
-            f"| Link:{invite_code} "
-            f"| {vn_time} GMT+7"
-        )
-        idx += 1
-
-    lines.append(f"\nTổng: {len(slice_logs)} người")
-    await ctx.reply("\n".join(lines))
-
-
-@bot.command(name="lenhchubot")
-@only_owner()
-async def cmd_lenhchubot(ctx: commands.Context):
-    msg = (
-        "LỆNH CHỦ BOT (buff mem ảo):\n"
-        "/setlink <invite_url> <@role1> <@role2> ...\n"
-        "    Gán link buff + nhiều role.\n\n"
-        "/xemlink\n"
-        "    Xem tất cả link buff.\n\n"
-        "/xoalink <invite_url>\n"
-        "    Tắt 1 link buff.\n\n"
-        "/batbuff\n"
-        "    Bật buff mem ảo cho bang.\n\n"
-        "/tatbuff\n"
-        "    Tắt buff mem ảo cho bang.\n\n"
-        "/kiemtratv [@user] [role:@role] [gio:X] [ngay:Y]\n"
-        "    Kiểm tra thành viên đã buff:\n"
-        "    - @user: chi tiết 1 người\n"
-        "    - role:@role: lọc theo role đã cấp khi buff\n"
-        "    - gio:X | ngay:Y: lọc theo thời gian gần nhất\n"
-        "    - không tham số: top gần nhất\n"
-    )
-    await ctx.reply(msg)
-
-# ---------------------------
-# Run bot
-# ---------------------------
-
-def main():
-    if not DISCORD_TOKEN:
-        print("❌ Thiếu DISCORD_TOKEN trong biến môi trường.")
-        return
-    if OWNER_DISCORD_ID == 0:
-        print("❌ Thiếu OWNER_DISCORD_ID trong biến môi trường.")
-        return
-    bot.run(DISCORD_TOKEN)
-
+# =============== CHẠY BOT ===============
 if __name__ == "__main__":
-    main()
+    if not DISCORD_TOKEN:
+        print("❌ Thiếu DISCORD_TOKEN")
+    else:
+        bot.run(DISCORD_TOKEN)
