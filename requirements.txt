@@ -1,4 +1,5 @@
-discord.py==2.3.2
+discord.py==2.4.0
+flask
 python-dotenv==1.0.1
 aiohttp==3.9.5
 pytz==2024.1
@@ -9,4 +10,3 @@ openai
 pillow
 pytesseract
 aiohttp
-flask
