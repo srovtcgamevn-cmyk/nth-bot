@@ -38,6 +38,12 @@ from flask import Flask, request, jsonify, render_template_string
 
 import discord
 from discord.ext import commands, tasks
+def only_owner():
+    def predicate(ctx: commands.Context):
+        return ctx.author.id == OWNER_DISCORD_ID
+    return commands.check(predicate)
+
+
 
 # ============================================================
 # CONFIG CHUNG
