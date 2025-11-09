@@ -1061,7 +1061,7 @@ async def cmd_lenhadmin(ctx):
         await ctx.reply("⛔ Bạn không phải admin.")
         return
     await ctx.reply(
-        "🛠 LỆNH ADMIN:\n"
+        "🛠 LỆNH ADMIN:\n\n"
         "`/kenhchat` [#k...] – Quản lý kênh tính exp\n"
         "`/setdiemdanh` @role... [#kenh] [giờ phút tối thiểu] – Bật điểm danh\n"
         "`/thongke` – Thống kê exp theo cấp độ\n"
@@ -1077,11 +1077,11 @@ async def cmd_lenhchubot(ctx):
         await ctx.reply("⛔ Không phải chủ bot.")
         return
     await ctx.reply(
-        "👑 LỆNH CHỦ BOT:\n"
-        "/setlink <link> [@role ...]\n"
-        "/xemlink\n"
-        "/xoalink <link>\n"
-        "/batbuff /tatbuff"
+        "👑 LỆNH CHỦ BOT:\n\n"
+        "`/setlink` <link> [@role ...]\n"
+        "`/xemlink`\n"
+        "`/xoalink` <link>\n"
+        "`/batbuff` /tatbuff"
     )
 
 # =============== /kenhchat ===============
