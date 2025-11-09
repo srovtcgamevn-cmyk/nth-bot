@@ -74,11 +74,9 @@ SHEET_FILE = os.path.join(DATA_DIR, "google_sheet.json")
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 
-_owner_raw = os.getenv(821066331826421840)  # lấy đúng tên biến
-try:
-    OWNER_DISCORD_ID = int(_owner_raw) if _owner_raw else 0
-except ValueError:
-    OWNER_DISCORD_ID = 0
+# CHỦ BOT ĐÓNG ĐINH (không cần env nữa)
+OWNER_DISCORD_ID = 821066331826421840
+
 
 print("DEBUG ENV ---")
 print("DISCORD_TOKEN set?:", bool(DISCORD_TOKEN))
