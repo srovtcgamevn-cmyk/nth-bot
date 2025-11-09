@@ -1,937 +1,948 @@
 # ============================================================
-# BANG_CHU_SUPREME.PY
-# Discord Bot + Web Admin (Flask) trong 1 file
-# ============================================================
-# YÊU CẦU:
-#   pip install discord.py==2.4.0 flask
+# BUFF_MEM_AO_v1_2.py
+# Phiên bản: v1_2
+# Ngày cập nhật: 2025-11-02
 #
-# BIẾN MÔI TRƯỜNG CẦN:
+# Chức năng:
+# - Buff mem ảo cho server: auto đổi biệt danh thành tên kiểu Discord Việt,
+#   auto gán nhiều role, log lại nguồn invite.
+# - Chủ Bot có thể kiểm tra thành viên theo user / role / thời gian.
+#
+# Lệnh Chủ Bot:
+#   /setlink <invite_url> <@role1> <@role2> ...
+#   /xemlink
+#   /xoalink <invite_url>
+#   /batbuff
+#   /tatbuff
+#   /kiemtratv [@user] [role:@role] [gio:<số>] [ngay:<số>]
+#   /lenhchubot
+#
+# Yêu cầu:
+#   pip install discord.py==2.4.0
+#   Intents bật: SERVER MEMBERS INTENT, MESSAGE CONTENT INTENT
+#   Quyền bot: Manage Nicknames, Manage Roles, View Audit Log, Read/Send Messages
+#
+# Biến môi trường:
 #   DISCORD_TOKEN
 #   OWNER_DISCORD_ID
 #
-# CHỨC NĂNG:
-#   1. EXP & NHIỆT HUYẾT (chat + voice chỉ tính mở mic)
-#   2. Reset tuần: 00:00 T7 GMT+7, mở lại 14:00 T2
-#   3. /topnhiethuyet, /hoso, /thongke @role
-#   4. Chào mừng, tạm biệt, auto role
-#   5. Từ khóa cấm + log + tự mute sau nhiều lần
-#   6. Reaction role + Tuyên chiếu (nhiều emoji, gỡ role cũ)
-#   7. Số báo danh
-#   8. Buff mem theo link mời + auto đặt tên Việt
-#   9. Chủ bot: datprefix, sheet_lienket (dự phòng), xuat/nhap dữ liệu
-#  10. Web admin: dashboard, badwords, reaction/tuyên chiếu, buff, hướng dẫn
-#
-# LƯU Ý:
-#   - Đây là bản trong 1 file nên mình viết theo kiểu "module trong file"
-#   - Bạn có thể tách sau nếu muốn
+# Lưu trữ:
+#   data/invite_map.json
+#   data/buffmem_log.json
+#   data/names_used.json
 # ============================================================
 
 import os
 import json
 import random
 import asyncio
-import threading
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
+from datetime import datetime, timezone, timedelta
 
-# ================== CẤU HÌNH CỨNG ==================
-# Token vẫn lấy từ biến môi trường cho an toàn
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
+import discord
+from discord.ext import commands
 
-# Chủ bot đóng đinh luôn ở đây, KHÔNG dùng getenv nữa
-OWNER_DISCORD_ID = 821066331826421840
-
-print("DISCORD_TOKEN set?:", bool(DISCORD_TOKEN))
-print("OWNER_DISCORD_ID:", OWNER_DISCORD_ID)
-# ===================================================
-
-
-# ============================================================
-# CONFIG CHUNG
-# ============================================================
 DATA_DIR = "data"
+INVITE_MAP_FILE = os.path.join(DATA_DIR, "invite_map.json")
+LOG_FILE = os.path.join(DATA_DIR, "buffmem_log.json")
+USED_NAMES_FILE = os.path.join(DATA_DIR, "names_used.json")
+
 os.makedirs(DATA_DIR, exist_ok=True)
 
-CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
-EXP_FILE = os.path.join(DATA_DIR, "exp_week.json")
-BADWORDS_FILE = os.path.join(DATA_DIR, "badwords.json")
-REACTION_FILE = os.path.join(DATA_DIR, "reaction_roles.json")
-TEMP_ROLE_FILE = os.path.join(DATA_DIR, "temp_roles.json")
-SBD_FILE = os.path.join(DATA_DIR, "sobaodanh.json")
-PREFIX_FILE = os.path.join(DATA_DIR, "nickprefix.json")
-GLOBAL_MEMBERS_FILE = os.path.join(DATA_DIR, "global_members.json")
-VIOLATIONS_FILE = os.path.join(DATA_DIR, "violations.json")
-BUFF_FILE = os.path.join(DATA_DIR, "buff_links.json")
-LOGS_FILE = os.path.join(DATA_DIR, "logs.json")
-SHEET_FILE = os.path.join(DATA_DIR, "google_sheet.json")
-
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
-
-# CHỦ BOT ĐÓNG ĐINH (không cần env nữa)
 OWNER_DISCORD_ID = 821066331826421840
 
-
-print("DEBUG ENV ---")
-print("DISCORD_TOKEN set?:", bool(DISCORD_TOKEN))
-print("OWNER_DISCORD_ID raw:", _owner_raw)
-print("OWNER_DISCORD_ID int:", OWNER_DISCORD_ID)
-print("All env:", dict(os.environ))
-print("DEBUG ENV ---")
-
-
-# ============================================================
-# DISCORD INTENTS
-# ============================================================
+# Intents
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
+intents.invites = True
 intents.message_content = True
-intents.reactions = True
-intents.voice_states = True
 
-bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)
+bot = commands.Bot(
+    command_prefix="/",
+    intents=intents,
+    help_command=None
+)
 
-# ============================================================
-# HÀM JSON
-# ============================================================
+# Cache invite lúc trước join
+invite_cache = {}  # {guild_id_str: {code: uses_int, ...}}
 
-def load_json(path: str, default: Any):
+# ---------------------------
+# Helpers: load / save JSON
+# ---------------------------
+
+def load_json(path, default):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
         return default
 
-def save_json(path: str, data: Any):
+def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# init files
-for _file, _default in [
-    (CONFIG_FILE, {"guilds": {}, "exp_locked": False}),
-    (EXP_FILE, {"users": {}, "prev_week": {}}),
-    (BADWORDS_FILE, {"words": [], "mode": "delete_warn"}),
-    (REACTION_FILE, {"messages": {}}),
-    (TEMP_ROLE_FILE, {"entries": []}),
-    (SBD_FILE, {"members": {}}),
-    (PREFIX_FILE, {"guilds": {}}),
-    (GLOBAL_MEMBERS_FILE, {"users": []}),
-    (VIOLATIONS_FILE, {"users": {}}),
-    (BUFF_FILE, {"guilds": {}}),
-    (LOGS_FILE, []),
-    (SHEET_FILE, {"guilds": {}})
-]:
-    if not os.path.exists(_file):
-        save_json(_file, _default)
+def get_invite_map():
+    data = load_json(INVITE_MAP_FILE, {})
+    if "guilds" not in data:
+        data["guilds"] = {}
+    return data
 
-# ============================================================
-# BỘ TÊN VIỆT ĐỂ BUFF
-# ============================================================
-_base_names_with_accent = [
-    "BảoAnh", "BảoAn", "BảoLong", "BảoNgọc", "BảoChâu", "BảoKhang", "BảoHân",
-    "MinhAnh", "MinhKhang", "MinhQuân", "MinhThư", "MinhPhúc", "MinhTrang",
-    "TuấnAnh", "TuấnKiệt", "TuấnPhong", "TuấnHưng",
-    "KhảiĐăng", "HảiĐăng",
-    "GiaHuy", "GiaBảo", "GiaKhang", "GiaPhúc",
-    "AnhThư", "AnhThảo", "AnhĐào",
-    "DiệuLinh", "DiễmMy", "DiệpAnh",
-    "ThanhTâm", "ThanhVy", "ThanhTrúc",
-    "ThảoVy", "ThảoNhi", "ThảoMy",
-    "NgọcAnh", "NgọcHân", "NgọcTrâm", "NgọcBích", "NgọcVy",
-    "HồngAnh", "HồngNgọc", "HồngNhung",
-    "KimAnh", "KimNgân", "KimOanh",
-    "PhươngAnh", "PhươngLinh", "PhươngTrang",
-    "HoàiAn", "HoàiPhương",
-    "QuỳnhAnh", "QuỳnhNhi",
-    "ThùyLinh", "ThùyDương", "ThùyTrang",
-    "YếnNhi", "MỹLinh", "MỹDung",
-    "TrâmAnh", "KhánhVy", "KhánhLinh",
-    "LanAnh", "TúVy", "BăngTâm",
-    "HuyềnAnh", "HuyềnTrang", "HàMy",
-    "BảoTrân", "BảoVy", "BảoYến",
-    "NhậtAnh", "NhậtMinh",
-    "HoàngLong", "HoàngAnh", "HoàngMinh", "HoàngPhúc",
+def set_invite_map(data):
+    save_json(INVITE_MAP_FILE, data)
+
+def get_log_data():
+    # [
+    #   {
+    #     "time": "2025-11-02T18:41:10Z",
+    #     "guild_id": "...",
+    #     "user_id": "...",
+    #     "new_name": "...",
+    #     "role_ids": [...],
+    #     "invite_code": "..."
+    #   },
+    #   ...
+    # ]
+    return load_json(LOG_FILE, [])
+
+def set_log_data(data):
+    save_json(LOG_FILE, data)
+
+def get_used_names():
+    # { "<guild_id>": ["name1","name2",...] }
+    return load_json(USED_NAMES_FILE, {})
+
+def set_used_names(data):
+    save_json(USED_NAMES_FILE, data)
+
+# ---------------------------
+# Quyền Chủ Bot
+# ---------------------------
+
+async def is_owner_user(ctx: commands.Context):
+    return ctx.author.id == OWNER_DISCORD_ID
+
+def only_owner():
+    async def predicate(ctx):
+        return await is_owner_user(ctx)
+    return commands.check(predicate)
+
+# ---------------------------
+# Sinh nickname kiểu Discord Việt
+# ---------------------------
+
+# ---------------------------
+# Sinh nickname kiểu Discord Việt (500 tên gốc, không trùng)
+# ---------------------------
+
+BASE_NAMES_WITH_ACCENT = [
+    "AnAn",
+    "AnAnh",
+    "AnBảo",
+    "AnChi",
+    "AnDiệp",
+    "AnDương",
+    "AnGiang",
+    "AnHà",
+    "AnHân",
+    "AnHuyền",
+    "AnKim",
+    "AnKhánh",
+    "AnKhuê",
+    "AnLan",
+    "AnLinh",
+    "AnLoan",
+    "AnLy",
+    "AnMai",
+    "AnMinh",
+    "AnMy",
+    "AnNgân",
+    "AnNgọc",
+    "AnNhư",
+    "AnNhi",
+    "AnOanh",
+    "AnPhương",
+    "AnQuỳnh",
+    "AnThảo",
+    "AnThư",
+    "AnTrang",
+    "AnTrâm",
+    "AnTuyết",
+    "AnUyên",
+    "AnVi",
+    "AnVy",
+    "AnYến",
+    "AnÁnh",
+    "AnĐan",
+    "AnĐào",
+    "AnĐình",
+    "BảoAn",
+    "BảoAnh",
+    "BảoChâu",
+    "BảoChi",
+    "BảoDương",
+    "BảoGiang",
+    "BảoHà",
+    "BảoHân",
+    "BảoHuyền",
+    "BảoKhánh",
+    "BảoKhang",
+    "BảoLan",
+    "BảoLinh",
+    "BảoLoan",
+    "BảoLy",
+    "BảoMinh",
+    "BảoMy",
+    "BảoNgân",
+    "BảoNgọc",
+    "BảoNhi",
+    "BảoNhư",
+    "BảoOanh",
+    "BảoPhúc",
+    "BảoPhương",
+    "BảoQuỳnh",
+    "BảoThảo",
+    "BảoThư",
+    "BảoTrang",
+    "BảoTrâm",
+    "BảoTuyền",
+    "BảoUyên",
+    "BảoVi",
+    "BảoVy",
+    "BảoYến",
+    "BảoĐan",
+    "BảoĐào",
+    "BảoĐăng",
+    "BảoĐình",
+    "DiệuAnh",
+    "DiệuHà",
+    "DiệuHân",
+    "DiệuHuyền",
+    "DiệuKhánh",
+    "DiệuLinh",
+    "DiệuLoan",
+    "DiệuLy",
+    "DiệuMinh",
+    "DiệuMy",
+    "DiệuNgân",
+    "DiệuNgọc",
+    "DiệuNhư",
+    "DiệuNhi",
+    "DiệuOanh",
+    "DiệuPhương",
+    "DiệuQuỳnh",
+    "DiệuThảo",
+    "DiệuThư",
+    "DiệuTrang",
+    "DiệuTrâm",
+    "DiệuTú",
+    "DiệuUyên",
+    "DiệuVi",
+    "DiệuVy",
+    "DiệuYến",
+    "DiệuÁnh",
+    "DiệuĐan",
+    "DiệuĐào",
+    "DiệuĐình",
+    "GiaAnh",
+    "GiaAn",
+    "GiaBảo",
+    "GiaHân",
+    "GiaHuyền",
+    "GiaKhánh",
+    "GiaKhang",
+    "GiaLan",
+    "GiaLinh",
+    "GiaLoan",
+    "GiaLy",
+    "GiaMinh",
+    "GiaMy",
+    "GiaNgân",
+    "GiaNgọc",
+    "GiaNhư",
+    "GiaNhi",
+    "GiaOanh",
+    "GiaPhương",
+    "GiaQuỳnh",
+    "GiaThảo",
+    "GiaThư",
+    "GiaTrang",
+    "GiaTrâm",
+    "GiaUyên",
+    "GiaVi",
+    "GiaVy",
+    "GiaYến",
+    "GiaĐan",
+    "GiaĐào",
+    "GiaĐình",
+    "HoàngAnh",
+    "HoàngAn",
+    "HoàngBảo",
+    "HoàngChâu",
+    "HoàngDiệp",
+    "HoàngDương",
+    "HoàngGia",
+    "HoàngHà",
+    "HoàngHân",
+    "HoàngHuyền",
+    "HoàngKhánh",
+    "HoàngKhang",
+    "HoàngLan",
+    "HoàngLinh",
+    "HoàngLoan",
+    "HoàngLy",
+    "HoàngMinh",
+    "HoàngMy",
+    "HoàngNgân",
+    "HoàngNgọc",
+    "HoàngNhi",
+    "HoàngNhư",
+    "HoàngOanh",
+    "HoàngPhương",
+    "HoàngQuỳnh",
+    "HoàngThảo",
+    "HoàngThư",
+    "HoàngTrang",
+    "HoàngTrâm",
+    "HoàngUyên",
+    "HoàngVi",
+    "HoàngVy",
+    "HoàngYến",
+    "HoàngÁnh",
+    "HoàngĐan",
+    "HoàngĐào",
+    "HoàngĐăng",
+    "KhánhAn",
+    "KhánhAnh",
+    "KhánhBảo",
+    "KhánhChi",
+    "KhánhDiệp",
+    "KhánhDương",
+    "KhánhHà",
+    "KhánhHân",
+    "KhánhHuyền",
+    "KhánhKhang",
+    "KhánhLan",
+    "KhánhLinh",
+    "KhánhLoan",
+    "KhánhLy",
+    "KhánhMinh",
+    "KhánhMy",
+    "KhánhNgân",
+    "KhánhNgọc",
+    "KhánhNhi",
+    "KhánhNhư",
+    "KhánhOanh",
+    "KhánhPhương",
+    "KhánhQuỳnh",
+    "KhánhThảo",
+    "KhánhThư",
+    "KhánhTrang",
+    "KhánhTrâm",
+    "KhánhUyên",
+    "KhánhVi",
+    "KhánhVy",
+    "KhánhYến",
+    "KhánhĐan",
+    "KhánhĐào",
+    "KhánhĐình",
+    "LanAnh",
+    "LanAn",
+    "LanBảo",
+    "LanChi",
+    "LanDiệp",
+    "LanDương",
+    "LanHà",
+    "LanHân",
+    "LanHuyền",
+    "LanKhánh",
+    "LanKhuê",
+    "LanLinh",
+    "LanLoan",
+    "LanLy",
+    "LanMinh",
+    "LanMy",
+    "LanNgân",
+    "LanNgọc",
+    "LanNhi",
+    "LanNhư",
+    "LanOanh",
+    "LanPhương",
+    "LanQuỳnh",
+    "LanThảo",
+    "LanThư",
+    "LanTrang",
+    "LanTrâm",
+    "LanTuyền",
+    "LanUyên",
+    "LanVi",
+    "LanVy",
+    "LanYến",
+    "LanÁnh",
+    "LanĐan",
+    "LanĐào",
+    "LanĐình",
+    "NgọcAnh",
+    "NgọcAn",
+    "NgọcBảo",
+    "NgọcChi",
+    "NgọcDương",
+    "NgọcHà",
+    "NgọcHân",
+    "NgọcHuyền",
+    "NgọcKhánh",
+    "NgọcKhuê",
+    "NgọcLan",
+    "NgọcLinh",
+    "NgọcLoan",
+    "NgọcLy",
+    "NgọcMinh",
+    "NgọcMy",
+    "NgọcNgân",
+    "NgọcNhi",
+    "NgọcNhư",
+    "NgọcOanh",
+    "NgọcPhương",
+    "NgọcQuỳnh",
+    "NgọcThảo",
+    "NgọcThư",
+    "NgọcTrang",
+    "NgọcTrâm",
+    "NgọcTuyền",
+    "NgọcUyên",
+    "NgọcVi",
+    "NgọcVy",
+    "NgọcYến",
+    "NgọcÁnh",
+    "NgọcĐan",
+    "NgọcĐào",
+    "NgọcĐỉnh",
+    "PhươngAnh",
+    "PhươngAn",
+    "PhươngBảo",
+    "PhươngChi",
+    "PhươngDuyên",
+    "PhươngHà",
+    "PhươngHân",
+    "PhươngHuyền",
+    "PhươngKhánh",
+    "PhươngKhuê",
+    "PhươngLan",
+    "PhươngLinh",
+    "PhươngLoan",
+    "PhươngLy",
+    "PhươngMinh",
+    "PhươngMy",
+    "PhươngNgân",
+    "PhươngNgọc",
+    "PhươngNhi",
+    "PhươngNhư",
+    "PhươngOanh",
+    "PhươngQuỳnh",
+    "PhươngThảo",
+    "PhươngThư",
+    "PhươngTrang",
+    "PhươngTrâm",
+    "PhươngTuyết",
+    "PhươngUyên",
+    "PhươngVi",
+    "PhươngVy",
+    "PhươngYến",
+    "PhươngÁnh",
+    "PhươngĐan",
+    "PhươngĐình",
+    "QuỳnhAnh",
+    "QuỳnhAn",
+    "QuỳnhBảo",
+    "QuỳnhChi",
+    "QuỳnhDương",
+    "QuỳnhHà",
+    "QuỳnhHân",
+    "QuỳnhHuyền",
+    "QuỳnhKhánh",
+    "QuỳnhLan",
+    "QuỳnhLinh",
+    "QuỳnhLoan",
+    "QuỳnhLy",
+    "QuỳnhMinh",
+    "QuỳnhMy",
+    "QuỳnhNgân",
+    "QuỳnhNgọc",
+    "QuỳnhNhi",
+    "QuỳnhNhư",
+    "QuỳnhOanh",
+    "QuỳnhPhương",
+    "QuỳnhThảo",
+    "QuỳnhThư",
+    "QuỳnhTrang",
+    "QuỳnhTrâm",
+    "QuỳnhTuyền",
+    "QuỳnhUyên",
+    "QuỳnhVi",
+    "QuỳnhVy",
+    "QuỳnhYến",
+    "QuỳnhÁnh",
+    "QuỳnhĐan",
+    "QuỳnhĐào",
+    "QuỳnhĐình"
 ]
 
-_base_names_no_accent = [
-    "baongoc", "baotran", "baovy", "baoanh", "baokhang",
-    "minhphuc", "minhquan", "minhthu", "minhtrang",
-    "tuananh", "tuankiet", "tuanphong", "tuanhung",
-    "khaidang", "haidang",
-    "giabao", "giakhang", "giaphuc",
-    "anhthu", "dieulinh",
-    "thanhvy", "thanhtruc", "thanhphong",
-    "thaovy", "thaonhi",
-    "ngocanh", "ngocvy", "ngoclinh",
-    "honganh", "hongngoc",
-    "phuonganh", "phuonglinh",
-    "hoanganh", "hoanglong", "hoangphuc",
-    "tramanh", "trammy",
-    "khanhvy", "khanhlinh",
-    "bangtam", "huyentrang",
-    "nhatanh", "nhatminh",
-    "quanghuy", "quangvinh",
-    "linhchi", "linhdan",
-    "myanh", "mydung",
-    "vychanh", "vycute",
+BASE_NAMES_NO_ACCENT = [
+    "baoanh",
+    "baoan",
+    "baobao",
+    "baochau",
+    "baochi",
+    "baoduyen",
+    "baohan",
+    "baohuyen",
+    "baokhanh",
+    "baokhang",
+    "baokhue",
+    "baolan",
+    "baolinh",
+    "baoloan",
+    "baoly",
+    "baominh",
+    "baomy",
+    "baongan",
+    "baongoc",
+    "baonhi",
+    "baonhu",
+    "baooanh",
+    "baophuong",
+    "baoquynh",
+    "baothao",
+    "baothu",
+    "baotrang",
+    "baotram",
+    "baotuyen",
+    "baouyen",
+    "baovi",
+    "baovy",
+    "baoyen",
+    "baodang",
+    "baodao",
+    "baodinh",
+    "minhanh",
+    "minhan",
+    "minhbao",
+    "minhchau",
+    "minhchi",
+    "minhduong",
+    "minhha",
+    "minhhan",
+    "minhhuyen",
+    "minhkhanh",
+    "minhkhu e".replace(" ",""),
+    "minhlan",
+    "minhlinh",
+    "minhloan",
+    "minhly",
+    "minhminh",
+    "minhmy",
+    "minhngan",
+    "minhngoc",
+    "minhnhi",
+    "minhnhu",
+    "minhoanh",
+    "minhphuong",
+    "minhquynh",
+    "minhthao",
+    "minhthu",
+    "minhtrang",
+    "minhtram",
+    "minhtuyen",
+    "minhuyen",
+    "minhvi",
+    "minhvy",
+    "minhyen",
+    "minhdang",
+    "minhdao",
+    "minhdinh",
+    "tuananh",
+    "tuanan",
+    "tuanbao",
+    "tuanchau",
+    "tuanchi",
+    "tuanduyen",
+    "tuanha",
+    "tuanhan",
+    "tuanhuyen",
+    "tuankhanh",
+    "tuankhang",
+    "tuanlan",
+    "tuanlinh",
+    "tuanloan",
+    "tuanly",
+    "tuanminh",
+    "tuanmy",
+    "tuangan",
+    "tuangoc",
+    "tuannhi",
+    "tuannhu",
+    "tuanoanh",
+    "tuanphuong",
+    "tuanquynh",
+    "tuanthao",
+    "tuanthu",
+    "tuantrang",
+    "tuantram",
+    "tuantuyen",
+    "tuanuyen",
+    "tuanvi",
+    "tuanvy",
+    "tuanyen",
+    "tuandao",
+    "tuandinh",
+    "huyanh",
+    "huyan",
+    "huybao",
+    "huychau",
+    "huychi",
+    "huyduong",
+    "huyha",
+    "huyhan",
+    "huyhuyen",
+    "huykhanh",
+    "huykhang",
+    "huylan",
+    "huylinh",
+    "huyloan",
+    "huyly",
+    "huyminh",
+    "huymy",
+    "huyngan",
+    "huyngoc",
+    "huynhi",
+    "huynhu",
+    "huynh oanh".replace(" ",""),
+    "huyphuong",
+    "huyquynh",
+    "huythao",
+    "huythu",
+    "huytrang",
+    "huytram",
+    "huytuyen",
+    "huyuyen",
+    "huyvi",
+    "huyvy",
+    "huyen",
+    "huydao",
+    "huydinh",
+    "khanhanh",
+    "khanhan",
+    "khanhbao",
+    "khanhchau",
+    "khanhchi",
+    "khanhduong",
+    "khanhha",
+    "khanhhan",
+    "khanhhuyen",
+    "khanhkhang",
+    "khanhkhu e".replace(" ",""),
+    "khanhlan",
+    "khanhlinh",
+    "khanhloan",
+    "khanhly",
+    "khanhminh",
+    "khanhmy",
+    "khanhngan",
+    "khanhngoc",
+    "khanhnhi",
+    "khanhnhu",
+    "khanhoanh",
+    "khanhphuong",
+    "khanhquynh",
+    "khanhthao",
+    "khanhthu",
+    "khanhtrang",
+    "khanhtram",
+    "khanhtuyen",
+    "khanhuyen",
+    "khanhvi",
+    "khanhvy",
+    "khanhyen",
+    "khanhdao",
+    "khanhdinh",
+    "ngocanh",
+    "ngocan",
+    "ngocbao",
+    "ngocchau",
+    "ngocchi",
+    "ngocduong",
+    "ngocha",
+    "ngochan",
+    "ngochuyen",
+    "ngockhanh",
+    "ngockhang",
+    "ngoclan",
+    "ngoclinh",
+    "ngocloan",
+    "ngocly",
+    "ngocminh",
+    "ngocmy",
+    "ngocngan",
+    "ngocnhi",
+    "ngocnhu",
+    "ngocoanh",
+    "ngocphuong",
+    "ngocquynh",
+    "ngocthao",
+    "ngocthu",
+    "ngoctrang",
+    "ngoctram",
+    "ngoctuyen",
+    "ngocuyen",
+    "ngocvi",
+    "ngocvy",
+    "ngocyen",
+    "ngocdao",
+    "ngocdinh",
+    "phuonganh",
+    "phuongan",
+    "phuongbao",
+    "phuongchau",
+    "phuongchi",
+    "phuongduyen",
+    "phuongha",
+    "phuonghan",
+    "phuonghuyen",
+    "phuongkhanh",
+    "phuongkhang",
+    "phuonglan",
+    "phuonglinh",
+    "phuongloan",
+    "phuongly",
+    "phuongminh",
+    "phuongmy",
+    "phuongngan",
+    "phuongngoc",
+    "phuongnhi",
+    "phuongnhu",
+    "phuongoanh",
+    "phuongquynh",
+    "phuongthao",
+    "phuongthu",
+    "phuongtrang",
+    "phuongtram",
+    "phuongtuyen",
+    "phuonguyen",
+    "phuongvi",
+    "phuongvy",
+    "phuongyen",
+    "phuongdao",
+    "phuongdinh"
 ]
 
-_year_tokens = ["2003","2004","2005","2006","2007","2008","2009","2010","03","05","07","09","69","99","123"]
-SUFFIX_TOKENS = ["vip","pro","cute","dz","idol","tv","vn","ff","gamer","yt","no1","real","official","team","clan","baby"]
-DECOR_TOKENS = ["♡","☆","•","✦","ツ"]
-POPULAR_NUMBERS = ["03","05","07","08","09","2003","2004","2005","2006","69","99","123","888"]
+SUFFIX_TOKENS = [
+    "vip", "pro", "dz", "cute", "tv", "vn", "x", "z", "no1",
+    "real", "off", "idol", "baby", "chanh", "love"
+]
 
-BASE_NAMES_WITH_ACCENT = []
-for n in _base_names_with_accent:
-    BASE_NAMES_WITH_ACCENT.append(n)
-    for y in _year_tokens:
-        BASE_NAMES_WITH_ACCENT.append(f"{n}{y}")
+DECOR_TOKENS = [
+    "♡", "☆", "ツ", "✦"
+]
 
-BASE_NAMES_NO_ACCENT = []
-for n in _base_names_no_accent:
-    BASE_NAMES_NO_ACCENT.append(n)
-    for y in _year_tokens:
-        BASE_NAMES_NO_ACCENT.append(f"{n}{y}")
+POPULAR_NUMBERS = [
+    "69", "99", "888", "123", "2007", "2008", "2005", "2009",
+    "03", "07", "09", "2003", "2004", "97", "98"
+]
 
-def generate_vn_nickname(guild_id: int) -> str:
-    used = load_json(os.path.join(DATA_DIR, f"names_used_{guild_id}.json"), [])
-    for _ in range(80):
-        if random.random() < 0.7:
-            base = random.choice(BASE_NAMES_WITH_ACCENT)
+
+def pick_weighted_has_accent():
+    # ~60% có dấu / một phần dấu
+    return random.random() < 0.60
+
+def build_base_name():
+    if pick_weighted_has_accent() and BASE_NAMES_WITH_ACCENT:
+        return random.choice(BASE_NAMES_WITH_ACCENT)
+    else:
+        return random.choice(BASE_NAMES_NO_ACCENT)
+
+def maybe_mix_suffix(name: str) -> str:
+    style = random.randint(0, 6)
+    chosen_suffix = random.choice(SUFFIX_TOKENS)
+    chosen_num = random.choice(POPULAR_NUMBERS)
+
+    if style == 0:
+        out = f"{name}{chosen_num}"
+    elif style == 1:
+        out = f"{name}{chosen_suffix}"
+    elif style == 2:
+        out = f"{name}{chosen_suffix}{chosen_num}"
+    elif style == 3:
+        out = f"{name}_{chosen_suffix}"
+    elif style == 4:
+        out = f"{chosen_suffix}{name}"
+    elif style == 5:
+        if not name.lower().startswith("bé"):
+            out = f"bé{name}"
         else:
-            base = random.choice(BASE_NAMES_NO_ACCENT)
-        style = random.randint(0,4)
-        suf = random.choice(SUFFIX_TOKENS)
-        num = random.choice(POPULAR_NUMBERS)
-        if style == 0:
-            nick = base
-        elif style == 1:
-            nick = f"{base}{num}"
-        elif style == 2:
-            nick = f"{base}{suf}"
-        elif style == 3:
-            nick = f"{base}{suf}{num}"
-        else:
-            nick = base
-        if random.random() < 0.25:
-            nick = nick + random.choice(DECOR_TOKENS)
-        nick = nick[:32]
-        if nick not in used:
-            used.insert(0, nick)
-            used = used[:200]
-            save_json(os.path.join(DATA_DIR, f"names_used_{guild_id}.json"), used)
-            return nick
-    return base[:32]
+            out = name
+    else:
+        out = name
+    return out
 
+def maybe_add_decor(name: str) -> str:
+    roll = random.random()
+    if roll < 0.3:
+        return f"{name}{random.choice(DECOR_TOKENS)}"
+    elif roll < 0.4:
+        return f"{random.choice(DECOR_TOKENS)}{name}"
+    elif roll < 0.5:
+        left = random.choice(DECOR_TOKENS)
+        right = random.choice(DECOR_TOKENS)
+        return f"{left}{name}{right}"
+    else:
+        return name
 
-# ============================================================
-# HÀM TIỆN ÍCH KHÁC
-# ============================================================
+def clamp_name(nick: str) -> str:
+    if len(nick) > 32:
+        return nick[:32]
+    return nick
 
-def is_owner(user_id: int) -> bool:
-    return user_id == OWNER_DISCORD_ID
+def generate_nickname(guild_id: int) -> str:
+    used_names = get_used_names()
+    recent_list = used_names.get(str(guild_id), [])
 
-def now_utc():
-    return datetime.now(timezone.utc)
+    for _ in range(50):
+        base = build_base_name()
+        with_suffix = maybe_mix_suffix(base)
+        decorated = maybe_add_decor(with_suffix)
+        final_nick = clamp_name(decorated)
 
-def gmt7_now():
-    return now_utc() + timedelta(hours=7)
+        if final_nick not in recent_list:
+            recent_list.insert(0, final_nick)
+            recent_list = recent_list[:200]
+            used_names[str(guild_id)] = recent_list
+            set_used_names(used_names)
+            return final_nick
 
-def log_action(action: str, data: dict):
-    logs = load_json(LOGS_FILE, [])
-    logs.append({
-        "time": now_utc().isoformat(),
-        "action": action,
-        "data": data
-    })
-    logs = logs[-500:]
-    save_json(LOGS_FILE, logs)
+    return clamp_name(with_suffix)
 
-# ============================================================
-# DISCORD EVENTS
-# ============================================================
+# ---------------------------
+# Invite tracking
+# ---------------------------
+
+async def refresh_guild_invites(guild: discord.Guild):
+    gid = str(guild.id)
+    try:
+        invites = await guild.invites()
+    except discord.Forbidden:
+        invite_cache[gid] = {}
+        return
+    except Exception:
+        invite_cache[gid] = {}
+        return
+
+    invite_cache[gid] = {}
+    for inv in invites:
+        invite_cache[gid][inv.code] = inv.uses or 0
+
+def detect_used_invite_code(before_uses: dict, after_invites: list[discord.Invite]):
+    after_map = {}
+    for inv in after_invites:
+        after_map[inv.code] = inv.uses or 0
+
+    picked_code = None
+    for code, after_val in after_map.items():
+        before_val = before_uses.get(code, 0)
+        if after_val > before_val:
+            picked_code = code
+            break
+
+    return picked_code, after_map
+
+# ---------------------------
+# Events
+# ---------------------------
 
 @bot.event
 async def on_ready():
-    print(f"✅ BANG_CHU_SUPREME online: {bot.user} ({bot.user.id})")
-    auto_reset_exp.start()
-    temp_role_cleaner.start()
+    print(f"✅ Bot buff mem ảo v1_2 đã sẵn sàng. Logged in as {bot.user} (id: {bot.user.id})")
+    for g in bot.guilds:
+        await refresh_guild_invites(g)
+
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    await refresh_guild_invites(guild)
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    # lưu global
-    global_data = load_json(GLOBAL_MEMBERS_FILE, {"users": []})
-    if str(member.id) not in global_data["users"]:
-        global_data["users"].append(str(member.id))
-        save_json(GLOBAL_MEMBERS_FILE, global_data)
+    guild = member.guild
+    gid = str(guild.id)
 
-    # config
-    cfg = load_json(CONFIG_FILE, {"guilds": {}})
-    gconf = cfg["guilds"].get(str(member.guild.id), {})
-    welcome_ch = gconf.get("welcome_channel_id")
-    welcome_role = gconf.get("welcome_role_id")
+    before_uses = invite_cache.get(gid, {}).copy()
 
-    if welcome_role:
-        r = member.guild.get_role(welcome_role)
-        if r:
-            try:
-                await member.add_roles(r, reason="auto welcome role")
-            except:
-                pass
+    try:
+        invites_after = await guild.invites()
+    except discord.Forbidden:
+        invites_after = []
+    except Exception:
+        invites_after = []
 
-    if welcome_ch:
-        ch = member.guild.get_channel(welcome_ch)
-        if ch:
-            await ch.send(
-                f"🎉 Chào mừng {member.mention} đến **{member.guild.name}**!\n"
-                f"Vào #chatchung giao lưu nha!"
-            )
+    code_used, after_map = detect_used_invite_code(before_uses, invites_after)
+    invite_cache[gid] = after_map
 
-    # buff mem theo link? -> phần này xử lý trong on_member_join theo invite code
-    # Nhưng discord.py không cho lấy invite trực tiếp trong event này khi không bật intents/invite,
-    # ở đây mình bỏ qua bước detect code chi tiết để giữ 1 file.
-    # Nếu bạn đã có code detect invite ở file buffmem cũ thì gộp lại đoạn đó vào đây.
-
-@bot.event
-async def on_member_remove(member: discord.Member):
-    cfg = load_json(CONFIG_FILE, {"guilds": {}})
-    gconf = cfg["guilds"].get(str(member.guild.id), {})
-    leave_ch = gconf.get("leave_channel_id")
-    if leave_ch:
-        ch = member.guild.get_channel(leave_ch)
-        if ch:
-            await ch.send(f"👋 {member.display_name} đã rời bang.")
-    log_action("member_leave", {"guild_id": member.guild.id, "user_id": member.id})
-
-# VOICE TRACKING (chỉ tính mic mở)
-# Ta sẽ lưu tạm trạng thái voice của từng user theo guild trong bộ nhớ
-voice_state_map: Dict[int, Dict[int, dict]] = {}  # {guild_id: {user_id: {"start": datetime}}}
-
-@bot.event
-async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-    gid = member.guild.id
-    if gid not in voice_state_map:
-        voice_state_map[gid] = {}
-    user_map = voice_state_map[gid]
-
-    # nếu user vừa bật mic (trước mute, sau unmute) -> start
-    # điều kiện tính: user phải ở trong voice channel, không muted, không deafened
-    def is_open_mic(vs: discord.VoiceState):
-        return vs.channel is not None and not vs.self_mute and not vs.mute and not vs.self_deaf and not vs.deaf
-
-    before_open = is_open_mic(before)
-    after_open = is_open_mic(after)
-
-    if after_open and not before_open:
-        # start counting
-        user_map[member.id] = {"start": now_utc()}
-    elif before_open and not after_open:
-        # stop counting -> add exp
-        info = user_map.pop(member.id, None)
-        if info:
-            delta = now_utc() - info["start"]
-            seconds = delta.total_seconds()
-            if seconds > 5:
-                # cộng exp voice: 1 exp mỗi 30s
-                bonus = int(seconds // 30)
-                if bonus > 0:
-                    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-                    users = exp_data["users"]
-                    uid = str(member.id)
-                    if uid not in users:
-                        users[uid] = {
-                            "exp_chat": 0,
-                            "exp_voice": 0,
-                            "last_msg": None,
-                            "voice_seconds_week": 0
-                        }
-                    users[uid]["exp_voice"] += bonus
-                    users[uid]["voice_seconds_week"] += int(seconds)
-                    save_json(EXP_FILE, exp_data)
-
-# ============================================================
-# AUTO RESET EXP + AUTO CLEAN TEMP ROLE
-# ============================================================
-
-@tasks.loop(minutes=1)
-async def auto_reset_exp():
-    # giờ GMT+7
-    now = gmt7_now()
-    weekday = now.weekday()  # Mon=0
-    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False})
-
-    # reset 00:00 T7
-    if weekday == 5 and now.hour == 0 and now.minute == 0:
-        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-        # lưu tuần trước
-        exp_data["prev_week"] = exp_data.get("users", {})
-        exp_data["users"] = {}
-        save_json(EXP_FILE, exp_data)
-        cfg["exp_locked"] = True
-        save_json(CONFIG_FILE, cfg)
-        print("[EXP] reset tuần")
-
-    # mở lại 14:00 T2
-    if weekday == 0 and now.hour == 14 and now.minute == 0:
-        cfg["exp_locked"] = False
-        save_json(CONFIG_FILE, cfg)
-        print("[EXP] mở lại exp tuần")
-
-    # nếu nằm trong khoảng T7 -> T2 14h thì khóa
-    in_lock = False
-    if weekday in (5, 6):  # T7, CN
-        in_lock = True
-    if weekday == 0 and now.hour < 14:
-        in_lock = True
-
-    cfg["exp_locked"] = in_lock
-    save_json(CONFIG_FILE, cfg)
-
-
-@tasks.loop(minutes=5)
-async def temp_role_cleaner():
-    # gỡ role tạm thời hết hạn
-    data = load_json(TEMP_ROLE_FILE, {"entries": []})
-    changed = False
-    now = now_utc()
-    new_entries = []
-    for e in data["entries"]:
-        expire = datetime.fromisoformat(e["expire_at"])
-        if now >= expire:
-            # gỡ role
-            guild = bot.get_guild(e["guild_id"])
-            if guild:
-                member = guild.get_member(e["user_id"])
-                role = guild.get_role(e["role_id"])
-                if member and role:
-                    try:
-                        await member.remove_roles(role, reason="role tạm thời hết hạn")
-                    except:
-                        pass
-            changed = True
-        else:
-            new_entries.append(e)
-    if changed:
-        data["entries"] = new_entries
-        save_json(TEMP_ROLE_FILE, data)
-
-# ============================================================
-# ON_MESSAGE: tính exp chat + từ khóa cấm
-# ============================================================
-
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
+    if code_used is None:
         return
 
-    guild = message.guild
-    if not guild:
+    data = get_invite_map()
+    guild_conf = data["guilds"].get(gid)
+    if not guild_conf:
         return
 
-    # TỪ KHÓA CẤM
-    bw = load_json(BADWORDS_FILE, {"words": [], "mode": "delete_warn"})
-    lower = message.content.lower()
-    violated = None
-    for w in bw["words"]:
-        if w and w.lower() in lower:
-            violated = w
-            break
-
-    if violated:
-        # xóa
-        try:
-            await message.delete()
-        except:
-            pass
-
-        mode = bw.get("mode", "delete_warn")
-        if mode in ("delete_warn", "delete_warn_dm"):
-            try:
-                await message.channel.send(
-                    f"{message.author.mention} 🚫 từ này không được phép dùng.",
-                    delete_after=6
-                )
-            except:
-                pass
-        if mode == "delete_warn_dm":
-            try:
-                await message.author.send(f"Bạn đã dùng từ cấm: `{violated}` trong {guild.name}")
-            except:
-                pass
-
-        # log
-        cfg = load_json(CONFIG_FILE, {"guilds": {}})
-        gconf = cfg["guilds"].get(str(guild.id), {})
-        log_ch_id = gconf.get("badword_log_channel_id")
-        if log_ch_id:
-            ch = guild.get_channel(log_ch_id)
-            if ch:
-                await ch.send(
-                    f"⚠️ {message.author} dùng từ cấm `{violated}` tại <#{message.channel.id}>: ```{message.content}```"
-                )
-        # đếm vi phạm
-        viol = load_json(VIOLATIONS_FILE, {"users": {}})
-        u = viol["users"].get(str(message.author.id), {"count": 0})
-        u["count"] += 1
-        viol["users"][str(message.author.id)] = u
-        save_json(VIOLATIONS_FILE, viol)
-
-        # nếu quá 3 lần -> mute 10 phút (nếu bot đủ quyền)
-        if u["count"] >= 3:
-            try:
-                until = datetime.now(timezone.utc) + timedelta(minutes=10)
-                await message.author.edit(timeout=until, reason="vi phạm từ cấm nhiều lần")
-                if log_ch_id:
-                    await ch.send(f"⛔ {message.author.mention} đã bị mute 10 phút.")
-            except:
-                pass
-
-        return  # không tính exp nữa
-
-    # TÍNH EXP CHAT
-    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False})
-    if not cfg.get("exp_locked", False):
-        gconf = cfg["guilds"].get(str(guild.id), {})
-        exp_chs = gconf.get("exp_channels", [])
-        allow = (not exp_chs) or (message.channel.id in exp_chs)
-        if allow:
-            exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-            users = exp_data["users"]
-            uid = str(message.author.id)
-            if uid not in users:
-                users[uid] = {
-                    "exp_chat": 0,
-                    "exp_voice": 0,
-                    "last_msg": None,
-                    "voice_seconds_week": 0
-                }
-            # cooldown 10s
-            last = users[uid]["last_msg"]
-            now_iso = now_utc().isoformat()
-            add = True
-            if last:
-                last_dt = datetime.fromisoformat(last)
-                if (now_utc() - last_dt).total_seconds() < 10:
-                    add = False
-            if add:
-                users[uid]["exp_chat"] += random.randint(5, 15)
-                users[uid]["last_msg"] = now_iso
-                save_json(EXP_FILE, exp_data)
-
-    await bot.process_commands(message)
-
-# ============================================================
-# COMMANDS: USER
-# ============================================================
-
-@bot.command(name="lenh")
-async def cmd_lenh(ctx: commands.Context):
-    msg = (
-        "📜 LỆNH NGƯỜI CHƠI:\n"
-        "/lenh - xem lệnh\n"
-        "/hoso - xem hồ sơ tu luyện\n"
-        "/topnhiethuyet - top toàn server\n"
-        "/topnhiethuyet @role - top theo role\n"
-        "/topnhiethuyet voice - top theo voice\n"
-        "/thusobaodanh - xem số báo danh của bạn\n"
-    )
-    await ctx.reply(msg)
-
-@bot.command(name="hoso")
-async def cmd_hoso(ctx: commands.Context, member: Optional[discord.Member] = None):
-    if member is None:
-        member = ctx.author
-    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-    u = exp_data["users"].get(str(member.id))
-    if not u:
-        await ctx.reply(f"📄 Hồ sơ tu luyện của {member.mention}:\n- EXP chat: 0\n- EXP voice: 0\n- Nhiệt huyết: 0/10")
+    if not guild_conf.get("buff_enabled", True):
         return
-    total = u.get("exp_chat",0) + u.get("exp_voice",0)
-    # đánh giá nhiệt huyết đơn giản
-    score = min(10, total // 200)  # cứ 200 exp = 1 điểm
-    await ctx.reply(
-        f"📄 Hồ sơ tu luyện của {member.mention}:\n"
-        f"- EXP chat: {u.get('exp_chat',0)}\n"
-        f"- EXP voice: {u.get('exp_voice',0)}\n"
-        f"- Tổng: {total}\n"
-        f"- Nhiệt huyết: {score}/10\n"
-        f"- Lần chat cuối: {u.get('last_msg','N/A')}"
-    )
 
-@bot.command(name="topnhiethuyet")
-async def cmd_top(ctx: commands.Context, target: Optional[str] = None):
-    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-    users = exp_data["users"]
-
-    # nếu target là mention role
-    role = None
-    only_voice = False
-    if target:
-        if target.lower() == "voice":
-            only_voice = True
-        elif ctx.message.role_mentions:
-            role = ctx.message.role_mentions[0]
-
-    scores = []
-    for uid, info in users.items():
-        member = ctx.guild.get_member(int(uid))
-        if not member:
-            continue
-        if role and role not in member.roles:
-            continue
-        chat_exp = info.get("exp_chat",0)
-        voice_exp = info.get("exp_voice",0)
-        if only_voice:
-            total = voice_exp
-        else:
-            total = chat_exp + voice_exp
-        scores.append((member, chat_exp, voice_exp, total))
-
-    scores.sort(key=lambda x: x[3], reverse=True)
-
-    lines = []
-    title = "🔥 TOP NHIỆT HUYẾT"
-    if role:
-        title += f" — {role.name}"
-    if only_voice:
-        title += " (VOICE)"
-
-    lines.append(title)
-    sum_chat = 0
-    sum_voice = 0
-    for i, (member, chat_exp, voice_exp, total) in enumerate(scores[:20], start=1):
-        lines.append(f"{i}. {member.display_name} — {total} (chat {chat_exp}, voice {voice_exp})")
-        sum_chat += chat_exp
-        sum_voice += voice_exp
-    lines.append("")
-    lines.append(f"Tổng cộng: {sum_chat + sum_voice} exp (chat {sum_chat} | voice {sum_voice})")
-
-    await ctx.reply("\n".join(lines))
-
-@bot.command(name="thusobaodanh")
-async def cmd_thusbd(ctx: commands.Context, member: Optional[discord.Member] = None):
-    if member is None:
-        member = ctx.author
-    sbd = load_json(SBD_FILE, {"members": {}})
-    code = sbd["members"].get(str(member.id))
-    if not code:
-        await ctx.reply(f"{member.mention} chưa có số báo danh.")
-    else:
-        await ctx.reply(f"📄 Số báo danh của {member.mention}: **{code}**")
-
-# ============================================================
-# COMMANDS: ADMIN DISCORD
-# ============================================================
-
-@bot.command(name="lenhquantri")
-@commands.has_permissions(manage_guild=True)
-async def cmd_lenhquantri(ctx: commands.Context):
-    msg = (
-        "🛠 LỆNH QUẢN TRỊ:\n"
-        "/kenhchat #kenh - kênh tính exp\n"
-        "/setwelcome #kenh - kênh chào mừng\n"
-        "/setleave #kenh - kênh tạm biệt\n"
-        "/setrolewelcome @role - role cấp cho người mới\n"
-        "/setlogcanhbao #kenh - kênh log từ cấm\n"
-        "/tukhoa <từ> - thêm từ cấm\n"
-        "/xoatukhoa <từ> - xoá từ cấm\n"
-        "/reactionrole_tao <link/id> 😁 @role - tạo role phản ứng\n"
-        "/reactionrole_xoa <link/id> - xoá\n"
-        "/tuyenchieu_tao <link/id> 😀 @role - phong hàm\n"
-        "/tuyenchieu_xoa <link/id>\n"
-        "/capsobaodanh @user <số>\n"
-        "/setvoice #kenh - (dự phòng) nếu muốn chỉ thống kê 1 số kênh voice\n"
-    )
-    await ctx.reply(msg)
-
-@bot.command(name="kenhchat")
-@commands.has_permissions(manage_guild=True)
-async def cmd_kenhchat(ctx: commands.Context, channel: discord.TextChannel):
-    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False})
-    gid = str(ctx.guild.id)
-    if gid not in cfg["guilds"]:
-        cfg["guilds"][gid] = {}
-    lst = cfg["guilds"][gid].get("exp_channels", [])
-    if channel.id not in lst:
-        lst.append(channel.id)
-    cfg["guilds"][gid]["exp_channels"] = lst
-    save_json(CONFIG_FILE, cfg)
-    await ctx.reply(f"✅ Đã đặt {channel.mention} là kênh tính exp")
-
-@bot.command(name="setwelcome")
-@commands.has_permissions(manage_guild=True)
-async def cmd_setwelcome(ctx: commands.Context, channel: discord.TextChannel):
-    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False})
-    gid = str(ctx.guild.id)
-    if gid not in cfg["guilds"]:
-        cfg["guilds"][gid] = {}
-    cfg["guilds"][gid]["welcome_channel_id"] = channel.id
-    save_json(CONFIG_FILE, cfg)
-    await ctx.reply(f"✅ Đã đặt kênh chào mừng: {channel.mention}")
-
-@bot.command(name="setleave")
-@commands.has_permissions(manage_guild=True)
-async def cmd_setleave(ctx: commands.Context, channel: discord.TextChannel):
-    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False})
-    gid = str(ctx.guild.id)
-    if gid not in cfg["guilds"]:
-        cfg["guilds"][gid] = {}
-    cfg["guilds"][gid]["leave_channel_id"] = channel.id
-    save_json(CONFIG_FILE, cfg)
-    await ctx.reply(f"✅ Đã đặt kênh tạm biệt: {channel.mention}")
-
-@bot.command(name="setrolewelcome")
-@commands.has_permissions(manage_guild=True)
-async def cmd_setrolewelcome(ctx: commands.Context, role: discord.Role):
-    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False})
-    gid = str(ctx.guild.id)
-    if gid not in cfg["guilds"]:
-        cfg["guilds"][gid] = {}
-    cfg["guilds"][gid]["welcome_role_id"] = role.id
-    save_json(CONFIG_FILE, cfg)
-    await ctx.reply(f"✅ Người mới sẽ được cấp {role.mention}")
-
-@bot.command(name="setlogcanhbao")
-@commands.has_permissions(manage_guild=True)
-async def cmd_setlogcanhbao(ctx: commands.Context, channel: discord.TextChannel):
-    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False})
-    gid = str(ctx.guild.id)
-    if gid not in cfg["guilds"]:
-        cfg["guilds"][gid] = {}
-    cfg["guilds"][gid]["badword_log_channel_id"] = channel.id
-    save_json(CONFIG_FILE, cfg)
-    await ctx.reply(f"✅ Kênh log cảnh báo: {channel.mention}")
-
-@bot.command(name="tukhoa")
-@commands.has_permissions(manage_guild=True)
-async def cmd_tukhoa(ctx: commands.Context, *, word: str):
-    bw = load_json(BADWORDS_FILE, {"words": [], "mode": "delete_warn"})
-    if word.lower() not in [w.lower() for w in bw["words"]]:
-        bw["words"].append(word)
-    save_json(BADWORDS_FILE, bw)
-    await ctx.reply(f"✅ Đã thêm từ cấm `{word}`")
-
-@bot.command(name="xoatukhoa")
-@commands.has_permissions(manage_guild=True)
-async def cmd_xoatukhoa(ctx: commands.Context, *, word: str):
-    bw = load_json(BADWORDS_FILE, {"words": [], "mode": "delete_warn"})
-    bw["words"] = [w for w in bw["words"] if w.lower() != word.lower()]
-    save_json(BADWORDS_FILE, bw)
-    await ctx.reply(f"✅ Đã xoá từ cấm `{word}`")
-
-@bot.command(name="capsobaodanh")
-@commands.has_permissions(manage_guild=True)
-async def cmd_capsobaodanh(ctx: commands.Context, member: discord.Member, sobd: str):
-    sbd = load_json(SBD_FILE, {"members": {}})
-    sbd["members"][str(member.id)] = sobd
-    save_json(SBD_FILE, sbd)
-    await ctx.reply(f"✅ Đã cấp số báo danh `{sobd}` cho {member.mention}")
-
-# ============================================================
-# REACTION ROLE & TUYÊN CHIẾU
-# ============================================================
-
-def parse_message_ref(text: str):
-    text = text.strip()
-    if text.isdigit():
-        return (None, None, int(text))
-    if "discord.com/channels/" in text:
-        parts = text.split("/")
-        gid = int(parts[-3])
-        cid = int(parts[-2])
-        mid = int(parts[-1])
-        return (gid, cid, mid)
-    return None
-
-@bot.command(name="reactionrole_tao")
-@commands.has_permissions(manage_guild=True)
-async def cmd_reactionrole_tao(ctx: commands.Context, message_ref: str, emoji: str, role: discord.Role):
-    parsed = parse_message_ref(message_ref)
-    if not parsed:
-        await ctx.reply("❌ Không đọc được link / ID tin nhắn.")
+    link_conf = guild_conf.get("links", {}).get(code_used)
+    if not link_conf or not link_conf.get("active", True):
         return
-    gid, cid, mid = parsed
-    if gid is None:
-        gid = ctx.guild.id
 
-    data = load_json(REACTION_FILE, {"messages": {}})
-    if str(gid) not in data["messages"]:
-        data["messages"][str(gid)] = {}
-    if str(mid) not in data["messages"][str(gid)]:
-        data["messages"][str(gid)][str(mid)] = {
-            "type": "reaction",
-            "emojis": {}
-        }
-    data["messages"][str(gid)][str(mid)]["emojis"][emoji] = {
-        "add_roles": [role.id],
-        "remove_roles": [],
-        "mode": "add"
-    }
-    save_json(REACTION_FILE, data)
+    role_ids = link_conf.get("role_ids", [])
 
-    if cid:
-        ch = ctx.guild.get_channel(cid)
-        if ch:
-            try:
-                msg = await ch.fetch_message(mid)
-                await msg.add_reaction(emoji)
-            except:
-                pass
-
-    await ctx.reply(f"✅ Đã tạo reaction role cho tin `{mid}` với emoji {emoji} -> {role.mention}")
-
-@bot.command(name="reactionrole_xoa")
-@commands.has_permissions(manage_guild=True)
-async def cmd_reactionrole_xoa(ctx: commands.Context, message_ref: str):
-    parsed = parse_message_ref(message_ref)
-    if not parsed:
-        await ctx.reply("❌ Không đọc được link / ID tin nhắn.")
-        return
-    gid, cid, mid = parsed
-    if gid is None:
-        gid = ctx.guild.id
-    data = load_json(REACTION_FILE, {"messages": {}})
-    gdict = data["messages"].get(str(gid), {})
-    if str(mid) in gdict:
-        del gdict[str(mid)]
-        data["messages"][str(gid)] = gdict
-        save_json(REACTION_FILE, data)
-        await ctx.reply("✅ Đã xoá reaction role.")
-    else:
-        await ctx.reply("❌ Tin này chưa cài reaction role.")
-
-@bot.command(name="tuyenchieu_tao")
-@commands.has_permissions(manage_guild=True)
-async def cmd_tuyenchieu_tao(ctx: commands.Context, message_ref: str, emoji: str, role: discord.Role, mode: str = "them"):
-    # mode = "them" hoặc "thay"
-    parsed = parse_message_ref(message_ref)
-    if not parsed:
-        await ctx.reply("❌ Không đọc được link / ID tin nhắn.")
-        return
-    gid, cid, mid = parsed
-    if gid is None:
-        gid = ctx.guild.id
-
-    data = load_json(REACTION_FILE, {"messages": {}})
-    if str(gid) not in data["messages"]:
-        data["messages"][str(gid)] = {}
-    if str(mid) not in data["messages"][str(gid)]:
-        data["messages"][str(gid)][str(mid)] = {
-            "type": "tuyenchieu",
-            "emojis": {}
-        }
-
-    # nếu mode=thay -> gỡ các role cũ thuộc nhóm phong hàm
-    if mode == "thay":
-        remove_roles = [role.id]  # thực tế sẽ cấu hình thêm trong web
-    else:
-        remove_roles = []
-
-    data["messages"][str(gid)][str(mid)]["emojis"][emoji] = {
-        "add_roles": [role.id],
-        "remove_roles": remove_roles,
-        "mode": mode
-    }
-    save_json(REACTION_FILE, data)
-
-    if cid:
-        ch = ctx.guild.get_channel(cid)
-        if ch:
-            try:
-                msg = await ch.fetch_message(mid)
-                await msg.add_reaction(emoji)
-            except:
-                pass
-
-    await ctx.reply(f"✅ Đã tạo tuyên chiếu ({mode}) trên tin `{mid}` -> {role.mention}")
-
-@bot.command(name="tuyenchieu_xoa")
-@commands.has_permissions(manage_guild=True)
-async def cmd_tuyenchieu_xoa(ctx: commands.Context, message_ref: str):
-    parsed = parse_message_ref(message_ref)
-    if not parsed:
-        await ctx.reply("❌ Không đọc được link / ID tin nhắn.")
-        return
-    gid, cid, mid = parsed
-    if gid is None:
-        gid = ctx.guild.id
-    data = load_json(REACTION_FILE, {"messages": {}})
-    gdict = data["messages"].get(str(gid), {})
-    if str(mid) in gdict:
-        del gdict[str(mid)]
-        data["messages"][str(gid)] = gdict
-        save_json(REACTION_FILE, data)
-        await ctx.reply("✅ Đã xoá tuyên chiếu.")
-    else:
-        await ctx.reply("❌ Tin này chưa cài tuyên chiếu.")
-
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    if payload.user_id == bot.user.id:
-        return
-    data = load_json(REACTION_FILE, {"messages": {}})
-    gdict = data["messages"].get(str(payload.guild_id), {})
-    mconf = gdict.get(str(payload.message_id))
-    if not mconf:
-        return
-    guild = bot.get_guild(payload.guild_id)
-    member = guild.get_member(payload.user_id)
-    if not member:
-        return
-    emoji = str(payload.emoji)
-    econfs = mconf.get("emojis", {})
-    ec = econfs.get(emoji)
-    if not ec:
-        return
-    # add roles
-    for rid in ec.get("add_roles", []):
+    # 1. gán tất cả role
+    for rid in role_ids:
         r = guild.get_role(rid)
         if r:
             try:
-                await member.add_roles(r, reason="reaction/tuyenchieu")
-            except:
+                await member.add_roles(r, reason="buff mem ảo auto-role")
+            except discord.Forbidden:
                 pass
-    # remove roles
-    for rid in ec.get("remove_roles", []):
-        r = guild.get_role(rid)
-        if r:
-            try:
-                await member.remove_roles(r, reason="reaction/tuyenchieu remove")
-            except:
+            except Exception:
                 pass
+        await asyncio.sleep(0.05)
 
-# ============================================================
-# CHỦ BOT
-# ============================================================
+    # 2. đổi nickname
+    new_name = generate_nickname(member.guild.id)
+    try:
+        await member.edit(nick=new_name, reason="buff mem ảo auto-nick")
+    except discord.Forbidden:
+        pass
+    except Exception:
+        pass
 
-@bot.command(name="lenhchubot")
-async def cmd_lenhchubot(ctx: commands.Context):
-    if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Bạn không phải chủ bot.")
-        return
-    msg = (
-        "👑 LỆNH CHỦ BOT:\n"
-        "/datprefix <chuỗi> - đặt tiền tố biệt danh bang\n"
-        "/setlink <link> @role... - (dự phòng) buff mem ảo\n"
-        "/xemlink - xem link buff\n"
-        "/xoalink <link> - tắt link\n"
-        "/batbuff / /tatbuff - bật tắt buff toàn bang\n"
-        "/sheet_lienket <link> - lưu link sheet\n"
-        "/xuatdulieu - xuất toàn bộ json\n"
-    )
-    await ctx.reply(msg)
+    # 3. log
+    logs = get_log_data()
+    log_entry = {
+        "time": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "guild_id": gid,
+        "user_id": str(member.id),
+        "new_name": new_name,
+        "role_ids": role_ids,
+        "invite_code": code_used
+    }
+    logs.append(log_entry)
+    logs = logs[-400:]  # giữ 400 record gần nhất
+    set_log_data(logs)
 
-@bot.command(name="datprefix")
-async def cmd_datprefix(ctx: commands.Context, *, prefix: str):
-    if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Bạn không phải chủ bot.")
-        return
-    data = load_json(PREFIX_FILE, {"guilds": {}})
-    data["guilds"][str(ctx.guild.id)] = prefix
-    save_json(PREFIX_FILE, data)
-    await ctx.reply(f"✅ Đã đặt prefix: `{prefix}`")
+    print(f"[BUFF] {member} -> '{new_name}' via {code_used} roles={role_ids}")
 
-# --- buff mem ---
+# ---------------------------
+# Commands Chủ Bot
+# ---------------------------
+
 @bot.command(name="setlink")
 @only_owner()
 async def cmd_setlink(ctx: commands.Context, invite_url: str, *roles: discord.Role):
@@ -1067,178 +1078,208 @@ async def cmd_tatbuff(ctx: commands.Context):
     await ctx.reply("⛔ ĐÃ TẮT buff mem ảo cho bang này.")
 
 
+# ========== /kiemtratv ==========
 
-# ============================================================
-# PHẦN WEB ADMIN (FLASK)
-# ============================================================
+@bot.command(name="kiemtratv")
+@only_owner()
+async def cmd_kiemtratv(ctx: commands.Context, *args):
+    """
+    /kiemtratv
+    /kiemtratv @user
+    /kiemtratv role:@role
+    /kiemtratv gio:12
+    /kiemtratv ngay:2
+    /kiemtratv role:@MemAo ngay:1
+    /kiemtratv @user ngay:7
 
-app = Flask(__name__)
+    Lọc log buff theo:
+    - user cụ thể
+    - role cụ thể
+    - khung thời gian giờ / ngày
+    - hoặc xem danh sách gần nhất
+    """
 
-DASHBOARD_HTML = """
-<!doctype html>
-<title>Bảng điều khiển - BANG_CHU_SUPREME</title>
-<h1>Bảng điều khiển</h1>
-<p>Bot: {{bot_name}}</p>
-<p>Số user đã ghi nhận: {{total_users}}</p>
-<p>EXP đang {{'bị khóa' if exp_locked else 'mở'}}</p>
-<h2>Top nhiệt huyết (10)</h2>
-<pre>{{top_text}}</pre>
-<h2>Menu</h2>
-<ul>
-<li><a href="/badwords">Từ khóa cấm</a></li>
-<li><a href="/reactions">Reaction / Tuyên chiếu</a></li>
-<li><a href="/buff">Buff mem</a></li>
-<li><a href="/logs">Logs</a></li>
-<li><a href="/helpbot">Hướng dẫn lệnh</a></li>
-</ul>
-"""
+    gid = str(ctx.guild.id)
+    logs = get_log_data()
+    # chỉ xem log của bang hiện tại
+    logs = [x for x in logs if x.get("guild_id") == gid]
 
-@app.route("/")
-def web_dashboard():
-    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-    users = exp_data["users"]
-    items = []
-    for uid, info in users.items():
-        total = info.get("exp_chat",0) + info.get("exp_voice",0)
-        items.append((uid, total))
-    items.sort(key=lambda x: x[1], reverse=True)
-    top_lines = []
-    for i, (uid, total) in enumerate(items[:10], start=1):
-        top_lines.append(f"{i}. {uid} — {total}")
-    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False})
-    global_users = load_json(GLOBAL_MEMBERS_FILE, {"users": []})
-    return render_template_string(
-        DASHBOARD_HTML,
-        bot_name=str(bot.user) if bot.user else "Chưa login",
-        total_users=len(global_users["users"]),
-        exp_locked=cfg.get("exp_locked", False),
-        top_text="\n".join(top_lines)
+    target_user_id = None
+    target_role_id = None
+    max_age_hours = None  # số giờ tối đa
+    # parse args thô
+    for a in args:
+        # @user
+        if isinstance(a, discord.Member):
+            target_user_id = str(a.id)
+            continue
+        # role:@role
+        if isinstance(a, discord.Role):
+            target_role_id = a.id
+            continue
+        # gio:X
+        if isinstance(a, str) and a.lower().startswith("gio:"):
+            try:
+                h = int(a.split(":",1)[1])
+                max_age_hours = h
+            except:
+                pass
+            continue
+        # ngay:X
+        if isinstance(a, str) and a.lower().startswith("ngay:"):
+            try:
+                d = int(a.split(":",1)[1])
+                # nếu chưa có gio:, đổi sang giờ
+                if (max_age_hours is None) or (d*24 < max_age_hours):
+                    max_age_hours = d * 24
+            except:
+                pass
+            continue
+
+    # lọc theo thời gian
+    if max_age_hours is not None:
+        now_utc = datetime.now(timezone.utc)
+        cutoff = now_utc - timedelta(hours=max_age_hours)
+
+        def too_old(entry):
+            t = entry.get("time")
+            try:
+                # parse "2025-11-02T18:41:10Z"
+                dt = datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ")
+                dt = dt.replace(tzinfo=timezone.utc)
+                return dt < cutoff
+            except:
+                return False
+
+        logs = [x for x in logs if not too_old(x)]
+
+    # lọc theo user
+    if target_user_id is not None:
+        logs = [x for x in logs if x.get("user_id") == target_user_id]
+
+    # lọc theo role
+    if target_role_id is not None:
+        logs = [x for x in logs if target_role_id in x.get("role_ids", [])]
+
+    if not logs:
+        await ctx.reply("📭 Không tìm thấy thành viên phù hợp với điều kiện.")
+        return
+
+    # Nếu user cụ thể -> show chi tiết 1 người mới nhất
+    if target_user_id is not None:
+        logs_user = logs[-1]  # record mới nhất
+        uid = logs_user.get("user_id")
+        member = ctx.guild.get_member(int(uid))
+        display_mention = f"<@{uid}>" if uid else "N/A"
+        new_name = logs_user.get("new_name", "N/A")
+        invite_code = logs_user.get("invite_code", "N/A")
+        ts_utc = logs_user.get("time", "N/A")
+        role_ids = logs_user.get("role_ids", [])
+
+        # build role list
+        role_mentions = []
+        for rid in role_ids:
+            r = ctx.guild.get_role(rid)
+            role_mentions.append(r.mention if r else str(rid))
+
+        # tính "bao lâu trước" (ước lượng giờ)
+        try:
+            dt = datetime.strptime(ts_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            now_utc = datetime.now(timezone.utc)
+            diff = now_utc - dt
+            hours_ago = int(diff.total_seconds() // 3600)
+            ago_txt = f"{hours_ago} giờ trước"
+            # giờ VN (GMT+7)
+            vn_time = (dt + timedelta(hours=7)).strftime("%Y-%m-%d %H:%M")
+        except:
+            ago_txt = "N/A"
+            vn_time = ts_utc
+
+        msg = (
+            "📜 KIỂM TRA THÀNH VIÊN\n"
+            f"👤 Thành viên: {display_mention} (ID: {uid})\n"
+            f"🏷️ Biệt danh sau buff: {new_name}\n"
+            f"🎭 Role được gán: {', '.join(role_mentions) if role_mentions else '—'}\n"
+            f"📨 Link mời: {invite_code}\n"
+            f"🕒 Thời điểm buff: {vn_time} (giờ GMT+7)\n"
+            f"⏳ Đã vào được: {ago_txt}\n"
+        )
+        await ctx.reply(msg)
+        return
+
+    # nếu không phải user cụ thể -> show danh sách
+    # lấy tối đa 20 gần nhất
+    slice_logs = logs[-20:]
+
+    lines = ["📊 DANH SÁCH THÀNH VIÊN BUFF GẦN NHẤT:"]
+    idx = 1
+    for entry in slice_logs[::-1]:  # đảo ngược để record mới nhất lên đầu
+        uid = entry.get("user_id")
+        display_mention = f"<@{uid}>" if uid else "N/A"
+        new_name = entry.get("new_name", "N/A")
+        invite_code = entry.get("invite_code", "N/A")
+        role_ids = entry.get("role_ids", [])
+        role_mentions = []
+        for rid in role_ids:
+            r = ctx.guild.get_role(rid)
+            role_mentions.append(r.mention if r else str(rid))
+
+        ts_utc = entry.get("time", "N/A")
+        # chuyển sang giờ VN gọn
+        try:
+            dt = datetime.strptime(ts_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            vn_time = (dt + timedelta(hours=7)).strftime("%m-%d %H:%M")
+        except:
+            vn_time = ts_utc
+
+        lines.append(
+            f"{idx}. {display_mention} → \"{new_name}\" "
+            f"| Roles: {', '.join(role_mentions) if role_mentions else '—'} "
+            f"| Link:{invite_code} "
+            f"| {vn_time} GMT+7"
+        )
+        idx += 1
+
+    lines.append(f"\nTổng: {len(slice_logs)} người")
+    await ctx.reply("\n".join(lines))
+
+
+@bot.command(name="lenhchubot")
+@only_owner()
+async def cmd_lenhchubot(ctx: commands.Context):
+    msg = (
+        "LỆNH CHỦ BOT (buff mem ảo):\n"
+        "/setlink <invite_url> <@role1> <@role2> ...\n"
+        "    Gán link buff + nhiều role.\n\n"
+        "/xemlink\n"
+        "    Xem tất cả link buff.\n\n"
+        "/xoalink <invite_url>\n"
+        "    Tắt 1 link buff.\n\n"
+        "/batbuff\n"
+        "    Bật buff mem ảo cho bang.\n\n"
+        "/tatbuff\n"
+        "    Tắt buff mem ảo cho bang.\n\n"
+        "/kiemtratv [@user] [role:@role] [gio:X] [ngay:Y]\n"
+        "    Kiểm tra thành viên đã buff:\n"
+        "    - @user: chi tiết 1 người\n"
+        "    - role:@role: lọc theo role đã cấp khi buff\n"
+        "    - gio:X | ngay:Y: lọc theo thời gian gần nhất\n"
+        "    - không tham số: top gần nhất\n"
     )
+    await ctx.reply(msg)
 
-@app.route("/badwords", methods=["GET","POST"])
-def web_badwords():
-    if request.method == "POST":
-        word = request.form.get("word","").strip()
-        mode = request.form.get("mode","delete_warn")
-        data = load_json(BADWORDS_FILE, {"words": [], "mode": "delete_warn"})
-        if word and word.lower() not in [w.lower() for w in data["words"]]:
-            data["words"].append(word)
-        data["mode"] = mode
-        save_json(BADWORDS_FILE, data)
-    data = load_json(BADWORDS_FILE, {"words": [], "mode": "delete_warn"})
-    html = """
-    <h1>Từ khóa cấm</h1>
-    <form method="post">
-    Từ: <input name="word">
-    Chế độ:
-    <select name="mode">
-      <option value="delete_only" {% if data.mode=='delete_only' %}selected{% endif %}>Xóa không báo</option>
-      <option value="delete_warn" {% if data.mode=='delete_warn' %}selected{% endif %}>Xóa + cảnh báo</option>
-      <option value="delete_warn_dm" {% if data.mode=='delete_warn_dm' %}selected{% endif %}>Xóa + DM</option>
-    </select>
-    <button>Lưu</button>
-    </form>
-    <h2>Danh sách</h2>
-    <ul>
-    {% for w in data.words %}
-      <li>{{w}}</li>
-    {% endfor %}
-    </ul>
-    <a href="/">← về dashboard</a>
-    """
-    return render_template_string(html, data=data)
+# ---------------------------
+# Run bot
+# ---------------------------
 
-@app.route("/reactions")
-def web_reactions():
-    data = load_json(REACTION_FILE, {"messages": {}})
-    html = """
-    <h1>Reaction / Tuyên chiếu</h1>
-    <pre>{{data|tojson(indent=2)}}</pre>
-    <a href="/">← về dashboard</a>
-    """
-    return render_template_string(html, data=data)
-
-@app.route("/buff")
-def web_buff():
-    data = load_json(BUFF_FILE, {"guilds": {}})
-    html = """
-    <h1>Buff mem</h1>
-    <pre>{{data|tojson(indent=2)}}</pre>
-    <p>Chỉnh sửa bằng lệnh /setlink, /xemlink, /xoalink, /batbuff, /tatbuff trong Discord.</p>
-    <a href="/">← về dashboard</a>
-    """
-    return render_template_string(html, data=data)
-
-
-
-@app.route("/logs")
-def web_logs():
-    data = load_json(LOGS_FILE, [])
-    html = """
-    <h1>Logs</h1>
-    <pre>{{data|tojson(indent=2)}}</pre>
-    <a href="/">← về dashboard</a>
-    """
-    return render_template_string(html, data=data)
-
-@app.route("/helpbot")
-def web_helpbot():
-    html = """
-    <h1>Hướng dẫn lệnh</h1>
-    <h2>Người chơi</h2>
-    <pre>
-/lenh
-/hoso
-/topnhiethuyet
-/thusobaodanh
-    </pre>
-    <h2>Admin Discord</h2>
-    <pre>
-/lenhquantri
-/kenhchat #kenh
-/setwelcome #kenh
-/setleave #kenh
-/setrolewelcome @role
-/setlogcanhbao #kenh
-/tukhoa từ
-/xoatukhoa từ
-/reactionrole_tao ...
-/tuyenchieu_tao ...
-/capsobaodanh @user số
-    </pre>
-    <h2>Chủ bot</h2>
-    <pre>
-/lenhchubot
-/datprefix ...
-/setlink ...
-/xemlink
-/xoalink ...
-/batbuff / /tatbuff
-    </pre>
-    <a href="/">← về dashboard</a>
-    """
-    return render_template_string(html)
-
-# ============================================================
-# RUN BOT + WEB
-# ============================================================
-
-def run_flask():
-    # Railway thường dùng 0.0.0.0 và PORT env
-    port = int(os.getenv("PORT", "5000"))
-    app.run(host="0.0.0.0", port=port)
-
-def run_discord():
+def main():
+    if not DISCORD_TOKEN:
+        print("❌ Thiếu DISCORD_TOKEN trong biến môi trường.")
+        return
+    if OWNER_DISCORD_ID == 0:
+        print("❌ Thiếu OWNER_DISCORD_ID trong biến môi trường.")
+        return
     bot.run(DISCORD_TOKEN)
 
 if __name__ == "__main__":
-    if not DISCORD_TOKEN:
-        print("❌ Thiếu DISCORD_TOKEN")
-    elif OWNER_DISCORD_ID == 0:
-        print("❌ Thiếu OWNER_DISCORD_ID")
-    else:
-        # chạy web trên thread riêng
-        t = threading.Thread(target=run_flask, daemon=True)
-        t.start()
-        # chạy bot
-        run_discord()
+    main()
