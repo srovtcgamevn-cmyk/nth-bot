@@ -1736,6 +1736,52 @@ async def cmd_tatbuff(ctx):
     save_json(BUFF_FILE, data)
     await ctx.reply("✅ Đã tắt buff mem.")
 
+
+@tasks.loop(seconds=60)
+async def tick_voice_exp():
+    if is_weekend_lock():
+        return
+    now = now_utc()
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+
+    for guild in bot.guilds:
+        gmap = voice_state_map.get(guild.id, {})
+        for uid, start_time in list(gmap.items()):
+            member = guild.get_member(uid)
+            if not member:
+                continue
+            secs = (now - start_time).total_seconds()
+            if secs < 60:
+                continue
+
+            ensure_user(exp_data, str(uid))
+            u = exp_data["users"][str(uid)]
+
+            bonus = 1  # 1 phút = 1 exp
+            if team_boost_today(guild.id, member):
+                bonus *= 2
+            u["exp_voice"] += bonus
+            u["voice_seconds_week"] += 60
+
+            # nhiệt từ voice
+            add_heat(u, 0.2 / 10)  # 10 phút = +0.2
+
+            # reset mốc đếm
+            gmap[uid] = now
+
+            # kiểm tra thưởng cấp
+            total_now = u["exp_chat"] + u["exp_voice"]
+            try_grant_level_reward(member, total_now)
+
+    save_json(EXP_FILE, exp_data)
+
+@bot.event
+async def on_ready():
+    ...
+    tick_voice_exp.start()
+
+
+
 # =============== CHẠY BOT ===============
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
