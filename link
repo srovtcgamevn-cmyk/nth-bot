@@ -915,83 +915,140 @@ async def cmd_datprefix(ctx: commands.Context, *, prefix: str):
 
 # --- buff mem ---
 @bot.command(name="setlink")
+@only_owner()
 async def cmd_setlink(ctx: commands.Context, invite_url: str, *roles: discord.Role):
-    if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Bạn không phải chủ bot.")
-        return
+    """
+    /setlink <invite_url> <@role1> <@role2> ...
+    Gán 1 link buff với 1 danh sách role.
+    """
     if not roles:
-        await ctx.reply("❌ Phải tag ít nhất 1 role.")
+        await ctx.reply("❌ Bạn phải tag ít nhất 1 role.")
         return
+
     code = invite_url.strip().split("/")[-1]
-    data = load_json(BUFF_FILE, {"guilds": {}})
     gid = str(ctx.guild.id)
+
+    data = get_invite_map()
     if gid not in data["guilds"]:
-        data["guilds"][gid] = {"buff_enabled": True, "links": {}}
+        data["guilds"][gid] = {
+            "buff_enabled": True,
+            "links": {}
+        }
+
     data["guilds"][gid]["links"][code] = {
         "role_ids": [r.id for r in roles],
         "active": True
     }
-    save_json(BUFF_FILE, data)
-    await ctx.reply(f"✅ Gán link `{code}` với role: {' '.join(r.mention for r in roles)}")
+
+    set_invite_map(data)
+    await refresh_guild_invites(ctx.guild)
+
+    role_mentions = " ".join(r.mention for r in roles)
+    await ctx.reply(
+        f"✅ Đã gán link `{code}` với các role: {role_mentions}\n"
+        f"Ai join bằng link này sẽ được buff mem ảo."
+    )
+
 
 @bot.command(name="xemlink")
+@only_owner()
 async def cmd_xemlink(ctx: commands.Context):
-    if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Bạn không phải chủ bot.")
+    """
+    /xemlink
+    Xem tất cả link buff + role tương ứng
+    """
+    gid = str(ctx.guild.id)
+    data = get_invite_map()
+    guild_conf = data["guilds"].get(gid)
+
+    if not guild_conf or not guild_conf.get("links"):
+        await ctx.reply("📭 Chưa có link buff nào trong bang này.")
         return
-    data = load_json(BUFF_FILE, {"guilds": {}})
-    gconf = data["guilds"].get(str(ctx.guild.id))
-    if not gconf:
-        await ctx.reply("📭 Chưa có link buff.")
-        return
-    lines = [f"Buff: {'BẬT' if gconf.get('buff_enabled', True) else 'TẮT'}"]
-    for code, conf in gconf.get("links", {}).items():
-        lines.append(f"- {code}: {conf.get('role_ids', [])} ({'ON' if conf.get('active',True) else 'OFF'})")
+
+    buff_enabled = guild_conf.get("buff_enabled", True)
+    status_txt = "BẬT" if buff_enabled else "TẮT"
+
+    lines = [f"Chế độ buff toàn bang: {status_txt}"]
+    for code, conf in guild_conf["links"].items():
+        active = conf.get("active", True)
+        role_ids = conf.get("role_ids", [])
+        role_mentions = []
+        for rid in role_ids:
+            r = ctx.guild.get_role(rid)
+            role_mentions.append(r.mention if r else str(rid))
+        lines.append(
+            f"- `{code}` -> Roles: {' '.join(role_mentions)} | Trạng thái: {'ON' if active else 'OFF'}"
+        )
+
     await ctx.reply("\n".join(lines))
 
+
 @bot.command(name="xoalink")
+@only_owner()
 async def cmd_xoalink(ctx: commands.Context, invite_url: str):
-    if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Bạn không phải chủ bot.")
-        return
+    """
+    /xoalink <invite_url>
+    Tắt 1 link buff cụ thể (active=false)
+    """
     code = invite_url.strip().split("/")[-1]
-    data = load_json(BUFF_FILE, {"guilds": {}})
-    gconf = data["guilds"].get(str(ctx.guild.id))
-    if not gconf or code not in gconf.get("links", {}):
-        await ctx.reply("❌ Link này chưa set.")
+    gid = str(ctx.guild.id)
+
+    data = get_invite_map()
+    guild_conf = data["guilds"].get(gid)
+
+    if not guild_conf or code not in guild_conf.get("links", {}):
+        await ctx.reply("❌ Link này chưa được cấu hình.")
         return
-    gconf["links"][code]["active"] = False
-    data["guilds"][str(ctx.guild.id)] = gconf
-    save_json(BUFF_FILE, data)
-    await ctx.reply("✅ Đã tắt link.")
+
+    guild_conf["links"][code]["active"] = False
+    data["guilds"][gid] = guild_conf
+    set_invite_map(data)
+
+    await ctx.reply(f"📴 Đã tắt link `{code}`. Link này sẽ không buff nữa.")
+
 
 @bot.command(name="batbuff")
+@only_owner()
 async def cmd_batbuff(ctx: commands.Context):
-    if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Bạn không phải chủ bot.")
-        return
-    data = load_json(BUFF_FILE, {"guilds": {}})
+    """
+    /batbuff
+    Bật buff mem ảo toàn bang
+    """
     gid = str(ctx.guild.id)
+    data = get_invite_map()
     if gid not in data["guilds"]:
-        data["guilds"][gid] = {"buff_enabled": True, "links": {}}
+        data["guilds"][gid] = {
+            "buff_enabled": True,
+            "links": {}
+        }
     else:
         data["guilds"][gid]["buff_enabled"] = True
-    save_json(BUFF_FILE, data)
-    await ctx.reply("✅ Đã bật buff.")
+
+    set_invite_map(data)
+    await ctx.reply("✅ ĐÃ BẬT buff mem ảo cho bang này.")
+
 
 @bot.command(name="tatbuff")
+@only_owner()
 async def cmd_tatbuff(ctx: commands.Context):
-    if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Bạn không phải chủ bot.")
-        return
-    data = load_json(BUFF_FILE, {"guilds": {}})
+    """
+    /tatbuff
+    Tắt buff mem ảo toàn bang
+    """
     gid = str(ctx.guild.id)
+    data = get_invite_map()
     if gid not in data["guilds"]:
-        data["guilds"][gid] = {"buff_enabled": False, "links": {}}
+        data["guilds"][gid] = {
+            "buff_enabled": False,
+            "links": {}
+        }
     else:
         data["guilds"][gid]["buff_enabled"] = False
-    save_json(BUFF_FILE, data)
-    await ctx.reply("✅ Đã tắt buff.")
+
+    set_invite_map(data)
+    await ctx.reply("⛔ ĐÃ TẮT buff mem ảo cho bang này.")
+
+
 
 # ============================================================
 # PHẦN WEB ADMIN (FLASK)
@@ -1093,6 +1150,8 @@ def web_buff():
     <a href="/">← về dashboard</a>
     """
     return render_template_string(html, data=data)
+
+
 
 @app.route("/logs")
 def web_logs():
