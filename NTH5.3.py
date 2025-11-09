@@ -38,10 +38,18 @@ from flask import Flask, request, jsonify, render_template_string
 
 import discord
 from discord.ext import commands, tasks
+# ===== Decorator kiểm tra quyền chủ bot =====
 def only_owner():
-    def predicate(ctx: commands.Context):
-        return ctx.author.id == OWNER_DISCORD_ID
-    return commands.check(predicate)
+    def wrapper(func):
+        async def inner(ctx, *args, **kwargs):
+            import os
+            owner_id = int(os.getenv("OWNER_DISCORD_ID", "0") or "0")
+            if ctx.author.id != owner_id:
+                await ctx.reply("⛔ Lệnh này chỉ chủ bot dùng được.")
+                return
+            return await func(ctx, *args, **kwargs)
+        return inner
+    return wrapper
 
 
 
