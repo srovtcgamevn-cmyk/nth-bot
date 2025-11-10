@@ -1569,17 +1569,12 @@ async def auto_patrol_voice():
 @bot.command(name="settuantra")
 @commands.has_permissions(manage_guild=True)
 async def cmd_settuantra(ctx, seconds_per_channel: int = 60, *ids):
-    """
-    /settuantra 90 123456789012345678 987654321012345678
-    Dùng ID kênh thoại nhé (do Discord không cho tag voice)
-    """
     if not ids:
         await ctx.reply("⚙️ Dùng: `/settuantra <số_giây_mỗi_kênh> <id_kênh1> <id_kênh2> ...`")
         return
 
     gid = str(ctx.guild.id)
     ch_ids = []
-
     for _id in ids:
         try:
             cid = int(_id)
@@ -1596,13 +1591,37 @@ async def cmd_settuantra(ctx, seconds_per_channel: int = 60, *ids):
     voice_patrol_data["guilds"][gid] = {
         "channels": ch_ids,
         "interval": seconds_per_channel,
-        "pos": 0
+        "pos": 0,
     }
     save_json(VOICE_PATROL_FILE, voice_patrol_data)
 
     names = ", ".join(f"<#{cid}>" for cid in ch_ids)
     await ctx.reply(f"✅ Đã lưu {len(ch_ids)} kênh tuần tra: {names}\n⏱ Mỗi kênh: `{seconds_per_channel}` giây.")
 
+
+
+
+@bot.command(name="xemtuantra")
+@commands.has_permissions(manage_guild=True)
+async def cmd_xemtuantra(ctx):
+    gid = str(ctx.guild.id)
+    conf = voice_patrol_data.get("guilds", {}).get(gid)
+    if not conf or not conf.get("channels"):
+        await ctx.reply("ℹ️ Hiện chưa cấu hình tuần tra kênh thoại nào.")
+        return
+
+    interval = conf.get("interval", 60)
+    ch_ids = conf.get("channels", [])
+
+    lines = [f"🛰 **Danh sách kênh đang tuần tra** (mỗi kênh {interval}s):"]
+    for i, cid in enumerate(ch_ids, start=1):
+        ch = ctx.guild.get_channel(cid)
+        if ch:
+            lines.append(f"{i}. 🔊 {ch.name} (`{cid}`)")
+        else:
+            lines.append(f"{i}. ❓ (kênh đã xoá) `{cid}`")
+
+    await ctx.reply("\n".join(lines))
 
 
 # ================== TUẦN TRA KÊNH THOẠI ==================
