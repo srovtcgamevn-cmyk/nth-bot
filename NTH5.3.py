@@ -1706,19 +1706,18 @@ async def auto_weekly_reset():
     last_reset = cfg.get("last_reset", "")
     today = now.date().isoformat()
 
-    # 00:00 thứ 7 -> reset tuần + khóa exp
-# 00:00 Chủ nhật -> reset tuần + khóa exp
-if now.weekday() == 6 and now.hour == 0 and last_reset != today:
-    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-    exp_data["prev_week"] = exp_data.get("users", {})
-    exp_data["users"] = {}
-    save_json(EXP_FILE, exp_data)
+    # 00:00 Chủ nhật -> reset tuần + khóa exp
+    if now.weekday() == 6 and now.hour == 0 and last_reset != today:
+        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+        # lưu tuần cũ sang prev_week để còn xem top tuần trước
+        exp_data["prev_week"] = exp_data.get("users", {})
+        exp_data["users"] = {}
+        save_json(EXP_FILE, exp_data)
 
-    cfg["last_reset"] = today
-    cfg["exp_locked"] = True
-    save_json(CONFIG_FILE, cfg)
-    print("🔁 Reset tuần (Chủ nhật).")
-
+        cfg["last_reset"] = today
+        cfg["exp_locked"] = True
+        save_json(CONFIG_FILE, cfg)
+        print("🔁 Reset tuần (Chủ nhật).")
 
     # mở lại T2 14:00 + thu hồi role
     if now.weekday() == 0 and now.hour >= 14 and cfg.get("exp_locked", False):
@@ -1726,6 +1725,7 @@ if now.weekday() == 6 and now.hour == 0 and last_reset != today:
         save_json(CONFIG_FILE, cfg)
         print("🔓 Mở lại exp sau reset.")
 
+        # thu hồi role thưởng tuần
         level_data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
         for guild in bot.guilds:
             gconf = level_data["guilds"].get(str(guild.id), {})
@@ -1742,6 +1742,7 @@ if now.weekday() == 6 and now.hour == 0 and last_reset != today:
                             await member.remove_roles(r, reason="Thu hồi thưởng tuần")
                         except:
                             pass
+
 
 # =============== LỆNH CHỦ BOT: BUFF LINK ===============
 @bot.command(name="setlink")
