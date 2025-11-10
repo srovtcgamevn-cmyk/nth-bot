@@ -1165,7 +1165,7 @@ async def auto_weekly_reset():
                         try:
                             await member.remove_roles(r, reason="Thu hồi thưởng tuần")
                         except:
-                            pass)
+                            pass
 
 # ================== BACKUP ==================
 def make_backup_zip():
@@ -1317,6 +1317,76 @@ async def on_ready():
         auto_diemdanh_dm.start()
     if not auto_backup_task.is_running():
         auto_backup_task.start()
+    if not tick_voice_realtime.is_running():
+        tick_voice_realtime.start()
+
+
+
+
+# ============= TICK VOICE 1 PHÚT REALTIME =============
+@tasks.loop(seconds=60)
+async def tick_voice_realtime():
+    """
+    Mỗi 60s quét toàn bộ voice_state_map
+    ai đang mở mic thì cộng exp_voice + thời gian thoại
+    giống logic khi rời kênh nhưng realtime hơn
+    """
+    if is_weekend_lock():
+        return
+
+    now = now_utc()
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+
+    for guild in bot.guilds:
+        gmap = voice_state_map.get(guild.id, {})
+        for uid, start_time in list(gmap.items()):
+            member = guild.get_member(uid)
+            if not member:
+                continue
+
+            # đảm bảo vẫn đang trong voice và không mute/deaf
+            vs = member.voice
+            if not vs or not vs.channel or vs.self_mute or vs.mute or vs.self_deaf or vs.deaf:
+                # nếu rớt trạng thái thì bỏ khỏi map
+                gmap.pop(uid, None)
+                continue
+
+            # đủ 60s thì cộng
+            duration = (now - start_time).total_seconds()
+            if duration < 55:
+                continue
+
+            # chuẩn bị data
+            uid_str = str(uid)
+            ensure_user(exp_data, uid_str)
+            u = exp_data["users"][uid_str]
+
+            # base 1 exp / phút voice
+            bonus = 1
+
+            # nếu team hôm nay đã kích hoạt x2
+            if team_boost_today(guild.id, member):
+                bonus *= 2
+
+            # cộng
+            u["exp_voice"] += bonus
+            u["voice_seconds_week"] += 60
+
+            # nhiệt huyết từ voice 10p -> +0.2
+            u["voice_min_buffer"] = u.get("voice_min_buffer", 0) + 1
+            while u["voice_min_buffer"] >= 10:
+                add_heat(u, 0.2)
+                u["voice_min_buffer"] -= 10
+
+            # cập nhật lại mốc
+            gmap[uid] = now
+
+            # check thưởng cấp
+            total_now = u["exp_chat"] + u["exp_voice"]
+            await try_grant_level_reward(member, total_now)
+
+    save_json(EXP_FILE, exp_data)
+
 
 # ================== CHẠY BOT ==================
 if __name__ == "__main__":
