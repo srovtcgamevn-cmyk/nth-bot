@@ -93,9 +93,11 @@ def is_owner(uid: int) -> bool:
 
 def is_admin_ctx(ctx) -> bool:
     return (
-        ctx.author.guild_permissions.manage_guild:
+        ctx.author.guild_permissions.manage_guild
         or ctx.author.guild_permissions.administrator
         or is_owner(ctx.author.id)
+    )
+
 
         # danh sách kênh thoại để bot đi tuần (per guild)
 voice_patrol_config = {}  # {guild_id: [channel_id, ...]}
