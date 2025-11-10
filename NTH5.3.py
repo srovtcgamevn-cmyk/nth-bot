@@ -106,14 +106,31 @@ voice_block_data = load_json(VOICE_BLOCK_FILE, {"guilds": {}})
 
 
 # ================== KHÓA EXP THEO LỊCH ==================
-# chỉ nghỉ Chủ nhật + sáng thứ 2
 def is_weekend_lock():
     n = gmt7_now()
+    wd = n.weekday()   # 0=Thứ2 ... 6=Chủ nhật
     hour = n.hour
-    # Nếu là chủ nhật hoặc ngoài khung 7h sáng → 23h59 → khóa
-    if n.weekday() == 6 or hour < 9 or hour >= 24:
+
+    # 1) Chủ nhật: khóa cả ngày
+    if wd == 6:
         return True
+
+    # 2) Thứ 2: khóa đến 14:00
+    if wd == 0:
+        if hour < 14:
+            return True
+        return False
+
+    # 3) Từ Thứ 3 đến Thứ 7: chỉ cho cày 09:00 -> 23:59
+    # (tức là 00:00-08:59 khóa, 09:00-23:59 mở)
+    if wd in (1, 2, 3, 4, 5):  # 1=Thứ3, 5=Thứ7
+        if hour < 9:
+            return True
+        return False
+
+    # fallback
     return False
+
 
 
 # =============== BỘ TÊN ẢO (phiên bản mới – có dấu cách, không trùng) ===============
