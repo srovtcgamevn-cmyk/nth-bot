@@ -1022,18 +1022,24 @@ async def cmd_setdiemdanh(ctx, *args):
         await ctx.reply("⚠️ Không tìm thấy role hợp lệ.")
 
 # ================== /diemdanh ==================
+# ================== /diemdanh ==================
 @bot.command(name="diemdanh")
 async def cmd_diemdanh(ctx):
+    # khóa CN + sáng T2
     if is_weekend_lock():
-        await ctx.reply("⛔ Hôm nay nghỉ điểm danh (CN & T2 sáng).")
+        await ctx.reply("⛔️ Hôm nay nghỉ điểm danh (CN & sáng T2).")
         return
+
     member = ctx.author
     gid = str(ctx.guild.id)
+
+    # load cấu hình team và bảng điểm danh
     teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
     att = load_json(ATTEND_FILE, {"guilds": {}})
     teams = teamconf["guilds"].get(gid, {}).get("teams", {})
     g_att = att["guilds"].setdefault(gid, {})
 
+    # tìm team theo role mà member đang có
     role_id = None
     conf = None
     for rid, c in teams.items():
@@ -1042,13 +1048,17 @@ async def cmd_diemdanh(ctx):
             role_id = int(rid)
             conf = c
             break
+
     if not conf:
-        await ctx.reply("⛔ Bạn không thuộc team nào đang bật điểm danh.")
+        await ctx.reply("⛔️ Bạn không thuộc team nào đang bật điểm danh.")
         return
 
+    # kiểm tra giờ bắt đầu
     now = gmt7_now()
-    if (now.hour, now.minute) < (conf.get("start_hour",20), conf.get("start_minute",0)):
-        await ctx.reply(f"⏰ Team điểm danh từ {conf.get('start_hour',20):02d}:{conf.get('start_minute',0):02d}.")
+    if (now.hour, now.minute) < (conf.get("start_hour", 20), conf.get("start_minute", 0)):
+        await ctx.reply(
+            f"⏰ Team điểm danh từ {conf.get('start_hour',20):02d}:{conf.get('start_minute',0):02d}."
+        )
         return
 
     today = today_str_gmt7()
@@ -1067,36 +1077,41 @@ async def cmd_diemdanh(ctx):
 
     uid = str(member.id)
     if uid in day_data["checked"]:
-        await ctx.reply("✅ Bạn đã điểm danh.")
+        await ctx.reply("✅ Bạn đã điểm danh hôm nay.")
         return
 
-    # đánh dấu
+    # đánh dấu điểm danh
     day_data["checked"].append(uid)
     if uid not in day_data["active_members"]:
         day_data["active_members"].append(uid)
 
-    # điểm team + nhiệt
+    # cộng điểm team + nhiệt cá nhân nhẹ
     add_team_score(ctx.guild.id, role_id, today, 1)
+
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
     ensure_user(exp_data, uid)
     add_heat(exp_data["users"][uid], 0.5)
     save_json(EXP_FILE, exp_data)
 
+    # lưu lại điểm danh
     g_att[str(role_id)][today] = day_data
     att["guilds"][gid] = g_att
     save_json(ATTEND_FILE, att)
 
     checked = len(day_data["checked"])
-    await ctx.reply(f"✅ Điểm danh thành công cho **{conf.get('name','Team')}** ({checked}/{total_members})")
+    await ctx.reply(f"✅ Điểm danh thành công cho {conf.get('name','Team')} ({checked}/{total_members})")
 
-    # tag người chưa điểm danh
-    max_tag = conf.get("max_tag", 3)
-    if day_data["tag_count"] < max_tag and role_obj:
+    # ================== TAG NGƯỜI CHƯA ĐIỂM DANH NGAY TẠI KÊNH NÀY ==================
+    # kênh để thông báo chính là nơi người ta gõ lệnh
+    announce_channel = ctx.channel
+    max_tag_times = conf.get("max_tag", 3)
+
+    if day_data["tag_count"] < max_tag_times and role_obj:
         not_checked = [m for m in role_obj.members if str(m.id) not in day_data["checked"]]
         if not_checked:
-            ch = ctx.guild.get_channel(conf.get("channel_id")) or ctx.channel
+            # tag tối đa 20 người 1 lần
             mention_list = " ".join(m.mention for m in not_checked[:20])
-            await ch.send(
+            await announce_channel.send(
                 f"📣 **{conf.get('name','Team')}** còn thiếu: {mention_list}\nGõ `/diemdanh` nhé!"
             )
             day_data["tag_count"] += 1
@@ -1104,18 +1119,24 @@ async def cmd_diemdanh(ctx):
             att["guilds"][gid] = g_att
             save_json(ATTEND_FILE, att)
 
-    # kiểm tra kích hoạt x2
+    # ================== KIỂM TRA KÍCH HOẠT X2 ==================
     need = conf.get("min_count", 9)
     enough_count = checked >= need
     enough_percent = total_members > 0 and checked / total_members >= 0.75
+
     if not day_data.get("boost", False) and (enough_count or enough_percent):
         day_data["boost"] = True
         g_att[str(role_id)][today] = day_data
         att["guilds"][gid] = g_att
         save_json(ATTEND_FILE, att)
+
+        # thưởng thêm điểm quỹ khi đủ
         add_team_score(ctx.guild.id, role_id, today, 5)
-        ch = ctx.guild.get_channel(conf.get("channel_id")) or ctx.channel
-        await ch.send(f"🎉 Team **{conf.get('name','Team')}** đã đủ người và kích hoạt **X2** hôm nay!")
+
+        await announce_channel.send(
+            f"🎉 Team **{conf.get('name','Team')}** đã đủ người và **kích hoạt X2** hôm nay!"
+        )
+
 
 # ================== /bxhkimlan ==================
 @bot.command(name="bxhkimlan")
