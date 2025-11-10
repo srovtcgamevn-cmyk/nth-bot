@@ -1840,6 +1840,121 @@ async def tick_voice_exp():
     save_json(EXP_FILE, exp_data)
 
 
+
+# =============== LỆNH CHỦ BOT: BUFF LINK ===============
+@bot.command(name="setlink")
+async def cmd_setlink(ctx, invite_url: str, *roles: discord.Role):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot dùng được.")
+        return
+    code = invite_url.strip().split("/")[-1]
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {"buff_enabled": True, "links": {}})
+    g["links"][code] = {"role_ids": [r.id for r in roles], "active": True}
+    save_json(BUFF_FILE, data)
+    await ctx.reply("✅ Đã gán link buff.")
+
+@bot.command(name="xemlink")
+async def cmd_xemlink(ctx):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot.")
+        return
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(ctx.guild.id))
+    if not g:
+        await ctx.reply("📭 Chưa có link.")
+        return
+    lines = [f"Buff: {'ON' if g.get('buff_enabled',True) else 'OFF'}"]
+    for code, conf in g.get("links", {}).items():
+        lines.append(f"- {code}: {conf}")
+    await ctx.reply("\n".join(lines))
+
+@bot.command(name="xoalink")
+async def cmd_xoalink(ctx, invite_url: str):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot.")
+        return
+    code = invite_url.strip().split("/")[-1]
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(ctx.guild.id))
+    if not g or code not in g.get("links", {}):
+        await ctx.reply("❌ Không có link này.")
+        return
+    g["links"][code]["active"] = False
+    save_json(BUFF_FILE, data)
+    await ctx.reply("✅ Đã tắt link này.")
+
+@bot.command(name="batbuff")
+async def cmd_batbuff(ctx):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot.")
+        return
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {"buff_enabled": True, "links": {}})
+    g["buff_enabled"] = True
+    save_json(BUFF_FILE, data)
+    await ctx.reply("✅ Đã bật buff mem.")
+
+@bot.command(name="tatbuff")
+async def cmd_tatbuff(ctx):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot.")
+        return
+    data = load_json(BUFF_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {"buff_enabled": False, "links": {}})
+    g["buff_enabled"] = False
+    save_json(BUFF_FILE, data)
+    await ctx.reply("✅ Đã tắt buff mem.")
+
+
+@tasks.loop(seconds=60)
+async def tick_voice_exp():
+    if is_weekend_lock():
+        return
+    now = now_utc()
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+
+    for guild in bot.guilds:
+        gmap = voice_state_map.get(guild.id, {})
+        for uid, start_time in list(gmap.items()):
+            member = guild.get_member(uid)
+            if not member:
+                continue
+            secs = (now - start_time).total_seconds()
+            if secs < 60:
+                continue
+
+            ensure_user(exp_data, str(uid))
+            u = exp_data["users"][str(uid)]
+
+            bonus = 1  # 1 phút = 1 exp
+            if team_boost_today(guild.id, member):
+                bonus *= 2
+            u["exp_voice"] += bonus
+            u["voice_seconds_week"] += 60
+
+            # nhiệt từ voice
+            add_heat(u, 0.2 / 10)  # 10 phút = +0.2
+
+            # reset mốc đếm
+            gmap[uid] = now
+
+            # kiểm tra thưởng cấp
+            total_now = u["exp_chat"] + u["exp_voice"]
+            try_grant_level_reward(member, total_now)
+
+    save_json(EXP_FILE, exp_data)
+
+
+import os
+import shutil
+import datetime
+from discord.ext import tasks, commands
+import discord
+
+
+
+
 # =============== ON READY DUY NHẤT ===============
 @bot.event
 async def on_ready():
