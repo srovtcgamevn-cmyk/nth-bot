@@ -1651,11 +1651,16 @@ async def cmd_xemtuantra(ctx):
 
 
 # ================== TUẦN TRA KÊNH THOẠI ==================
-@tasks.loop(seconds=15)
+VOICE_PATROL_FILE = "voice_patrol.json"
+voice_patrol_data = load_json(VOICE_PATROL_FILE, {"guilds": {}})
+
+@tasks.loop(seconds=30)
 async def patrol_voice_channels():
-    for gid, conf in voice_patrol_data.get("guilds", {}).items():
-        guild = bot.get_guild(int(gid))
-        if not guild:
+    # chạy 30s/lần, mỗi guild đi 1 kênh
+    for guild in bot.guilds:
+        gid = str(guild.id)
+        conf = voice_patrol_data["guilds"].get(gid)
+        if not conf:
             continue
 
         channels = conf.get("channels", [])
@@ -1665,26 +1670,34 @@ async def patrol_voice_channels():
         interval = conf.get("interval", 60)
         pos = conf.get("pos", 0)
 
-        # xác định kênh sẽ sang
-        next_idx = pos % len(channels)
-        target_channel = guild.get_channel(channels[next_idx])
-        voice_patrol_data["guilds"][gid]["pos"] = next_idx + 1
+        # chọn kênh tiếp theo
+        if pos >= len(channels):
+            pos = 0
+        ch_id = channels[pos]
+        conf["pos"] = pos + 1  # lần sau nhảy kênh khác
         save_json(VOICE_PATROL_FILE, voice_patrol_data)
 
-        if not target_channel:
+        ch = guild.get_channel(ch_id)
+        if not ch or not isinstance(ch, discord.VoiceChannel):
             continue
 
-        vc = guild.voice_client
-        try:
-            if not vc or not vc.is_connected():
-                await target_channel.connect()
-            elif vc.channel.id != target_channel.id:
-                await vc.move_to(target_channel)
-        except Exception as e:
-            print(f"[patrol] lỗi move: {e}")
+        # nếu đã đang ở voice thì bỏ qua
+        if guild.voice_client and guild.voice_client.is_connected():
+            continue
 
-        # ngồi đúng số giây cấu hình
-        await asyncio.sleep(interval)
+        try:
+            vc = await ch.connect(self_deaf=True)
+            # rời sau interval giây
+            async def _leave_after(vc, wait):
+                await asyncio.sleep(wait)
+                if vc.is_connected():
+                    await vc.disconnect()
+
+            bot.loop.create_task(_leave_after(vc, interval))
+        except Exception as e:
+            print(f"[VOICE PATROL] Không join được kênh {ch_id} ở guild {guild.name}: {e}")
+            continue
+
 
 
 @bot.command(name="tuantra")
