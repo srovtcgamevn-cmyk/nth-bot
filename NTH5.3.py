@@ -1230,7 +1230,7 @@ async def cmd_bxhkimlan(ctx, role: discord.Role=None):
             elif chk == 0:
                 icon = "❌"
             else:
-                icon = "⚠️"
+                icon = "🔥"
             extra = " (x2)" if boosted else ""
             lines.append(f"{thu}: {icon} {chk}/{tot}{extra}")
     rate = int(hit / count * 100) if count else 0
