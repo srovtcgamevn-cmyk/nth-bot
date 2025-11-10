@@ -607,8 +607,12 @@ async def cmd_lenhadmin(ctx):
         "`/setthuongcap <level> @role..` – Thưởng level\n"
         "`/xemthuongcap` – Xem mốc thưởng\n"
         "`/thuhoithuong @r1 @r2` – Role bị thu thứ 2\n"
-        "`/settuantra` – Set kênh tuần tra\n"
-        "`/tuantra` <on> <off> – Bắt đầu tuần trai\n"
+        "`/settuantra` – Set kênh tuần tra theo ID kênh\n"
+        "`/tuantra` <on> <off> – Bắt đầu tuần tra\n"
+        "`/xemtuantra`– Xem lại kênh đang tuần tra\n"
+        "`/xemtuantra`– Xem lại kênh đang tuần tra\n"
+        "`/camkenhthoai`– Xem lại kênh đang tuần tra\n"
+
 
 
     )
