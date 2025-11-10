@@ -687,17 +687,17 @@ async def cmd_hoso(ctx, member: discord.Member = None):
     # ===== tạo embed =====
     embed = discord.Embed(
         title=f"📜 Hồ Sơ Tu Luyện của {member.display_name} ({member.mention})",
-        description="Theo dõi exp, voice, nhiệt và trạng thái điểm danh team.",
+        description="Theo dõi exp, voice, nhiệt huyết và trạng thái điểm danh team.",
         color=0xF1C40F
     )
     embed.set_thumbnail(url=member.display_avatar.url)
 
     embed.add_field(
-        name="📈 Cảnh giới",
+        name="📈 Cấp Độ",
         value=(
             f"• Level: **{level}**\n"
             f"• Tiến độ: **{exp_in_level}/{need} exp**\n"
-            f"`{bar}`"
+            f"`{bar}`\n"
         ),
         inline=False
     )
@@ -707,7 +707,7 @@ async def cmd_hoso(ctx, member: discord.Member = None):
         value=(
             f"• Chat: **{u.get('exp_chat', 0)} exp**\n"
             f"• Voice: **{u.get('exp_voice', 0)} exp** — {voice_min} phút\n"
-            f"• Nhiệt huyết: **{heat:.1f}/10**"
+            f"• Nhiệt huyết: **{heat:.1f}/10**\n"
         ),
         inline=True
     )
@@ -716,7 +716,7 @@ async def cmd_hoso(ctx, member: discord.Member = None):
         name="🕊️ Tuần trước",
         value=(
             f"• Chat: **{prev_chat} exp**\n"
-            f"• Voice: **{prev_voice} exp**"
+            f"• Voice: **{prev_voice} exp**\n"
         ),
         inline=True
     )
