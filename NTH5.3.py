@@ -385,7 +385,7 @@ def try_grant_level_reward(member: discord.Member, new_total_exp: int):
     if announce_channel:
         try:
             asyncio.create_task(
-                announce_channel.send(f"⭐ {member.mention} vừa đạt **level {level}**! Tiếp tục tu luyện nha.")
+                announce_channel.send(f"⭐  vừa đạt **level {level}**! Tiếp tục tu luyện nha.")
             )
         except:
             pass
