@@ -605,6 +605,9 @@ async def cmd_lenhadmin(ctx):
         "`/setthuongcap <level> @role..` – Thưởng level\n"
         "`/xemthuongcap` – Xem mốc thưởng\n"
         "`/thuhoithuong @r1 @r2` – Role bị thu thứ 2\n"
+        "`/settuantra` – Bảo vệ trật tự\n"
+        "`/thoaingoi` – Set kênh thoại\n"
+
 
     )
 
@@ -1612,6 +1615,76 @@ async def auto_patrol_voice():
             print(f"[WARN] Không move được voice: {e}")
 
         await asyncio.sleep(delay)
+
+
+
+# ================== TUẦN TRA KÊNH THOẠI ==================
+VOICE_PATROL_FILE = "voice_patrol.json"
+
+# Load danh sách tuần tra
+voice_patrol_data = load_json(VOICE_PATROL_FILE, {"guilds": {}})
+
+@bot.command(name="settuantra")
+@commands.has_permissions(manage_guild=True)
+async def cmd_settuantra(ctx, seconds_per_channel: int, *channels: discord.VoiceChannel):
+    """Cài đặt danh sách kênh thoại để bot tuần tra"""
+    gid = str(ctx.guild.id)
+    ch_ids = [c.id for c in channels]
+    voice_patrol_data["guilds"][gid] = {
+        "channels": ch_ids,
+        "interval": seconds_per_channel
+    }
+    save_json(VOICE_PATROL_FILE, voice_patrol_data)
+    names = ", ".join(f"🔊{c.name}" for c in channels)
+    await ctx.reply(f"✅ Đã set {len(channels)} kênh tuần tra, mỗi kênh {seconds_per_channel}s.\nDanh sách: {names}")
+
+# Task tuần tra (bot sẽ đi tuần từng kênh)
+@tasks.loop(seconds=30)
+async def patrol_voice_channels():
+    for gid, conf in voice_patrol_data.get("guilds", {}).items():
+        guild = bot.get_guild(int(gid))
+        if not guild or not conf.get("channels"):
+            continue
+
+        interval = conf.get("interval", 60)
+        for cid in conf["channels"]:
+            ch = guild.get_channel(cid)
+            if not ch or not isinstance(ch, discord.VoiceChannel):
+                continue
+
+            try:
+                vc = await ch.connect(timeout=5)
+                await asyncio.sleep(3)  # để nhận user list
+                active = [
+                    m for m in ch.members
+                    if not m.bot and not m.voice.self_mute and not m.voice.self_deaf
+                ]
+                if active:
+                    print(f"[TUẦN TRA] {guild.name} • {ch.name}: {len(active)} người đang hoạt động")
+                await asyncio.sleep(interval)
+                await vc.disconnect(force=True)
+            except Exception as e:
+                print(f"[ERR] Tuần tra {ch}: {e}")
+
+@bot.command(name="tuantra")
+@commands.has_permissions(manage_guild=True)
+async def cmd_tuantra(ctx, mode: str):
+    """Bật / tắt tuần tra kênh thoại"""
+    mode = mode.lower()
+    if mode in ["on", "bật", "bat"]:
+        if patrol_voice_channels.is_running():
+            await ctx.reply("✅ Tuần tra đã bật sẵn.")
+        else:
+            patrol_voice_channels.start()
+            await ctx.reply("🚀 Đã bật tuần tra kênh thoại!")
+    elif mode in ["off", "tắt", "tat"]:
+        if patrol_voice_channels.is_running():
+            patrol_voice_channels.cancel()
+            await ctx.reply("🛑 Đã tắt tuần tra kênh thoại.")
+        else:
+            await ctx.reply("⚠️ Tuần tra chưa bật.")
+    else:
+        await ctx.reply("❔ Dùng: `/tuantra on` hoặc `/tuantra off`")
 
 
 # ================== CHẠY BOT ==================
