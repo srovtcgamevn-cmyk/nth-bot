@@ -1504,13 +1504,34 @@ async def cmd_tatbuff(ctx):
 @bot.event
 async def on_ready():
     print("✅ Bot online:", bot.user)
-    # refresh invites
+
+    # 1) refresh lại invite cho từng guild
     for g in bot.guilds:
         try:
             await refresh_invites_for_guild(g)
         except:
             pass
 
+    # 2) QUÉT người đang ở voice lúc bot vừa bật,
+    #    để tick_voice_realtime có dữ liệu ngay
+    for guild in bot.guilds:
+        for vc in guild.voice_channels:
+            # lấy tất cả member đang ở kênh này
+            humans = [m for m in vc.members if not m.bot]
+            if len(humans) < 2:
+                # yêu cầu >=2 người thật mới tính thoại
+                continue
+            for m in humans:
+                vs = m.voice
+                if not vs:
+                    continue
+                # bỏ mute/deaf
+                if vs.self_mute or vs.mute or vs.self_deaf or vs.deaf:
+                    continue
+                # nhét vào map
+                voice_state_map.setdefault(guild.id, {})[m.id] = now_utc()
+
+    # 3) bật các task nền
     if not auto_weekly_reset.is_running():
         auto_weekly_reset.start()
     if not auto_diemdanh_dm.is_running():
@@ -1519,8 +1540,14 @@ async def on_ready():
         auto_backup_task.start()
     if not tick_voice_realtime.is_running():
         tick_voice_realtime.start()
-    if not patrol_voice_channels.is_running():
-        patrol_voice_channels.start()
+    # task tuần tra chỉ start nếu bạn có định nghĩa patrol_voice_channels
+    try:
+        if not patrol_voice_channels.is_running():
+            patrol_voice_channels.start()
+    except NameError:
+        # nếu bạn đang tạm tắt tính năng tuần tra thì bỏ qua
+        pass
+
 
 
 
