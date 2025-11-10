@@ -7,10 +7,12 @@ Nghich Thuy Han New - BANG_CHU_SUPREME
 """
 
 import os, json, random, math, asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 
 import discord
 from discord.ext import commands, tasks
+
+
 
 # =============== CẤU HÌNH CƠ BẢN ===============
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
@@ -1881,7 +1883,8 @@ def save_json(path, data):
 
 # ====== HÀM GIỜ GMT+7 ======
 def gmt7_now():
-    return datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+    return datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=7)
+
 
 
 # ====== TẠO FILE BACKUP ======
