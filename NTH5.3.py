@@ -675,7 +675,7 @@ async def cmd_hoso(ctx, member: discord.Member = None):
     bar = "█" * filled + "░" * (bar_len - filled)
 
     embed = discord.Embed(
-        title="📜 Hồ Sơ Tu Luyện",
+        title="📜 **Hồ Sơ Tu Luyện**",
         color=0xF1C40F
     )
     embed.set_thumbnail(url=member.display_avatar.url)
@@ -683,21 +683,21 @@ async def cmd_hoso(ctx, member: discord.Member = None):
     # phần mô tả, bắt đầu bằng tên người chơi ở dòng đầu
     desc = (
         f"**{member.display_name}**\n\n"
-        "Theo dõi exp, voice, nhiệt huyết và trạng thái điểm danh team.\n\n"
+        "Theo dõi exp, thoại, nhiệt huyết và trạng thái điểm danh team.\n\n"
         "📈 **Cấp Độ**\n"
         f"• Level: **{level}**\n"
         f"• Tiến độ: **{exp_in_level}/{need} exp**\n"
         f"`{bar}`\n\n"
         "💬 **Tuần này**\n"
         f"• Chat: **{u.get('exp_chat', 0)} exp**\n"
-        f"• Voice: **{u.get('exp_voice', 0)} exp** — {voice_min} phút\n"
+        f"• Thoại: **{u.get('exp_voice', 0)} exp** — {voice_min} phút\n"
         f"• Nhiệt huyết: **{heat:.1f}/10**\n\n"
         "🕊️ **Tuần trước**\n"
         f"• Chat: **{prev_chat} exp**\n"
-        f"• Voice: **{prev_voice} exp**\n\n"
-        "👥 **Team điểm danh**\n"
+        f"• Thoại: **{prev_voice} exp**\n\n"
+        "👥 **Team Kim Lan**\n"
         f"{team_name}\n\n"
-        "⚔️ **Buff điểm danh**\n"
+        "🔥 **Buff điểm danh**\n"
         f"{'Đang nhận **x2 exp hôm nay**' if has_boost else 'Không hoạt động'}\n\n"
         f"👤 **Người xem:** {member.mention}"
     )
