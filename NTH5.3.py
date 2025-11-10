@@ -1434,6 +1434,7 @@ async def on_ready():
 # ============= TICK VOICE 1 PHÚT REALTIME =============
 @tasks.loop(seconds=60)
 async def tick_voice_realtime():
+    # khoá theo lịch (CN / sáng thứ 2 / bạn đang để <9h)
     if is_weekend_lock():
         return
 
@@ -1446,11 +1447,20 @@ async def tick_voice_realtime():
             member = guild.get_member(uid)
             if not member:
                 continue
+
             vs = member.voice
+            # vẫn giữ chặn mute/deaf
             if not vs or not vs.channel or vs.self_mute or vs.mute or vs.self_deaf or vs.deaf:
                 gmap.pop(uid, None)
                 continue
 
+            # 🆕 chặn treo 1 mình: phòng phải có ít nhất 2 người thật (không bot)
+            human_members = [m for m in vs.channel.members if not m.bot]
+            if len(human_members) < 2:
+                # nếu bạn muốn siết mạnh hơn thì đổi 2 -> 3
+                continue
+
+            # đủ điều kiện rồi mới cộng
             if (now - start_time).total_seconds() >= 55:
                 uid_str = str(uid)
                 ensure_user(exp_data, uid_str)
@@ -1460,16 +1470,21 @@ async def tick_voice_realtime():
                 if team_boost_today(guild.id, member):
                     bonus *= 2
 
+                # cộng exp thoại
                 u["exp_voice"] += bonus
+                # ghi lại phút thoại tuần
                 u["voice_seconds_week"] += 60
 
+                # dồn để lên nhiệt huyết từ voice: 10p -> +0.2
                 u["voice_min_buffer"] = u.get("voice_min_buffer", 0) + 1
                 while u["voice_min_buffer"] >= 10:
                     u["heat"] += 0.2
                     u["voice_min_buffer"] -= 10
 
+                # cập nhật lại mốc thời gian
                 gmap[uid] = now
 
+                # check thưởng cấp
                 total = u["exp_chat"] + u["exp_voice"]
                 res = try_grant_level_reward(member, total)
                 if asyncio.iscoroutine(res):
