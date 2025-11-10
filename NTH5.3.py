@@ -373,29 +373,35 @@ def add_team_score(gid: int, rid: int, date: str, amount: float):
 
 # ================== THƯỞNG CẤP ==================
 def try_grant_level_reward(member: discord.Member, new_total_exp: int):
+    # tính level mới
     level, to_next, _ = calc_level_from_total_exp(new_total_exp)
 
-    # thông báo kênh chung
+    # tìm kênh để thông báo
     announce_channel = member.guild.system_channel
     if not announce_channel:
         for ch in member.guild.text_channels:
             if ch.permissions_for(member.guild.me).send_messages:
                 announce_channel = ch
                 break
+
+    # THÔNG BÁO KHÔNG TAG, chỉ hiện tên
     if announce_channel:
         try:
+            nick = member.display_name
             asyncio.create_task(
-                announce_channel.send(f"⭐  vừa đạt **level {level}**! Tiếp tục tu luyện nha.")
+                announce_channel.send(f"⭐ **{nick}** vừa đạt **level {level}**! Tiếp tục tu luyện nha.")
             )
         except:
             pass
 
+    # xử lý thưởng role
     data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
     g = data["guilds"].get(str(member.guild.id), {})
     val = g.get(str(level))
     if not val:
         return
 
+    # cho phép 1 cấp nhận nhiều role
     if isinstance(val, int):
         role_ids = [val]
     else:
@@ -408,6 +414,7 @@ def try_grant_level_reward(member: discord.Member, new_total_exp: int):
             asyncio.create_task(member.add_roles(role, reason=f"Đạt level {level}"))
             got_any = True
 
+    # vẫn giữ DM riêng nếu nhận được role
     if got_any:
         try:
             asyncio.create_task(
@@ -417,6 +424,7 @@ def try_grant_level_reward(member: discord.Member, new_total_exp: int):
             )
         except:
             pass
+
 
 # ================== SỰ KIỆN VOICE ==================
 @bot.event
