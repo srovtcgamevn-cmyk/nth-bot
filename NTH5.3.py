@@ -8,7 +8,30 @@ BANG_CHU_SUPREME - 1 FILE DUY NHẤT
 """
 
 import os, json, random, math, asyncio, shutil
-from datetime import datetime, timedelta, timezone
+def now_utc():
+    # thời gian UTC chuẩn
+    return datetime.now(timezone.utc)
+
+def gmt7_now():
+    # giờ VN
+    return now_utc() + timedelta(hours=7)
+
+def today_str_gmt7():
+    return gmt7_now().strftime("%Y-%m-%d")
+
+def is_weekend_lock():
+    """
+    Khóa EXP từ CN 00:00 đến thứ 2 13:59 theo GMT+7
+    """
+    n = gmt7_now()
+    # Monday = 0 ... Sunday = 6
+    weekday = n.weekday()
+    hour = n.hour
+    if weekday == 6:  # Chủ nhật
+        return True
+    if weekday == 0 and hour < 14:  # Thứ 2 trước 14h
+        return True
+    return False
 
 import discord
 from discord.ext import commands, tasks
