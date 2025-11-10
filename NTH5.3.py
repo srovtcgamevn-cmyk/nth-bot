@@ -1474,7 +1474,7 @@ async def on_ready():
 # ============= TICK VOICE 1 PHÚT REALTIME =============
 @tasks.loop(seconds=60)
 async def tick_voice_realtime():
-    # khoá theo lịch (CN / sáng thứ 2 / bạn đang để <9h)
+    # khóa lịch (CN / sáng T2 / ngoài giờ)
     if is_weekend_lock():
         return
 
@@ -1489,24 +1489,29 @@ async def tick_voice_realtime():
                 continue
 
             vs = member.voice
-            # vẫn giữ chặn mute/deaf
-            if not vs or not vs.channel or vs.self_mute or vs.mute or vs.self_deaf or vs.deaf:
+            # vẫn chặn mute/deaf / không còn ở voice
+            if (
+                not vs
+                or not vs.channel
+                or vs.self_mute
+                or vs.mute
+                or vs.self_deaf
+                or vs.deaf
+            ):
                 gmap.pop(uid, None)
                 continue
 
-             channel = vs.channel
+            channel = vs.channel  # dòng này phải thẳng cột với mấy dòng trên
 
             # 1) chặn kênh thoại bị cấm
             blocked = voice_block_data["guilds"].get(str(guild.id), [])
             if channel.id in blocked:
                 continue
 
-            # 2) chặn treo 1 mình
+            # 2) chặn treo 1 mình (phải >=2 người thật)
             human_members = [m for m in channel.members if not m.bot]
             if len(human_members) < 2:
                 continue
-
-
 
             # đủ điều kiện rồi mới cộng
             if (now - start_time).total_seconds() >= 55:
@@ -1537,9 +1542,9 @@ async def tick_voice_realtime():
                 res = try_grant_level_reward(member, total)
                 if asyncio.iscoroutine(res):
                     await res
-                    
 
     save_json(EXP_FILE, exp_data)
+
 
 
 @tasks.loop(seconds=60)
