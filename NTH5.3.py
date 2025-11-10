@@ -842,7 +842,7 @@ async def cmd_thongke(ctx):
     per = 10
     for i in range(0, len(rows), per):
         chunk = rows[i:i+per]
-        e = discord.Embed(title="📑 THỐNG KÊ EXP", description=f"Trang {i//per + 1}", color=0x3498DB)
+        e = discord.Embed(title="📑 THỐNG KÊ HOẠT ĐỘNG", description=f"Trang {i//per + 1}", color=0x3498DB)
         for idx,(m,total,lv,ein,eneed,vm,heat) in enumerate(chunk, start=i+1):
             e.add_field(
                 name=f"{idx}. {m.display_name}",
