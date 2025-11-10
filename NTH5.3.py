@@ -384,15 +384,7 @@ def try_grant_level_reward(member: discord.Member, new_total_exp: int):
                 announce_channel = ch
                 break
 
-    # THÔNG BÁO KHÔNG TAG, chỉ hiện tên
-    if announce_channel:
-        try:
-            nick = member.display_name
-            asyncio.create_task(
-                announce_channel.send(f"⭐ **{nick}** vừa đạt **level {level}**! Tiếp tục tu luyện nha.")
-            )
-        except:
-            pass
+    
 
     # xử lý thưởng role
     data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
