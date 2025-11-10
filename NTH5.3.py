@@ -1261,7 +1261,6 @@ async def cmd_setlink(ctx, invite_url: str, *roles: discord.Role):
 
 @bot.command(name="xemlink")
 async def cmd_xemlink(ctx: commands.Context):
-    # chỉ chủ bot
     if not is_owner(ctx.author.id):
         await ctx.reply("⛔ Lệnh này chỉ dành cho **chủ bot**.")
         return
@@ -1283,10 +1282,9 @@ async def cmd_xemlink(ctx: commands.Context):
 
     links = g.get("links", {})
     for code, conf in links.items():
-        link_url = conf.get("url", code)  # phòng khi bạn lưu kiểu khác
-        role_ids = conf.get("roles", [])
+        # nếu bạn chỉ dán code thì cứ hiển thị code
+        role_ids = conf.get("role_ids", [])
         role_mentions = []
-
         for rid in role_ids:
             role_obj = ctx.guild.get_role(int(rid))
             if role_obj:
@@ -1297,8 +1295,8 @@ async def cmd_xemlink(ctx: commands.Context):
         roles_text = ", ".join(role_mentions) if role_mentions else "—"
 
         embed.add_field(
-            name=f"🔗 {link_url}",
-            value=f"• ID mời: `{code}`\n• Cấp role: {roles_text}",
+            name=f"🔗 {code}",
+            value=f"• Cấp role: {roles_text}",
             inline=False
         )
 
