@@ -340,9 +340,10 @@ def ensure_user(exp_data, uid: str):
     else:
         exp_data["users"][uid].setdefault("heat", 0.0)
         exp_data["users"][uid].setdefault("last_msg", None)
-        exp_data["users"][uid"].setdefault("chat_exp_buffer", 0)
-        exp_data["users"][uid"].setdefault("voice_min_buffer", 0)
-        exp_data["users"][uid"].setdefault("last_level_announce", 0)
+        exp_data["users"][uid].setdefault("chat_exp_buffer", 0)
+        exp_data["users"][uid].setdefault("voice_min_buffer", 0)
+        exp_data["users"][uid].setdefault("last_level_announce", 0)
+
 
 
 
