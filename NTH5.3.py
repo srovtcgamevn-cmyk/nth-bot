@@ -96,13 +96,10 @@ def is_admin_ctx(ctx) -> bool:
         ctx.author.guild_permissions.manage_guild
         or ctx.author.guild_permissions.administrator
         or is_owner(ctx.author.id)
-
-
-
-        # danh sách kênh thoại để bot đi tuần (per guild)
-voice_patrol_config = {}  # {guild_id: [channel_id, ...]}
-
     )
+
+# danh sách kênh thoại để bot đi tuần (per guild)
+voice_patrol_config = {}  # {guild_id: [channel_id, ...]}
 
 # ================== KHÓA EXP THEO LỊCH ==================
 # chỉ nghỉ Chủ nhật + sáng thứ 2
