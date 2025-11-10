@@ -644,21 +644,17 @@ async def cmd_hoso(ctx, member: discord.Member = None):
         await ctx.reply("📭 Chưa có dữ liệu.")
         return
 
-    # exp & level
     total = u.get("exp_chat", 0) + u.get("exp_voice", 0)
     level, to_next, spent = calc_level_from_total_exp(total)
     exp_in_level = total - spent
     need = exp_in_level + to_next
-
     voice_min = math.floor(u.get("voice_seconds_week", 0) / 60)
     heat = u.get("heat", 0.0)
 
-    # tuần trước
     prev = exp_data.get("prev_week", {}).get(str(member.id), {})
     prev_chat = prev.get("exp_chat", 0)
     prev_voice = prev.get("exp_voice", 0)
 
-    # lấy team từ config
     team_name = "Chưa thuộc team điểm danh"
     teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
     g_teams = teamconf["guilds"].get(str(ctx.guild.id), {}).get("teams", {})
@@ -666,29 +662,27 @@ async def cmd_hoso(ctx, member: discord.Member = None):
         role = ctx.guild.get_role(int(rid))
         if role and role in member.roles:
             tname = conf.get("name") or role.name
-            team_name = tname  # không tag role
+            team_name = tname
             break
 
-    # buff x2
     try:
         has_boost = team_boost_today(ctx.guild.id, member)
     except Exception:
         has_boost = False
 
-    # thanh tiến độ
     bar_len = 14
     filled = int(bar_len * (exp_in_level / need)) if need > 0 else bar_len
     bar = "█" * filled + "░" * (bar_len - filled)
 
-    # ----- tạo embed -----
     embed = discord.Embed(
-        title=f"📜 Hồ Sơ Tu Luyện của {member.display_name}",
+        title="📜 Hồ Sơ Tu Luyện",
         color=0xF1C40F
     )
     embed.set_thumbnail(url=member.display_avatar.url)
 
-    # mô tả dài, tự cách dòng => PC & mobile giống nhau
+    # phần mô tả, bắt đầu bằng tên người chơi ở dòng đầu
     desc = (
+        f"**{member.display_name}**\n\n"
         "Theo dõi exp, voice, nhiệt huyết và trạng thái điểm danh team.\n\n"
         "📈 **Cấp Độ**\n"
         f"• Level: **{level}**\n"
@@ -711,6 +705,7 @@ async def cmd_hoso(ctx, member: discord.Member = None):
     embed.description = desc
 
     await ctx.reply(embed=embed)
+
 
 
 
