@@ -335,12 +335,15 @@ def ensure_user(exp_data, uid: str):
             "heat": 0.0,
             "chat_exp_buffer": 0,
             "voice_min_buffer": 0,
+            "last_level_announce": 0,   # 👈 thêm dòng này
         }
     else:
         exp_data["users"][uid].setdefault("heat", 0.0)
         exp_data["users"][uid].setdefault("last_msg", None)
         exp_data["users"][uid].setdefault("chat_exp_buffer", 0)
         exp_data["users"][uid].setdefault("voice_min_buffer", 0)
+        exp_data["users"][uid].setdefault("last_level_announce", 0)  # 👈 và dòng này
+
 
 def add_heat(user_obj: dict, amount: float):
     user_obj["heat"] = float(min(10.0, user_obj.get("heat", 0.0) + amount))
