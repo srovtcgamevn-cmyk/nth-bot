@@ -16,8 +16,7 @@ from datetime import datetime, timedelta, timezone, UTC
 
 import discord
 from discord.ext import commands, tasks
-VOICE_PATROL_FILE = "voice_patrol.json"
-voice_patrol_data = load_json(VOICE_PATROL_FILE, {"guilds": {}})
+
 
 
 # ================== CẤU HÌNH CƠ BẢN ==================
@@ -100,6 +99,9 @@ def is_admin_ctx(ctx) -> bool:
 
 # danh sách kênh thoại để bot đi tuần (per guild)
 voice_patrol_config = {}  # {guild_id: [channel_id, ...]}
+VOICE_PATROL_FILE = "voice_patrol.json"
+voice_patrol_data = load_json(VOICE_PATROL_FILE, {"guilds": {}})
+
 
 # ================== KHÓA EXP THEO LỊCH ==================
 # chỉ nghỉ Chủ nhật + sáng thứ 2
