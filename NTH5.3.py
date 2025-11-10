@@ -710,16 +710,34 @@ async def cmd_hoso(ctx, member: discord.Member = None):
 
 
 
-# ================== /bangcapdo ==================
+# ================== /bangcapdo (phiên bản đẹp, tu tiên style) ==================
 @bot.command(name="bangcapdo")
-async def cmd_bangcapdo(ctx, max_level: int=10):
-    lines = ["📘 BẢNG EXP LÊN CẤP:"]
+async def cmd_bangcapdo(ctx, max_level: int = 10):
+    embed = discord.Embed(
+        title="📘 BẢNG CẤP ĐỘ TU LUYỆN",
+        description="Hiển thị lượng kinh nghiệm cần để thăng cảnh giới.\n",
+        color=0x3498DB
+    )
+
     total = 0
-    for lvl in range(0, max_level+1):
-        need = 5*(lvl**2) + 50*lvl + 100
+    lines = []
+    symbols = ["⚔️", "🌿", "🔹", "🔸", "🔰", "💎", "🔥", "💠", "☯️", "🏵️", "🌕"]
+
+    for lvl in range(0, max_level + 1):
+        need = 5 * (lvl ** 2) + 50 * lvl + 100
         total += need
-        lines.append(f"- Level {lvl}: cần {need} exp (tổng tới đây: {total})")
-    await ctx.reply("\n".join(lines))
+        sym = symbols[lvl % len(symbols)]
+        lines.append(f"{sym} **Level {lvl} → {lvl+1}:** {need:,} exp *(Tổng: {total:,})*")
+
+    embed.add_field(name="📈 Chi tiết", value="\n".join(lines), inline=False)
+    embed.add_field(
+        name="💡 Ghi chú",
+        value="Cấp càng cao, exp yêu cầu càng nhiều.\nChăm chat & voice để tăng tốc tu luyện!",
+        inline=False
+    )
+
+    await ctx.reply(embed=embed)
+
 
 # ================== /thongke ==================
 @bot.command(name="thongke")
