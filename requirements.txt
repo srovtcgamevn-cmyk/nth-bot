@@ -11,4 +11,4 @@ pillow
 pytesseract
 aiohttp
 discord.py[voice]
-PyNaCl
+PyNaCl==1.5.0
