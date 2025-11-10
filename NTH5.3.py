@@ -486,45 +486,56 @@ async def on_message(message: discord.Message):
         gconf = cfg["guilds"].get(str(message.guild.id), {})
         exp_chs = gconf.get("exp_channels", [])
         allow = (not exp_chs) or (message.channel.id in exp_chs)
+
         if allow:
             exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
             uid = str(message.author.id)
             ensure_user(exp_data, uid)
             u = exp_data["users"][uid]
+
             last = u.get("last_msg")
+            # mỗi 60s chat mới cộng
             if (not last) or (now_utc() - datetime.fromisoformat(last)).total_seconds() >= 60:
                 add_exp = random.randint(5, 15)
+
+                # nếu team hôm nay đã kích x2 thì nhân
                 if team_boost_today(message.guild.id, message.author):
                     add_exp *= 2
+
+                # cộng exp chat
                 u["exp_chat"] += add_exp
                 u["last_msg"] = now_utc().isoformat()
 
-                # chat -> nhiệt: 20 exp = 0.1
+                # chat -> nhiệt: mỗi 20 exp chat = +0.1 nhiệt
                 u["chat_exp_buffer"] += add_exp
                 while u["chat_exp_buffer"] >= 20:
                     add_heat(u, 0.1)
                     u["chat_exp_buffer"] -= 20
-                    
 
+                # lưu lại trước khi tính level
                 save_json(EXP_FILE, exp_data)
+
+                # tổng exp = chat + voice
                 total_now = u["exp_chat"] + u["exp_voice"]
+
+                # cấp role thưởng nếu có set
                 try_grant_level_reward(message.author, total_now)
-    # THÔNG BÁO LÊN LEVEL KHÔNG TAG
+
+                # ------ THÔNG BÁO LÊN LEVEL KHÔNG TAG ------
                 level, _, _ = calc_level_from_total_exp(total_now)
                 last_ann = u.get("last_level_announce", 0)
                 if level > last_ann:
-                u["last_level_announce"] = level
-                save_json(EXP_FILE, exp_data)
-                try:
-                await message.channel.send(
-                f"🎉 **{message.author.display_name}** đã đạt **level {level}**!"
-                )
-                except:
-                pass
+                    u["last_level_announce"] = level
+                    save_json(EXP_FILE, exp_data)
+                    try:
+                        await message.channel.send(
+                            f"🎉 **{message.author.display_name}** đã đạt **level {level}**!"
+                        )
+                    except:
+                        pass
+                # -------------------------------------------
 
-
-
-                # điểm team từ chat
+                # điểm team từ chat (chỉ tính nếu người này đã điểm danh hôm nay)
                 att = load_json(ATTEND_FILE, {"guilds": {}})
                 g_att = att["guilds"].get(str(message.guild.id), {})
                 today = today_str_gmt7()
@@ -532,11 +543,15 @@ async def on_message(message: discord.Message):
                     di = daymap.get(today)
                     if not di:
                         continue
+                    # nếu user này nằm trong active_members của team đó
                     if str(message.author.id) in di.get("active_members", []):
+                        # chat đóng góp một ít vào quỹ team
                         add_team_score(message.guild.id, int(rid), today, 0.1)
                         break
 
+    # để các lệnh vẫn chạy
     await bot.process_commands(message)
+
 
 # ================== VIEW /kenhchat ==================
 class KenhExpView(discord.ui.View):
