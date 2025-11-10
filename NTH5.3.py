@@ -745,7 +745,7 @@ def generate_nickname(gid: int) -> str:
             return name
     return base[:32]
 
-# =============== BUFF MEM THEO LINK MỜI ===============
+# ================== BUFF MEM ==================
 invite_cache = {}
 
 async def refresh_invites_for_guild(guild: discord.Guild):
@@ -778,19 +778,15 @@ async def apply_buff_rule(member: discord.Member, code: str):
     if not conf:
         return
     nick = generate_nickname(member.guild.id)
-    try:
-        await member.edit(nick=nick, reason="buff mem")
-    except:
-        pass
+    try: await member.edit(nick=nick, reason="buff mem")
+    except: pass
     for rid in conf.get("role_ids", []):
         r = member.guild.get_role(rid)
         if r:
-            try:
-                await member.add_roles(r)
-            except:
-                pass
+            try: await member.add_roles(r)
+            except: pass
 
-# =============== EXP, LEVEL, NHIỆT, TEAM ===============
+# ================== EXP / LEVEL / TEAM ==================
 def calc_level_from_total_exp(total_exp: int):
     lvl = 0
     spent = 0
@@ -817,8 +813,8 @@ def ensure_user(exp_data, uid: str):
         exp_data["users"][uid].setdefault("heat", 0.0)
         exp_data["users"][uid].setdefault("last_msg", None)
 
-def add_heat(user_obj: dict, amount: float):
-    user_obj["heat"] = float(min(10.0, user_obj.get("heat", 0.0) + amount))
+def add_heat(u: dict, amount: float):
+    u["heat"] = float(min(10.0, u.get("heat", 0.0) + amount))
 
 def team_boost_today(gid: int, member: discord.Member):
     att = load_json(ATTEND_FILE, {"guilds": {}})
@@ -841,24 +837,14 @@ def add_team_score(gid: int, rid: int, date: str, amount: float):
     r[date] = r.get(date, 0) + amount
     save_json(TEAMSCORE_FILE, ts)
 
-# =============== CẤP ROLE KHI LÊN LEVEL (báo kênh + DM) ===============
 def try_grant_level_reward(member: discord.Member, new_total_exp: int):
     level, to_next, _ = calc_level_from_total_exp(new_total_exp)
 
     # thông báo kênh chung
-    announce_channel = None
-    if member.guild.system_channel:
-        announce_channel = member.guild.system_channel
-    else:
-        for ch in member.guild.text_channels:
-            if ch.permissions_for(member.guild.me).send_messages:
-                announce_channel = ch
-                break
-    if announce_channel is not None:
+    announce = member.guild.system_channel
+    if announce:
         try:
-            asyncio.create_task(
-                announce_channel.send(f"⭐ {member.mention} vừa đạt **level {level}**! Tiếp tục tu luyện nhé!")
-            )
+            asyncio.create_task(announce.send(f"⭐ {member.mention} vừa đạt **level {level}**!"))
         except:
             pass
 
@@ -867,30 +853,20 @@ def try_grant_level_reward(member: discord.Member, new_total_exp: int):
     val = g.get(str(level))
     if not val:
         return
-
-    if isinstance(val, int):
-        role_ids = [val]
-    else:
-        role_ids = list(val)
-
-    got_any = False
+    role_ids = val if isinstance(val, list) else [val]
+    got = False
     for rid in role_ids:
         role = member.guild.get_role(rid)
         if role and role not in member.roles:
-            asyncio.create_task(member.add_roles(role, reason=f"Đạt level {level}"))
-            got_any = True
-
-    if got_any:
+            asyncio.create_task(member.add_roles(role, reason=f"Lv {level} reward"))
+            got = True
+    if got:
         try:
-            asyncio.create_task(
-                member.send(
-                    f"🎉 Chúc mừng bạn đã đạt **level {level}** ở máy chủ **{member.guild.name}** và đã được cấp role thưởng!"
-                )
-            )
+            asyncio.create_task(member.send(f"🎁 Bạn đã được thưởng role khi đạt level {level} ở **{member.guild.name}**"))
         except:
             pass
 
-# =============== SỰ KIỆN VOICE: EXP VOICE 1 PHÚT ===============
+# ================== EVENT VOICE ==================
 @bot.event
 async def on_voice_state_update(member, before, after):
     def open_mic(v):
@@ -906,35 +882,28 @@ async def on_voice_state_update(member, before, after):
     now = open_mic(after)
 
     if now and not was:
-        # bắt đầu
         voice_state_map[gid][member.id] = now_utc()
     elif was and not now:
         start = voice_state_map[gid].pop(member.id, None)
         if start:
             secs = (now_utc() - start).total_seconds()
             if secs > 5:
-                # 1 phút mới tính 1 lần
                 bonus = int(secs // 60)
                 exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
                 uid = str(member.id)
                 ensure_user(exp_data, uid)
                 u = exp_data["users"][uid]
-
                 if bonus > 0:
                     if team_boost_today(gid, member):
                         bonus *= 2
                     u["exp_voice"] += bonus
                 u["voice_seconds_week"] += int(secs)
-
-                # nhiệt từ voice: 10p = +0.2
-                heat_add = (secs / 600.0) * 0.2
-                add_heat(u, heat_add)
-
+                add_heat(u, (secs / 600.0) * 0.2)
                 save_json(EXP_FILE, exp_data)
                 total_now = u["exp_chat"] + u["exp_voice"]
                 try_grant_level_reward(member, total_now)
 
-                # điểm team từ voice (nếu user active)
+                # điểm team từ voice
                 att = load_json(ATTEND_FILE, {"guilds": {}})
                 g_att = att["guilds"].get(str(gid), {})
                 today = today_str_gmt7()
@@ -949,7 +918,7 @@ async def on_voice_state_update(member, before, after):
                         add_team_score(gid, int(rid), today, team_pts)
                         break
 
-# =============== SỰ KIỆN MESSAGE: EXP CHAT 1 PHÚT ===============
+# ================== EVENT MESSAGE ==================
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
@@ -966,22 +935,18 @@ async def on_message(message: discord.Message):
             ensure_user(exp_data, uid)
             u = exp_data["users"][uid]
             last = u.get("last_msg")
-            # 1 phút mới cộng exp
             if (not last) or (now_utc() - datetime.fromisoformat(last)).total_seconds() >= 60:
                 add_exp = random.randint(5, 15)
                 if team_boost_today(message.guild.id, message.author):
                     add_exp *= 2
                 u["exp_chat"] += add_exp
                 u["last_msg"] = now_utc().isoformat()
-
-                # nhiệt từ chat: 200 exp ≈ 1.0 nhiệt
                 add_heat(u, add_exp * 0.005)
-
                 save_json(EXP_FILE, exp_data)
                 total_now = u["exp_chat"] + u["exp_voice"]
                 try_grant_level_reward(message.author, total_now)
 
-                # điểm team từ chat nếu active
+                # điểm team từ chat
                 att = load_json(ATTEND_FILE, {"guilds": {}})
                 g_att = att["guilds"].get(str(message.guild.id), {})
                 today = today_str_gmt7()
@@ -995,39 +960,18 @@ async def on_message(message: discord.Message):
 
     await bot.process_commands(message)
 
-# =============== READY & JOIN ===============
-@bot.event
-async def on_ready():
-    print("✅ Bot online:", bot.user)
-
-    # refresh link mời
-    for g in bot.guilds:
-        try:
-            await refresh_invites_for_guild(g)
-        except:
-            pass
-
-    # khởi động các task nền
-    if not auto_weekly_reset.is_running():
-        auto_weekly_reset.start()
-    if not auto_diemdanh_dm.is_running():
-        auto_diemdanh_dm.start()
-    if not tick_voice_exp.is_running():
-        tick_voice_exp.start()
-
-
-# =============== VIEW KÊNH EXP ===============
+# ================== VIEW KÊNH EXP ==================
 class KenhExpView(discord.ui.View):
     def __init__(self, ctx, cfg):
         super().__init__(timeout=60)
         self.ctx = ctx
         self.cfg = cfg
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    async def interaction_check(self, interaction):
         return interaction.user.id == self.ctx.author.id
 
     @discord.ui.button(label="➕ Set kênh này", style=discord.ButtonStyle.success)
-    async def set_this(self, interaction: discord.Interaction, button):
+    async def set_this(self, interaction, button):
         gid = str(self.ctx.guild.id)
         g = self.cfg["guilds"].setdefault(gid, {})
         lst = g.get("exp_channels", [])
@@ -1038,7 +982,7 @@ class KenhExpView(discord.ui.View):
         await interaction.response.edit_message(content=f"✅ Đã set {interaction.channel.mention} tính exp", view=self)
 
     @discord.ui.button(label="🗑 Xóa kênh này", style=discord.ButtonStyle.danger)
-    async def del_this(self, interaction: discord.Interaction, button):
+    async def del_this(self, interaction, button):
         gid = str(self.ctx.guild.id)
         g = self.cfg["guilds"].setdefault(gid, {})
         lst = g.get("exp_channels", [])
@@ -1049,11 +993,11 @@ class KenhExpView(discord.ui.View):
         await interaction.response.edit_message(content=f"🗑 Đã xóa {interaction.channel.mention} khỏi exp", view=self)
 
     @discord.ui.button(label="➕ Thêm kênh phụ", style=discord.ButtonStyle.secondary)
-    async def hint(self, interaction: discord.Interaction, button):
+    async def hint(self, interaction, button):
         await interaction.response.send_message("👉 Thêm nhiều kênh: `/kenhchat #k1 #k2 #k3`", ephemeral=True)
 
     @discord.ui.button(label="📜 Danh sách", style=discord.ButtonStyle.primary)
-    async def list_all(self, interaction: discord.Interaction, button):
+    async def list_all(self, interaction, button):
         gid = str(self.ctx.guild.id)
         g = self.cfg["guilds"].setdefault(gid, {})
         lst = g.get("exp_channels", [])
@@ -1063,11 +1007,10 @@ class KenhExpView(discord.ui.View):
             chans = []
             for cid in lst:
                 c = self.ctx.guild.get_channel(cid)
-                if c:
-                    chans.append(c.mention)
+                if c: chans.append(c.mention)
             await interaction.response.send_message("📜 Kênh exp: " + ", ".join(chans), ephemeral=True)
 
-# =============== PHÂN TRANG CHUNG ===============
+# ================== VIEW PHÂN TRANG ==================
 class PageView(discord.ui.View):
     def __init__(self, ctx, pages):
         super().__init__(timeout=60)
@@ -1075,24 +1018,24 @@ class PageView(discord.ui.View):
         self.pages = pages
         self.index = 0
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        return interaction.user.id == self.ctx.author.id
+    async def interaction_check(self, inter):
+        return inter.user.id == self.ctx.author.id
 
     @discord.ui.button(label="⬅️", style=discord.ButtonStyle.secondary)
-    async def prev(self, interaction: discord.Interaction, button):
+    async def prev(self, inter, button):
         if self.index > 0:
             self.index -= 1
-            await interaction.response.edit_message(embed=self.pages[self.index], view=self)
+            await inter.response.edit_message(embed=self.pages[self.index], view=self)
         else:
-            await interaction.response.defer()
+            await inter.response.defer()
 
     @discord.ui.button(label="➡️", style=discord.ButtonStyle.secondary)
-    async def next(self, interaction: discord.Interaction, button):
+    async def next(self, inter, button):
         if self.index < len(self.pages)-1:
             self.index += 1
-            await interaction.response.edit_message(embed=self.pages[self.index], view=self)
+            await inter.response.edit_message(embed=self.pages[self.index], view=self)
         else:
-            await interaction.response.defer()
+            await inter.response.defer()
 
 # =============== LỆNH NGƯỜI DÙNG / ADMIN / CHỦ BOT ===============
 @bot.command(name="lenh")
