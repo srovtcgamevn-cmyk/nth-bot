@@ -610,7 +610,6 @@ async def cmd_lenhadmin(ctx):
         "`/settuantra` – <giây> <ID> Set kênh tuần tra theo ID kênh\n"
         "`/tuantra` <on> <off> – Bắt đầu tuần tra\n"
         "`/xemtuantra`– Xem lại kênh đang tuần tra\n"
-        "`/xemtuantra`– Xem lại kênh đang tuần tra\n"
         "`/camkenhthoai`– Xem lại kênh đang tuần tra\n"
 
 
@@ -1441,6 +1440,7 @@ async def on_ready():
             await refresh_invites_for_guild(g)
         except:
             pass
+
     if not auto_weekly_reset.is_running():
         auto_weekly_reset.start()
     if not auto_diemdanh_dm.is_running():
@@ -1449,12 +1449,8 @@ async def on_ready():
         auto_backup_task.start()
     if not tick_voice_realtime.is_running():
         tick_voice_realtime.start()
-    if not tick_voice_realtime.is_running():
-        tick_voice_realtime.start()
-    if not auto_backup_task.is_running():
-        auto_backup_task.start()
-    if not auto_patrol_voice.is_running():
-        auto_patrol_voice.start()
+    if not patrol_voice_channels.is_running():
+        patrol_voice_channels.start()
 
 
 
@@ -1481,14 +1477,18 @@ async def tick_voice_realtime():
                 gmap.pop(uid, None)
                 continue
 
-            # 🆕 chặn treo 1 mình: phòng phải có ít nhất 2 người thật (không bot)
-            human_members = [m for m in vs.channel.members if not m.bot]
-            if len(human_members) < 2:
-                # nếu bạn muốn siết mạnh hơn thì đổi 2 -> 3
-                continue
-                blocked = voice_block_data["guilds"].get(str(guild.id), [])
+             channel = vs.channel
+
+            # 1) chặn kênh thoại bị cấm
+            blocked = voice_block_data["guilds"].get(str(guild.id), [])
             if channel.id in blocked:
-                continue  # kênh này bị cấm tính exp thoại
+                continue
+
+            # 2) chặn treo 1 mình
+            human_members = [m for m in channel.members if not m.bot]
+            if len(human_members) < 2:
+                continue
+
 
 
             # đủ điều kiện rồi mới cộng
@@ -1629,13 +1629,6 @@ async def cmd_xemtuantra(ctx):
 
 
 # ================== TUẦN TRA KÊNH THOẠI ==================
-VOICE_PATROL_FILE = "voice_patrol.json"
-
-# Load danh sách tuần tra
-voice_patrol_data = load_json(VOICE_PATROL_FILE, {"guilds": {}})
-
-
-
 @tasks.loop(seconds=15)
 async def patrol_voice_channels():
     for gid, conf in voice_patrol_data.get("guilds", {}).items():
