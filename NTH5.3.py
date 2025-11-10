@@ -1256,19 +1256,50 @@ async def cmd_setlink(ctx, invite_url: str, *roles: discord.Role):
     await ctx.reply("✅ Đã gán link buff.")
 
 @bot.command(name="xemlink")
-async def cmd_xemlink(ctx):
+async def cmd_xemlink(ctx: commands.Context):
+    # chỉ chủ bot
     if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Chỉ chủ bot.")
+        await ctx.reply("⛔ Lệnh này chỉ dành cho **chủ bot**.")
         return
+
     data = load_json(BUFF_FILE, {"guilds": {}})
     g = data["guilds"].get(str(ctx.guild.id))
-    if not g:
-        await ctx.reply("📭 Chưa có link.")
+    if not g or not g.get("links"):
+        await ctx.reply("📭 Máy chủ này **chưa cấu hình link buff** nào.")
         return
-    lines = [f"Buff: {'ON' if g.get('buff_enabled',True) else 'OFF'}"]
-    for code, conf in g.get("links", {}).items():
-        lines.append(f"- {code}: {conf}")
-    await ctx.reply("\n".join(lines))
+
+    buff_status = "🟢 ĐANG BẬT" if g.get("buff_enabled", True) else "🔴 ĐANG TẮT"
+
+    embed = discord.Embed(
+        title="📦 Danh sách link buff đang quản lý",
+        description=f"Trạng thái buff hiện tại: **{buff_status}**",
+        color=0x00bfff
+    )
+    embed.set_footer(text=f"Máy chủ: {ctx.guild.name}")
+
+    links = g.get("links", {})
+    for code, conf in links.items():
+        link_url = conf.get("url", code)  # phòng khi bạn lưu kiểu khác
+        role_ids = conf.get("roles", [])
+        role_mentions = []
+
+        for rid in role_ids:
+            role_obj = ctx.guild.get_role(int(rid))
+            if role_obj:
+                role_mentions.append(role_obj.mention)
+            else:
+                role_mentions.append(f"`{rid}`")
+
+        roles_text = ", ".join(role_mentions) if role_mentions else "—"
+
+        embed.add_field(
+            name=f"🔗 {link_url}",
+            value=f"• ID mời: `{code}`\n• Cấp role: {roles_text}",
+            inline=False
+        )
+
+    await ctx.reply(embed=embed)
+
 
 @bot.command(name="xoalink")
 async def cmd_xoalink(ctx, invite_url: str):
