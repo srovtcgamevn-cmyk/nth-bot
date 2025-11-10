@@ -633,27 +633,108 @@ async def cmd_kenhchat(ctx, *channels: discord.TextChannel):
         await ctx.reply("Quản lý kênh exp:", view=KenhExpView(ctx, cfg))
 
 # ================== /hoso ==================
+# ================== /hoso (hiển thị team & buff x2, có mention) ==================
 @bot.command(name="hoso")
-async def cmd_hoso(ctx, member: discord.Member=None):
+async def cmd_hoso(ctx, member: discord.Member = None):
     if member is None:
         member = ctx.author
+
+    # đọc exp hiện tại
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
     u = exp_data["users"].get(str(member.id))
     if not u:
         await ctx.reply("📭 Chưa có dữ liệu.")
         return
-    total = u.get("exp_chat",0) + u.get("exp_voice",0)
+
+    # tính level
+    total = u.get("exp_chat", 0) + u.get("exp_voice", 0)
     level, to_next, spent = calc_level_from_total_exp(total)
     exp_in_level = total - spent
+    need = exp_in_level + to_next
+
+    # số phút voice + nhiệt huyết
+    voice_min = math.floor(u.get("voice_seconds_week", 0) / 60)
     heat = u.get("heat", 0.0)
-    await ctx.reply(
-        f"📄 Hồ sơ của {member.mention}:\n"
-        f"- Level: **{level}**\n"
-        f"- Tiến độ: {exp_in_level}/{exp_in_level + to_next} exp\n"
-        f"- Chat: {u.get('exp_chat',0)} | Voice: {u.get('exp_voice',0)}\n"
-        f"- Thoại: {math.floor(u.get('voice_seconds_week',0)/60)}p\n"
-        f"- Nhiệt huyết: **{heat:.1f}/10**"
+
+    # dữ liệu tuần trước
+    prev = exp_data.get("prev_week", {}).get(str(member.id), {})
+    prev_chat = prev.get("exp_chat", 0)
+    prev_voice = prev.get("exp_voice", 0)
+
+    # ===== lấy team từ cấu hình /setdiemdanh =====
+    team_name = "Chưa thuộc team điểm danh"
+    teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
+    g_teams = teamconf["guilds"].get(str(ctx.guild.id), {}).get("teams", {})
+    for rid, conf in g_teams.items():
+        role = ctx.guild.get_role(int(rid))
+        if role and role in member.roles:
+            tname = conf.get("name") or role.name
+            team_name = f"{tname} ({role.mention})"
+            break
+
+    # ===== check buff x2 từ điểm danh team =====
+    has_boost = False
+    try:
+        has_boost = team_boost_today(ctx.guild.id, member)
+    except Exception:
+        has_boost = False
+
+    # ===== thanh tiến độ exp =====
+    bar_len = 14
+    filled = int(bar_len * (exp_in_level / need)) if need > 0 else bar_len
+    bar = "█" * filled + "░" * (bar_len - filled)
+
+    # ===== tạo embed =====
+    embed = discord.Embed(
+        title=f"📜 Hồ Sơ Tu Luyện của {member.display_name} ({member.mention})",
+        description="Theo dõi exp, voice, nhiệt và trạng thái điểm danh team.",
+        color=0xF1C40F
     )
+    embed.set_thumbnail(url=member.display_avatar.url)
+
+    embed.add_field(
+        name="📈 Cảnh giới",
+        value=(
+            f"• Level: **{level}**\n"
+            f"• Tiến độ: **{exp_in_level}/{need} exp**\n"
+            f"`{bar}`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="💬 Tuần này",
+        value=(
+            f"• Chat: **{u.get('exp_chat', 0)} exp**\n"
+            f"• Voice: **{u.get('exp_voice', 0)} exp** — {voice_min} phút\n"
+            f"• Nhiệt huyết: **{heat:.1f}/10**"
+        ),
+        inline=True
+    )
+
+    embed.add_field(
+        name="🕊️ Tuần trước",
+        value=(
+            f"• Chat: **{prev_chat} exp**\n"
+            f"• Voice: **{prev_voice} exp**"
+        ),
+        inline=True
+    )
+
+    embed.add_field(
+        name="👥 Team điểm danh",
+        value=team_name,
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚔️ Buff điểm danh",
+        value="Đang nhận **x2 exp hôm nay**" if has_boost else "Không hoạt động",
+        inline=False
+    )
+
+    await ctx.reply(embed=embed)
+
 
 # ================== /bangcapdo ==================
 @bot.command(name="bangcapdo")
