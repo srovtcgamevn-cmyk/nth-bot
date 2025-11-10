@@ -98,12 +98,12 @@ def is_admin_ctx(ctx) -> bool:
 # chỉ nghỉ Chủ nhật + sáng thứ 2
 def is_weekend_lock():
     n = gmt7_now()
-    wd = n.weekday()  # Mon=0
-    if wd == 6:  # CN
-        return True
-    if wd == 0 and n.hour < 14:  # T2 trước 14h
+    hour = n.hour
+    # Nếu là chủ nhật hoặc ngoài khung 7h sáng → 23h59 → khóa
+    if n.weekday() == 6 or hour < 9 or hour >= 24:
         return True
     return False
+
 
 # =============== BỘ TÊN ẢO (phiên bản mới – có dấu cách, không trùng) ===============
 
