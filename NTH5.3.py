@@ -572,7 +572,7 @@ class PageView(discord.ui.View):
 @bot.command(name="lenh")
 async def cmd_lenh(ctx):
     await ctx.reply(
-        "📜 **LỆNH NGƯỜI DÙNG**\n"
+        "📜 **LỆNH NGƯỜI DÙNG**\n\n"
         "`/hoso` – xem hồ sơ\n"
         "`/bangcapdo` – bảng exp lên cấp\n"
         "`/topnhiet` – top nhiệt huyết\n"
@@ -587,7 +587,7 @@ async def cmd_lenhadmin(ctx):
         await ctx.reply("⛔ Bạn không phải admin.")
         return
     await ctx.reply(
-        "🛠 **LỆNH ADMIN**\n"
+        "🛠 **LỆNH ADMIN**\n\n"
         "`/kenhchat` – mở UI chọn kênh tính exp\n"
         "`/kenhchat #k1 #k2` – thêm nhanh nhiều kênh\n"
         "`/setdiemdanh @role... [số]` – cấu hình team điểm danh\n"
@@ -596,8 +596,7 @@ async def cmd_lenhadmin(ctx):
         "`/setthuongcap <level> @role..` – thưởng level\n"
         "`/xemthuongcap` – xem mốc thưởng\n"
         "`/thuhoithuong @r1 @r2` – role bị thu thứ 2\n"
-        "`/setkenhbackup` – kênh nhận file backup\n"
-        "`/backup` – sao lưu thủ công"
+
     )
 
 @bot.command(name="lenhchubot")
@@ -606,11 +605,13 @@ async def cmd_lenhchubot(ctx):
         await ctx.reply("⛔ Không phải chủ bot.")
         return
     await ctx.reply(
-        "👑 **LỆNH CHỦ BOT**\n"
+        "👑 **LỆNH CHỦ BOT**\n\n"
         "`/setlink <invite> [@role..]` – gắn link buff + role\n"
         "`/xemlink` – xem link đang buff\n"
         "`/xoalink <invite>` – tắt 1 link\n"
         "`/batbuff` / `tatbuff` – bật/tắt hệ buff"
+        "`/setkenhbackup` – kênh nhận file backup\n"
+        "`/backup` – sao lưu thủ công"        
     )
 
 # ================== /kenhchat ==================
@@ -1189,6 +1190,9 @@ def cleanup_old_backups(keep: int = 10):
 @bot.command(name="setkenhbackup")
 @commands.has_permissions(administrator=True)
 async def cmd_setkenhbackup(ctx):
+    if not is_owner(ctx.author.id):
+
+    
     cfg = load_json(BACKUP_CONFIG_FILE, {"guilds": {}, "last_run": ""})
     g = cfg["guilds"].setdefault(str(ctx.guild.id), {})
     g["channel_id"] = ctx.channel.id
@@ -1198,6 +1202,8 @@ async def cmd_setkenhbackup(ctx):
 @bot.command(name="backup")
 @commands.has_permissions(administrator=True)
 async def cmd_backup(ctx):
+    if not is_owner(ctx.author.id):
+
     zip_path = make_backup_zip()
     cleanup_old_backups()
     await ctx.reply(
