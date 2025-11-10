@@ -508,7 +508,18 @@ async def on_message(message: discord.Message):
                 save_json(EXP_FILE, exp_data)
                 total_now = u["exp_chat"] + u["exp_voice"]
                 try_grant_level_reward(message.author, total_now)
-
+    # THÔNG BÁO LÊN LEVEL KHÔNG TAG
+                level, _, _ = calc_level_from_total_exp(total_now)
+                last_ann = u.get("last_level_announce", 0)
+                if level > last_ann:
+                u["last_level_announce"] = level
+                save_json(EXP_FILE, exp_data)
+                try:
+                await message.channel.send(
+                f"🎉 **{message.author.display_name}** đã đạt **level {level}**!"
+                )
+                except:
+                pass
 
 
 
