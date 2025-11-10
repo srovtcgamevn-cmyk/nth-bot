@@ -573,12 +573,12 @@ class PageView(discord.ui.View):
 async def cmd_lenh(ctx):
     await ctx.reply(
         "📜 **LỆNH NGƯỜI DÙNG**\n\n"
-        "`/hoso` – xem hồ sơ\n"
-        "`/bangcapdo` – bảng exp lên cấp\n"
-        "`/topnhiet` – top nhiệt huyết\n"
-        "`/diemdanh` – điểm danh team (nếu đã bật)\n"
-        "`/bxhkimlan` – thống kê điểm danh các team\n"
-        "`/bxhkimlan @team` – chi tiết 1 team"
+        "`/hoso` – Xem hồ sơ\n"
+        "`/bangcapdo` – Bảng exp lên cấp\n"
+        "`/topnhiet` – Top nhiệt huyết\n"
+        "`/diemdanh` – Điểm danh team (nếu đã bật)\n"
+        "`/bxhkimlan` – Thống kê điểm danh các team\n"
+        "`/bxhkimlan @team` – Chi tiết 1 team"
     )
 
 @bot.command(name="lenhadmin")
@@ -588,14 +588,14 @@ async def cmd_lenhadmin(ctx):
         return
     await ctx.reply(
         "🛠 **LỆNH ADMIN**\n\n"
-        "`/kenhchat` – mở UI chọn kênh tính exp\n"
-        "`/kenhchat #k1 #k2` – thêm nhanh nhiều kênh\n"
-        "`/setdiemdanh @role... [số]` – cấu hình team điểm danh\n"
-        "`/thongke` – thống kê exp/nhiệt\n"
-        "`/topnhiet [tuantruoc]` – top nhiệt\n"
-        "`/setthuongcap <level> @role..` – thưởng level\n"
-        "`/xemthuongcap` – xem mốc thưởng\n"
-        "`/thuhoithuong @r1 @r2` – role bị thu thứ 2\n"
+        "`/kenhchat` – Mở UI chọn kênh tính exp\n"
+        "`/kenhchat #k1 #k2` – Thêm nhanh nhiều kênh\n"
+        "`/setdiemdanh @role... [số]` – Cấu hình team điểm danh\n"
+        "`/thongke` – Thống kê exp/nhiệt\n"
+        "`/topnhiet [tuantruoc]` – Top nhiệt\n"
+        "`/setthuongcap <level> @role..` – Thưởng level\n"
+        "`/xemthuongcap` – Xem mốc thưởng\n"
+        "`/thuhoithuong @r1 @r2` – Role bị thu thứ 2\n"
 
     )
 
@@ -606,12 +606,12 @@ async def cmd_lenhchubot(ctx):
         return
     await ctx.reply(
         "👑 **LỆNH CHỦ BOT**\n\n"
-        "`/setlink <invite> [@role..]` – gắn link buff + role\n"
-        "`/xemlink` – xem link đang buff\n"
-        "`/xoalink <invite>` – tắt 1 link\n"
-        "`/batbuff` / `tatbuff` – bật/tắt hệ buff"
-        "`/setkenhbackup` – kênh nhận file backup\n"
-        "`/backup` – sao lưu thủ công"        
+        "`/setlink <invite> [@role..]` – Gắn link buff + role\n"
+        "`/xemlink` – Xem link đang buff\n"
+        "`/xoalink <invite>` – Tắt 1 link\n"
+        "`/batbuff` / `tatbuff` – Bật/tắt hệ buff\n"
+        "`/setkenhbackup` – Kênh nhận file backup\n"
+        "`/backup` – Sao lưu thủ công"        
     )
 
 # ================== /kenhchat ==================
