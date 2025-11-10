@@ -721,7 +721,7 @@ async def cmd_bangcapdo(ctx, max_level: int = 10):
 
     total = 0
     lines = []
-    symbols = ["⚔️", "🌿", "🔹", "🔸", "🔰", "💎", "🔥", "💠", "☯️", "🏵️", "🌕"]
+    symbols = ["🔸", "🔸", "🔸", "🔸", "🔸", "🔸", "🔸", "🔸", "🔸", "🔸", "🏵️"]
 
     for lvl in range(0, max_level + 1):
         need = 5 * (lvl ** 2) + 50 * lvl + 100
@@ -732,7 +732,7 @@ async def cmd_bangcapdo(ctx, max_level: int = 10):
     embed.add_field(name="📈 Chi tiết", value="\n".join(lines), inline=False)
     embed.add_field(
         name="💡 Ghi chú",
-        value="Cấp càng cao, exp yêu cầu càng nhiều.\nChăm chat & voice để tăng tốc tu luyện!",
+        value="Cấp càng cao, exp yêu cầu càng nhiều.\nChăm chat & voice để tăng tốc tu luyện! Tại LV 10 LV 20 sẽ mở khóa Role chữ 7 màu Thần Gió",
         inline=False
     )
 
