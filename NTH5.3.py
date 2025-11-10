@@ -1572,11 +1572,17 @@ async def tick_voice_realtime():
                 # cập nhật lại mốc thời gian
                 gmap[uid] = now
 
-                # check thưởng cấp
+   
+                # check thưởng cấp (chỉ role, không thông báo)
                 total = u["exp_chat"] + u["exp_voice"]
-                res = try_grant_level_reward(member, total)
-                if asyncio.iscoroutine(res):
-                    await res
+                try:
+                await try_grant_level_reward(member, total)
+                except:
+                pass
+    
+
+
+    
 
     save_json(EXP_FILE, exp_data)
 
