@@ -815,11 +815,18 @@ def ensure_user(exp_data, uid: str):
             "exp_voice": 0,
             "last_msg": None,
             "voice_seconds_week": 0,
-            "heat": 0.0
+            "heat": 0.0,
+            # NEW
+            "chat_exp_buffer": 0,    # tích exp chat để đổi sang nhiệt
+            "voice_min_buffer": 0,   # tích phút voice để đổi sang nhiệt
         }
     else:
         exp_data["users"][uid].setdefault("heat", 0.0)
         exp_data["users"][uid].setdefault("last_msg", None)
+        # NEW
+        exp_data["users"][uid].setdefault("chat_exp_buffer", 0)
+        exp_data["users"][uid].setdefault("voice_min_buffer", 0)
+
 
 def add_heat(user_obj: dict, amount: float):
     user_obj["heat"] = float(min(10.0, user_obj.get("heat", 0.0) + amount))
@@ -974,9 +981,14 @@ async def on_message(message: discord.Message):
                 u["exp_chat"] += add_exp
                 u["last_msg"] = now_utc().isoformat()
 
-                add_heat(u, add_exp * 0.005)
+# NEW: tích exp chat để đổi sang nhiệt
+                u["chat_exp_buffer"] = u.get("chat_exp_buffer", 0) + add_exp
+                while u["chat_exp_buffer"] >= 20:
+                    add_heat(u, 0.1)               # mỗi 20 exp chat -> +0.1 nhiệt
+                    u["chat_exp_buffer"] -= 20
 
                 save_json(EXP_FILE, exp_data)
+
                 total_now = u["exp_chat"] + u["exp_voice"]
                 try_grant_level_reward(message.author, total_now)
 
@@ -1725,52 +1737,108 @@ async def auto_weekly_reset():
 # =============== AUTO DM NHẮC ĐIỂM DANH ===============
 @tasks.loop(minutes=10)
 async def auto_diemdanh_dm():
-    if is_weekend_lock(): return
+    # nghỉ ngày khóa exp
+    if is_weekend_lock():
+        return
+
     att = load_json(ATTEND_FILE, {"guilds": {}})
     today = today_str_gmt7()
+
     for guild in bot.guilds:
         g_att = att["guilds"].get(str(guild.id), {})
+
         for rid, daymap in g_att.items():
             di = daymap.get(today)
-            if not di: continue
+            if not di:
+                continue
+
             role = guild.get_role(int(rid))
-            if not role: continue
+            if not role:
+                continue
+
+            # NEW: mỗi team mỗi ngày chỉ DM tối đa 4 lần
+            dm_count = di.get("dm_count", 0)
+            if dm_count >= 4:
+                continue
+
             dm_sent = set(di.get("dm_sent", []))
-            not_checked = [m for m in role.members if str(m.id) not in di.get("checked", [])]
-            to_dm = [m for m in not_checked if str(m.id) not in dm_sent]
-            for m in to_dm[:10]:
-                try: await m.send(f"💛 Team **{role.name}** đang điểm danh, dùng /diemdanh nha.")
-                except: pass
-                di.setdefault("dm_sent", []).append(str(m.id))
+            not_checked = [
+                m for m in role.members
+                if str(m.id) not in di.get("checked", [])
+            ]
+            to_dm = [
+                m for m in not_checked
+                if str(m.id) not in dm_sent
+            ]
+
+            sent_this_round = 0
+
+            for m in to_dm:
+                try:
+                    await m.send(
+                        f"💛 Team **{role.name}** đang điểm danh, hãy dùng `/diemdanh` nhé."
+                    )
+                    di.setdefault("dm_sent", []).append(str(m.id))
+                    sent_this_round += 1
+                except:
+                    pass
+
+            if sent_this_round > 0:
+                di["dm_count"] = dm_count + 1
+
             g_att[rid][today] = di
+
         att["guilds"][str(guild.id)] = g_att
+
     save_json(ATTEND_FILE, att)
+
 
 # =============== AUTO TÍCH VOICE MỖI 60S ===============
 @tasks.loop(seconds=60)
 async def tick_voice_exp():
-    if is_weekend_lock(): return
+    if is_weekend_lock():
+        return
     now = now_utc()
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+
     for guild in bot.guilds:
         gmap = voice_state_map.get(guild.id, {})
         for uid, start_time in list(gmap.items()):
             member = guild.get_member(uid)
-            if not member: continue
+            if not member:
+                continue
+
             secs = (now - start_time).total_seconds()
-            if secs < 60: continue
+            if secs < 60:
+                continue
+
             ensure_user(exp_data, str(uid))
             u = exp_data["users"][str(uid)]
+
             bonus = 1
             if team_boost_today(guild.id, member):
                 bonus *= 2
+
+            # cộng exp voice
             u["exp_voice"] += bonus
+            # cộng phút thoại tuần
             u["voice_seconds_week"] += 60
-            add_heat(u, 0.02)
+
+            # NEW: tích phút voice để đổi sang nhiệt
+            u["voice_min_buffer"] = u.get("voice_min_buffer", 0) + 1  # +1 phút
+            while u["voice_min_buffer"] >= 10:
+                add_heat(u, 0.2)          # đủ 10 phút -> +0.2 nhiệt
+                u["voice_min_buffer"] -= 10
+
+            # reset mốc tính phút tiếp theo
             gmap[uid] = now
+
+            # check lên level
             total_now = u["exp_chat"] + u["exp_voice"]
             try_grant_level_reward(member, total_now)
+
     save_json(EXP_FILE, exp_data)
+
 
 # =============== ON READY DUY NHẤT ===============
 @bot.event
