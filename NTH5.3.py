@@ -26,6 +26,7 @@ BACKUP_DIR = "backups"
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
+
 EXP_FILE          = os.path.join(DATA_DIR, "exp_week.json")
 BUFF_FILE         = os.path.join(DATA_DIR, "buff_links.json")
 NAMES_FILE        = os.path.join(DATA_DIR, "used_names.json")
@@ -92,6 +93,10 @@ def is_admin_ctx(ctx) -> bool:
         ctx.author.guild_permissions.manage_guild
         or ctx.author.guild_permissions.administrator
         or is_owner(ctx.author.id)
+
+        # danh sách kênh thoại để bot đi tuần (per guild)
+voice_patrol_config = {}  # {guild_id: [channel_id, ...]}
+
     )
 
 # ================== KHÓA EXP THEO LỊCH ==================
@@ -1431,7 +1436,12 @@ async def on_ready():
         auto_backup_task.start()
     if not tick_voice_realtime.is_running():
         tick_voice_realtime.start()
-
+    if not tick_voice_realtime.is_running():
+        tick_voice_realtime.start()
+    if not auto_backup_task.is_running():
+        auto_backup_task.start()
+    if not auto_patrol_voice.is_running():
+        auto_patrol_voice.start()
 
 
 
@@ -1495,6 +1505,105 @@ async def tick_voice_realtime():
                     await res
 
     save_json(EXP_FILE, exp_data)
+
+
+@tasks.loop(seconds=60)
+async def auto_patrol_voice():
+    """
+    Mỗi 60s bot sẽ đi qua từng kênh thoại đã cấu hình để 'ngồi cho có mặt'.
+    Một guild chỉ join được 1 kênh 1 lúc → nên mình cho nó xoay vòng.
+    """
+    for guild in bot.guilds:
+        gid = str(guild.id)
+        patrol_list = voice_patrol_config.get(gid, [])
+        if not patrol_list:
+            continue
+
+        # nếu bot chưa ở voice -> vào kênh đầu
+        vc = guild.voice_client
+        if not vc or not vc.is_connected():
+            first_channel = guild.get_channel(patrol_list[0])
+            if first_channel:
+                try:
+                    await first_channel.connect()
+                except:
+                    pass
+            continue
+
+        # bot đang ở voice rồi -> thử chuyển sang kênh tiếp theo
+        # xác định kênh hiện tại nằm ở vị trí nào trong danh sách
+        current_id = vc.channel.id
+        if current_id in patrol_list:
+            idx = patrol_list.index(current_id)
+            next_idx = (idx + 1) % len(patrol_list)
+            next_chan = guild.get_channel(patrol_list[next_idx])
+            if next_chan and next_chan.id != current_id:
+                try:
+                    await vc.move_to(next_chan)
+                except:
+                    pass
+        else:
+            # đang ở kênh không có trong danh sách -> chuyển về kênh đầu
+            first_channel = guild.get_channel(patrol_list[0])
+            if first_channel:
+                try:
+                    await vc.move_to(first_channel)
+                except:
+                    pass
+
+
+@bot.command(name="settuantra")
+@commands.has_permissions(manage_guild=True)
+async def cmd_settuantra(ctx, action: str = None, channel: discord.VoiceChannel = None):
+    """
+    /settuantra add #kenh-thoai
+    /settuantra remove #kenh-thoai
+    /settuantra list
+    """
+    gid = str(ctx.guild.id)
+    chans = voice_patrol_config.setdefault(gid, [])
+
+    # nếu chỉ gõ /settuantra
+    if action is None:
+        await ctx.reply("⚙️ Dùng: `/settuantra add <kênh>` | `/settuantra remove <kênh>` | `/settuantra list`")
+        return
+
+    action = action.lower()
+
+    if action == "list":
+        if not chans:
+            await ctx.reply("📭 Chưa có kênh thoại nào trong danh sách tuần tra.")
+        else:
+            names = []
+            for cid in chans:
+                c = ctx.guild.get_channel(cid)
+                names.append(c.mention if c else f"`{cid}`")
+            await ctx.reply("📜 Kênh thoại đang tuần tra:\n" + "\n".join(names))
+        return
+
+    if action == "add":
+        if channel is None:
+            await ctx.reply("⚠️ Bạn phải tag kênh thoại: `/settuantra add #kenh-thoai`")
+            return
+        if channel.id not in chans:
+            chans.append(channel.id)
+            await ctx.reply(f"✅ Đã thêm {channel.mention} vào danh sách tuần tra.")
+        else:
+            await ctx.reply("ℹ️ Kênh này đã có trong danh sách rồi.")
+        return
+
+    if action == "remove":
+        if channel is None:
+            await ctx.reply("⚠️ Bạn phải tag kênh thoại: `/settuantra remove #kenh-thoai`")
+            return
+        if channel.id in chans:
+            chans.remove(channel.id)
+            await ctx.reply(f"🗑 Đã xoá {channel.mention} khỏi danh sách tuần tra.")
+        else:
+            await ctx.reply("ℹ️ Kênh này không có trong danh sách.")
+        return
+
+    await ctx.reply("❓ Hành động không hợp lệ. Dùng: add / remove / list.")
 
 
 
