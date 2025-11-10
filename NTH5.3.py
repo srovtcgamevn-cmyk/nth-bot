@@ -1187,22 +1187,25 @@ def cleanup_old_backups(keep: int = 10):
         except:
             pass
 
+# --- BACKUP (chỉ chủ bot) ---
 @bot.command(name="setkenhbackup")
-@commands.has_permissions(administrator=True)
 async def cmd_setkenhbackup(ctx):
     if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Lệnh này chỉ dành cho **chủ bot**.")
+        return
 
-    
     cfg = load_json(BACKUP_CONFIG_FILE, {"guilds": {}, "last_run": ""})
     g = cfg["guilds"].setdefault(str(ctx.guild.id), {})
     g["channel_id"] = ctx.channel.id
     save_json(BACKUP_CONFIG_FILE, cfg)
-    await ctx.reply("✅ Kênh này sẽ nhận file backup mỗi ngày.")
+    await ctx.reply("✅ Kênh này sẽ nhận file backup tự động mỗi ngày.")
+
 
 @bot.command(name="backup")
-@commands.has_permissions(administrator=True)
 async def cmd_backup(ctx):
     if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Lệnh này chỉ dành cho **chủ bot**.")
+        return
 
     zip_path = make_backup_zip()
     cleanup_old_backups()
@@ -1210,6 +1213,7 @@ async def cmd_backup(ctx):
         content=f"📦 Sao lưu thủ công lúc {gmt7_now().strftime('%Y-%m-%d %H:%M:%S')}",
         file=discord.File(zip_path)
     )
+
 
 @tasks.loop(minutes=5)
 async def auto_backup_task():
