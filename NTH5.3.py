@@ -1,25 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-Nghich Thuy Han New - BANG_CHU_SUPREME
-1 file duy nhất (bản đã chỉnh theo yêu cầu mới nhất)
-- Chat: 1 phút/lần mới cộng exp
-- Voice: 1 phút/lần mới cộng exp
+BANG_CHU_SUPREME - 1 FILE DUY NHẤT
+- Chat: 1 phút mới cộng
+- Voice: 1 phút mở mic mới cộng
+- Chủ nhật khóa exp, mở lại thứ 2 lúc 14:00 GMT+7
+- Có backup tự động + backup tay
 """
 
-import os, json, random, math, asyncio
+import os, json, random, math, asyncio, shutil
 from datetime import datetime, timedelta, timezone, UTC
 
 import discord
 from discord.ext import commands, tasks
 
-
-
-# =============== CẤU HÌNH CƠ BẢN ===============
+# ================== CẤU HÌNH ==================
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 OWNER_DISCORD_ID = 821066331826421840  # ID của bạn
 
 DATA_DIR = "data"
+BACKUP_DIR = "backups"
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
 
 EXP_FILE          = os.path.join(DATA_DIR, "exp_week.json")
 BUFF_FILE         = os.path.join(DATA_DIR, "buff_links.json")
@@ -30,6 +31,7 @@ TEAMCONF_FILE     = os.path.join(DATA_DIR, "team_config.json")
 ATTEND_FILE       = os.path.join(DATA_DIR, "attendance.json")
 TEAMSCORE_FILE    = os.path.join(DATA_DIR, "team_scores.json")
 LEVEL_REWARD_FILE = os.path.join(DATA_DIR, "level_rewards.json")
+BACKUP_CONFIG_FILE = os.path.join(DATA_DIR, "backup_config.json")
 
 default_files = [
     (EXP_FILE,          {"users": {}, "prev_week": {}}),
@@ -41,12 +43,14 @@ default_files = [
     (ATTEND_FILE,       {"guilds": {}}),
     (TEAMSCORE_FILE,    {"guilds": {}}),
     (LEVEL_REWARD_FILE, {"guilds": {}}),
+    (BACKUP_CONFIG_FILE, {"guilds": {}, "last_run": ""}),
 ]
 for p, d in default_files:
     if not os.path.exists(p):
         with open(p, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False, indent=2)
 
+# ================== BOT / INTENTS ==================
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
@@ -54,7 +58,7 @@ intents.voice_states = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)
 
-# =============== HÀM TIỆN ÍCH ===============
+# ================== HÀM CHUNG ==================
 def load_json(path, default):
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -85,16 +89,13 @@ def is_admin_ctx(ctx) -> bool:
         or is_owner(ctx.author.id)
     )
 
-# =============== KHÓA EXP THEO LỊCH ===============
-# T7, CN khóa
-# Thứ 2 trước 14h khóa
+# ====== KHÓA EXP THEO LỊCH ======
+# Chủ nhật nghỉ, Thứ 2 trước 14:00 nghỉ
 def is_weekend_lock():
     n = gmt7_now()
     wd = n.weekday()  # Mon=0
-    # Chủ nhật (6) nghỉ nguyên ngày
     if wd == 6:
         return True
-    # Thứ 2 trước 14:00 chưa mở lại
     if wd == 0 and n.hour < 14:
         return True
     return False
@@ -1811,199 +1812,168 @@ async def cmd_tatbuff(ctx):
     save_json(BUFF_FILE, data)
     await ctx.reply("✅ Đã tắt buff mem.")
 
+# ================== BACKUP THỦ CÔNG ==================
+@bot.command(name="setkenhbackup")
+@commands.has_permissions(administrator=True)
+async def cmd_setkenhbackup(ctx):
+    cfg = load_json(BACKUP_CONFIG_FILE, {"guilds": {}, "last_run": ""})
+    g = cfg["guilds"].setdefault(str(ctx.guild.id), {})
+    g["channel_id"] = ctx.channel.id
+    save_json(BACKUP_CONFIG_FILE, cfg)
+    await ctx.reply("✅ Đã đặt kênh này làm kênh nhận file backup.")
 
+def make_backup_zip():
+    ts = gmt7_now().strftime("%Y%m%d-%H%M%S")
+    zip_name = f"backup-{ts}"
+    zip_path = os.path.join(BACKUP_DIR, zip_name)
+    shutil.make_archive(zip_path, "zip", DATA_DIR)
+    return zip_path + ".zip"
+
+def cleanup_old_backups(keep=10):
+    files = [f for f in os.listdir(BACKUP_DIR) if f.endswith(".zip")]
+    if len(files) <= keep: return
+    files.sort(reverse=True)
+    for f in files[keep:]:
+        try: os.remove(os.path.join(BACKUP_DIR, f))
+        except: pass
+
+@bot.command(name="backup")
+@commands.has_permissions(administrator=True)
+async def cmd_backup(ctx):
+    z = make_backup_zip()
+    cleanup_old_backups()
+    await ctx.reply(f"📦 Sao lưu thủ công lúc {gmt7_now().strftime('%Y-%m-%d %H:%M:%S')}", file=discord.File(z))
+
+@tasks.loop(minutes=5)
+async def auto_backup_task():
+    now = gmt7_now()
+    today = now.date().isoformat()
+    cfg = load_json(BACKUP_CONFIG_FILE, {"guilds": {}, "last_run": ""})
+    if cfg.get("last_run") == today:
+        return
+    if not (now.hour == 0 and now.minute >= 30):
+        return
+    z = make_backup_zip()
+    cleanup_old_backups()
+    for gid, gdata in cfg["guilds"].items():
+        ch_id = gdata.get("channel_id")
+        if not ch_id: continue
+        g = bot.get_guild(int(gid))
+        if not g: continue
+        ch = g.get_channel(int(ch_id))
+        if not ch: continue
+        try:
+            await ch.send(f"📦 Sao lưu tự động {today}", file=discord.File(z))
+        except: pass
+    cfg["last_run"] = today
+    save_json(BACKUP_CONFIG_FILE, cfg)
+
+# ================== AUTO RESET TUẦN ==================
+@tasks.loop(minutes=5)
+async def auto_weekly_reset():
+    now = gmt7_now()
+    cfg = load_json(CONFIG_FILE, {"guilds": {}, "exp_locked": False, "last_reset": ""})
+    last_reset = cfg.get("last_reset", "")
+    today = now.date().isoformat()
+
+    # CN 00:00 reset
+    if now.weekday() == 6 and now.hour == 0 and last_reset != today:
+        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+        exp_data["prev_week"] = exp_data.get("users", {})
+        exp_data["users"] = {}
+        save_json(EXP_FILE, exp_data)
+        cfg["last_reset"] = today
+        cfg["exp_locked"] = True
+        save_json(CONFIG_FILE, cfg)
+        print("🔁 Reset tuần (CN).")
+
+    # T2 14:00 mở + thu hồi role
+    if now.weekday() == 0 and now.hour >= 14 and cfg.get("exp_locked", False):
+        cfg["exp_locked"] = False
+        save_json(CONFIG_FILE, cfg)
+        print("🔓 Mở lại exp.")
+        level_data = load_json(LEVEL_REWARD_FILE, {"guilds": {}})
+        for guild in bot.guilds:
+            gconf = level_data["guilds"].get(str(guild.id), {})
+            revoke_list = gconf.get("weekly_revoke", [])
+            for member in guild.members:
+                if member.bot: continue
+                for rid in revoke_list:
+                    r = guild.get_role(rid)
+                    if r and r in member.roles:
+                        try: await member.remove_roles(r, reason="Thu hồi thưởng tuần")
+                        except: pass
+
+# ================== AUTO DM NHẮC ĐIỂM DANH ==================
+@tasks.loop(minutes=10)
+async def auto_diemdanh_dm():
+    if is_weekend_lock(): return
+    att = load_json(ATTEND_FILE, {"guilds": {}})
+    today = today_str_gmt7()
+    for guild in bot.guilds:
+        g_att = att["guilds"].get(str(guild.id), {})
+        for rid, daymap in g_att.items():
+            di = daymap.get(today)
+            if not di: continue
+            role = guild.get_role(int(rid))
+            if not role: continue
+            dm_sent = set(di.get("dm_sent", []))
+            not_checked = [m for m in role.members if str(m.id) not in di.get("checked", [])]
+            to_dm = [m for m in not_checked if str(m.id) not in dm_sent]
+            for m in to_dm[:10]:
+                try: await m.send(f"💛 Team **{role.name}** đang điểm danh, dùng /diemdanh nha.")
+                except: pass
+                di.setdefault("dm_sent", []).append(str(m.id))
+            g_att[rid][today] = di
+        att["guilds"][str(guild.id)] = g_att
+    save_json(ATTEND_FILE, att)
+
+# ================== AUTO TÍCH VOICE MỖI 60S ==================
 @tasks.loop(seconds=60)
 async def tick_voice_exp():
-    if is_weekend_lock():
-        return
+    if is_weekend_lock(): return
     now = now_utc()
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-
     for guild in bot.guilds:
         gmap = voice_state_map.get(guild.id, {})
         for uid, start_time in list(gmap.items()):
             member = guild.get_member(uid)
-            if not member:
-                continue
+            if not member: continue
             secs = (now - start_time).total_seconds()
-            if secs < 60:
-                continue
-
+            if secs < 60: continue
             ensure_user(exp_data, str(uid))
             u = exp_data["users"][str(uid)]
-
-            bonus = 1  # 1 phút = 1 exp
+            bonus = 1
             if team_boost_today(guild.id, member):
                 bonus *= 2
             u["exp_voice"] += bonus
             u["voice_seconds_week"] += 60
-
-            # nhiệt từ voice
-            add_heat(u, 0.2 / 10)  # 10 phút = +0.2
-
-            # reset mốc đếm
+            add_heat(u, 0.02)
             gmap[uid] = now
-
-            # kiểm tra thưởng cấp
             total_now = u["exp_chat"] + u["exp_voice"]
             try_grant_level_reward(member, total_now)
-
     save_json(EXP_FILE, exp_data)
 
-
-import os
-import shutil
-import datetime
-from discord.ext import tasks, commands
-import discord
-
-# ====== THƯ MỤC / FILE LƯU ======
-DATA_DIR = "data"
-BACKUP_DIR = "backups"
-BACKUP_CONFIG_FILE = os.path.join(DATA_DIR, "backup_config.json")
-
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(BACKUP_DIR, exist_ok=True)
-
-
-# ====== HÀM JSON CƠ BẢN ======
-def load_json(path, default):
-    import json
-    if not os.path.exists(path):
-        return default
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_json(path, data):
-    import json
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-# ====== HÀM GIỜ GMT+7 ======
-def gmt7_now():
-    return datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=7)
-
-
-
-# ====== TẠO FILE BACKUP ======
-def make_backup_zip():
-    """
-    Nén thư mục data/ thành 1 file .zip trong backups/
-    Trả về đường dẫn file .zip
-    """
-    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    zip_name = f"backup-{ts}"
-    zip_path = os.path.join(BACKUP_DIR, zip_name)
-    # nén nguyên thư mục data
-    shutil.make_archive(zip_path, "zip", DATA_DIR)
-    return zip_path + ".zip"
-
-
-def cleanup_old_backups(keep: int = 10):
-    """
-    Xóa bớt backup cũ, chỉ giữ lại 'keep' file mới nhất
-    """
-    files = [f for f in os.listdir(BACKUP_DIR) if f.endswith(".zip")]
-    if len(files) <= keep:
-        return
-    files.sort(reverse=True)  # mới nhất đứng đầu
-    for f in files[keep:]:
-        try:
-            os.remove(os.path.join(BACKUP_DIR, f))
-        except:
-            pass
-
-
-# ====== LỆNH ĐẶT KÊNH BACKUP ======
-@bot.command(name="setkenhbackup")
-@commands.has_permissions(administrator=True)
-async def cmd_setkenhbackup(ctx):
-    cfg = load_json(BACKUP_CONFIG_FILE, {"guilds": {}})
-    g = cfg["guilds"].setdefault(str(ctx.guild.id), {})
-    g["channel_id"] = ctx.channel.id
-    save_json(BACKUP_CONFIG_FILE, cfg)
-    await ctx.reply("✅ Đã đặt kênh này làm kênh nhận file backup dữ liệu.")
-
-
-# ====== LỆNH BACKUP BẰNG TAY ======
-@bot.command(name="backup")
-@commands.has_permissions(administrator=True)
-async def cmd_backup(ctx):
-    # tạo file
-    zip_path = make_backup_zip()
-    cleanup_old_backups(keep=10)
-
-    await ctx.reply(
-        content=f"📦 Sao lưu dữ liệu thủ công lúc {gmt7_now().strftime('%Y-%m-%d %H:%M:%S')} (GMT+7)",
-        file=discord.File(zip_path)
-    )
-
-
-# ====== TASK TỰ ĐỘNG BACKUP MỖI NGÀY ======
-@tasks.loop(minutes=5)
-async def auto_backup_task():
-    """
-    Mỗi 5 phút kiểm tra 1 lần.
-    00:30 sáng (GMT+7) mà hôm nay chưa backup thì backup.
-    """
-    now = gmt7_now()
-    today = now.strftime("%Y-%m-%d")
-
-    cfg = load_json(BACKUP_CONFIG_FILE, {"guilds": {}})
-    last_run = cfg.get("last_run")
-
-    # chỉ chạy 1 lần/ngày
-    if last_run == today:
-        return
-
-    # giờ chạy: 00:30
-    if not (now.hour == 0 and now.minute >= 30):
-        return
-
-    # tạo file
-    zip_path = make_backup_zip()
-    cleanup_old_backups(keep=10)
-
-    # gửi cho từng guild đã set kênh
-    for gid, gdata in cfg["guilds"].items():
-        ch_id = gdata.get("channel_id")
-        if not ch_id:
-            continue
-        guild = bot.get_guild(int(gid))
-        if not guild:
-            continue
-        channel = guild.get_channel(int(ch_id))
-        if not channel:
-            continue
-
-        try:
-            await channel.send(
-                content=f"📦 Sao lưu dữ liệu tự động ngày **{today}**",
-                file=discord.File(zip_path)
-            )
-        except Exception as e:
-            print("Backup send failed:", e)
-
-    # đánh dấu đã chạy
-    cfg["last_run"] = today
-    save_json(BACKUP_CONFIG_FILE, cfg)
-
-
-# ====== BẮT ĐẦU TASK KHI BOT ONLINE ======
+# ================== ON READY (DUY NHẤT) ==================
 @bot.event
 async def on_ready():
     print("✅ Bot online:", bot.user)
+
+    # refresh invite
+    for g in bot.guilds:
+        try: await refresh_invites_for_guild(g)
+        except: pass
+
+    if not auto_weekly_reset.is_running():
+        auto_weekly_reset.start()
+    if not auto_diemdanh_dm.is_running():
+        auto_diemdanh_dm.start()
+    if not tick_voice_exp.is_running():
+        tick_voice_exp.start()
     if not auto_backup_task.is_running():
         auto_backup_task.start()
-    # ... ở đây bạn start thêm các task khác của bạn nữa
 
-
-
-
-
-# =============== CHẠY BOT ===============
+# ================== CHẠY BOT ==================
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
         print("❌ Thiếu DISCORD_TOKEN")
