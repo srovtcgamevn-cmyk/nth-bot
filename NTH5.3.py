@@ -16,6 +16,9 @@ from datetime import datetime, timedelta, timezone, UTC
 
 import discord
 from discord.ext import commands, tasks
+VOICE_PATROL_FILE = "voice_patrol.json"
+voice_patrol_data = load_json(VOICE_PATROL_FILE, {"guilds": {}})
+
 
 # ================== CẤU HÌNH CƠ BẢN ==================
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
@@ -1554,57 +1557,60 @@ async def auto_patrol_voice():
 
 @bot.command(name="settuantra")
 @commands.has_permissions(manage_guild=True)
-async def cmd_settuantra(ctx, action: str = None, channel: discord.VoiceChannel = None):
+async def cmd_settuantra(ctx, seconds: int = 60, *channels: discord.VoiceChannel):
+    """Cấu hình bot tuần tra voice.
+    /settuantra 90 #kenh1 #kenh2 #kenh3
     """
-    /settuantra add #kenh-thoai
-    /settuantra remove #kenh-thoai
-    /settuantra list
-    """
+    if not channels:
+        await ctx.reply("⚙️ Dùng: `/settuantra <số_giây_mỗi_kênh> <#kênh1> <#kênh2> ...`")
+        return
+
     gid = str(ctx.guild.id)
-    chans = voice_patrol_config.setdefault(gid, [])
+    chans = [c.id for c in channels]
+    voice_patrol_data["guilds"][gid] = {
+        "channels": chans,
+        "delay": seconds,
+        "pos": 0
+    }
+    save_json(VOICE_PATROL_FILE, voice_patrol_data)
 
-    # nếu chỉ gõ /settuantra
-    if action is None:
-        await ctx.reply("⚙️ Dùng: `/settuantra add <kênh>` | `/settuantra remove <kênh>` | `/settuantra list`")
-        return
+    list_text = ", ".join([c.mention for c in channels])
+    await ctx.reply(f"✅ Đã đặt bot tuần tra {len(chans)} kênh: {list_text}\n⏱ Thời gian mỗi kênh: `{seconds}s`")
 
-    action = action.lower()
 
-    if action == "list":
+@tasks.loop(seconds=30)
+async def auto_patrol_voice():
+    for guild in bot.guilds:
+        gid = str(guild.id)
+        data = voice_patrol_data["guilds"].get(gid)
+        if not data:
+            continue
+
+        chans = data.get("channels", [])
+        delay = data.get("delay", 60)
+        pos = data.get("pos", 0)
+
         if not chans:
-            await ctx.reply("📭 Chưa có kênh thoại nào trong danh sách tuần tra.")
-        else:
-            names = []
-            for cid in chans:
-                c = ctx.guild.get_channel(cid)
-                names.append(c.mention if c else f"`{cid}`")
-            await ctx.reply("📜 Kênh thoại đang tuần tra:\n" + "\n".join(names))
-        return
+            continue
 
-    if action == "add":
-        if channel is None:
-            await ctx.reply("⚠️ Bạn phải tag kênh thoại: `/settuantra add #kenh-thoai`")
-            return
-        if channel.id not in chans:
-            chans.append(channel.id)
-            await ctx.reply(f"✅ Đã thêm {channel.mention} vào danh sách tuần tra.")
-        else:
-            await ctx.reply("ℹ️ Kênh này đã có trong danh sách rồi.")
-        return
+        next_idx = (pos + 1) % len(chans)
+        voice_patrol_data["guilds"][gid]["pos"] = next_idx
+        save_json(VOICE_PATROL_FILE, voice_patrol_data)
 
-    if action == "remove":
-        if channel is None:
-            await ctx.reply("⚠️ Bạn phải tag kênh thoại: `/settuantra remove #kenh-thoai`")
-            return
-        if channel.id in chans:
-            chans.remove(channel.id)
-            await ctx.reply(f"🗑 Đã xoá {channel.mention} khỏi danh sách tuần tra.")
-        else:
-            await ctx.reply("ℹ️ Kênh này không có trong danh sách.")
-        return
+        next_channel = guild.get_channel(chans[next_idx])
+        if not next_channel:
+            continue
 
-    await ctx.reply("❓ Hành động không hợp lệ. Dùng: add / remove / list.")
+        vc = guild.voice_client
+        try:
+            if not vc or not vc.is_connected():
+                await next_channel.connect()
+            elif vc.channel.id != next_channel.id:
+                await vc.move_to(next_channel)
+        except Exception as e:
+            print(f"[WARN] Không move được voice: {e}")
 
+        await asyncio.sleep(delay)
 
 
 # ================== CHẠY BOT ==================
