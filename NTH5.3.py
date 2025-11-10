@@ -88,12 +88,15 @@ def is_admin_ctx(ctx) -> bool:
 # Thứ 2 trước 14h khóa
 def is_weekend_lock():
     n = gmt7_now()
-    wd = n.weekday()        # Mon=0
-    if wd in (5, 6):        # T7, CN
+    wd = n.weekday()  # Mon=0
+    # Chủ nhật (6) nghỉ nguyên ngày
+    if wd == 6:
         return True
+    # Thứ 2 trước 14:00 chưa mở lại
     if wd == 0 and n.hour < 14:
         return True
     return False
+
 
 # =============== BỘ TÊN ẢO (giữ theo file bạn) ===============
 # =============== BỘ TÊN ẢO ===============
@@ -1347,49 +1350,101 @@ async def cmd_thuhoithuong(ctx, *roles: discord.Role):
 # =============== /setdiemdanh ===============
 @bot.command(name="setdiemdanh")
 @commands.has_permissions(manage_guild=True)
-async def cmd_setdiemdanh(ctx, *, _rest: str=""):
-    roles = ctx.message.role_mentions
-    channels = ctx.message.channel_mentions
-    parts = ctx.message.content.split()
-    nums = [p for p in parts if p.isdigit()]
-    start_hour = 20
-    start_min = 0
-    min_count = 9
-    if len(nums) >= 1: start_hour = int(nums[0])
-    if len(nums) >= 2: start_min = int(nums[1])
-    if len(nums) >= 3: min_count = int(nums[2])
-    if not roles:
-        await ctx.reply("❌ Bạn phải tag ít nhất 1 role.")
-        return
-    channel = channels[0] if channels else None
+async def cmd_setdiemdanh(ctx, *args):
+    """Cấu hình team điểm danh hoặc xem danh sách."""
+    guild_id = str(ctx.guild.id)
+    data = load_json(TEAMCONF_FILE, {"guilds": {}})
+    gconf = data["guilds"].setdefault(guild_id, {"teams": {}})
 
-    tc = load_json(TEAMCONF_FILE, {"guilds": {}})
-    g = tc["guilds"].setdefault(str(ctx.guild.id), {"teams": {}})
-    for r in roles:
-        g["teams"][str(r.id)] = {
-            "name": r.name,
-            "channel_id": channel.id if channel else None,
-            "start_hour": start_hour,
-            "start_minute": start_min,
-            "min_count": min_count,
-            "max_tag": 3
-        }
-    save_json(TEAMCONF_FILE, tc)
-    await ctx.reply(f"✅ Đã cấu hình điểm danh cho {len(roles)} role.")
+    # Nếu không nhập gì -> xem danh sách hiện tại
+    if not args:
+        att = load_json(ATTEND_FILE, {"guilds": {}})
+        today = today_str_gmt7()
+        g_att = att["guilds"].get(guild_id, {})
+
+        if not gconf["teams"]:
+            await ctx.reply("📋 Chưa có team nào được cấu hình điểm danh.")
+            return
+
+        lines = ["📖 **Danh sách team điểm danh hiện tại:**"]
+        for rid, conf in gconf["teams"].items():
+            role = ctx.guild.get_role(int(rid))
+            if not role:
+                continue
+            day_data = g_att.get(rid, {}).get(today, {})
+            checked = len(day_data.get("checked", []))
+            total = len(role.members)
+            active = "✅" if day_data.get("boost") else "❌"
+            lines.append(f"{active} {role.mention} — cần **{conf.get('min_count',9)}** người (hiện tại: {checked}/{total})")
+        await ctx.reply("\n".join(lines))
+        return
+
+    # Nếu có args -> xử lý set hoặc xóa
+    roles = []
+    last_arg_is_number = False
+    min_count = 9
+
+    # kiểm tra tham số cuối là số không
+    if args and args[-1].isdigit():
+        min_count = int(args[-1])
+        last_arg_is_number = True
+        role_mentions = args[:-1]
+    else:
+        role_mentions = args
+
+    # nếu chỉ có 1 role và số = 0 -> xóa
+    if len(role_mentions) == 1 and last_arg_is_number and min_count == 0:
+        role = await commands.RoleConverter().convert(ctx, role_mentions[0])
+        if str(role.id) in gconf["teams"]:
+            del gconf["teams"][str(role.id)]
+            save_json(TEAMCONF_FILE, data)
+            await ctx.reply(f"🗑️ Đã xóa cấu hình điểm danh cho team {role.mention}.")
+        else:
+            await ctx.reply("⚠️ Team này chưa được cấu hình.")
+        return
+
+    # xử lý add/update
+    for rtext in role_mentions:
+        try:
+            role = await commands.RoleConverter().convert(ctx, rtext)
+            gconf["teams"][str(role.id)] = {
+                "name": role.name,
+                "min_count": min_count,
+                "max_tag": 3,
+                "channel_id": ctx.channel.id,
+                "start_hour": 20,
+                "start_minute": 0
+            }
+            roles.append(role.mention)
+        except:
+            pass
+
+    save_json(TEAMCONF_FILE, data)
+    if roles:
+        await ctx.reply(f"✅ Đã cấu hình điểm danh cho {', '.join(roles)} (cần {min_count} người để kích hoạt X2).")
+    else:
+        await ctx.reply("⚠️ Không tìm thấy role hợp lệ để cấu hình.")
+
+
 
 # =============== /diemdanh ===============
 @bot.command(name="diemdanh")
 async def cmd_diemdanh(ctx):
+    # Chủ nhật và T2 sáng nghỉ
     if is_weekend_lock():
-        await ctx.reply("⛔ Cuối tuần nghỉ điểm danh.")
+        await ctx.reply("⛔ Hôm nay không điểm danh, hoạt động từ T2 14:00 đến T7 thôi nha.")
         return
 
     member = ctx.author
     guild_id = str(ctx.guild.id)
+
+    # lấy cấu hình team
     teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
     att = load_json(ATTEND_FILE, {"guilds": {}})
     teams = teamconf["guilds"].get(guild_id, {}).get("teams", {})
     g_att = att["guilds"].setdefault(guild_id, {})
+
+    # tìm team mà member thuộc về
     role_id = None
     conf = None
     for rid, c in teams.items():
@@ -1398,13 +1453,17 @@ async def cmd_diemdanh(ctx):
             role_id = int(rid)
             conf = c
             break
+
     if not conf:
         await ctx.reply("⛔ Bạn không thuộc team nào đang bật điểm danh.")
         return
 
+    # kiểm tra giờ
     now = gmt7_now()
-    if (now.hour, now.minute) < (conf.get("start_hour",20), conf.get("start_minute",0)):
-        await ctx.reply("⏰ Chưa tới giờ điểm danh.")
+    start_h = conf.get("start_hour", 20)
+    start_m = conf.get("start_minute", 0)
+    if (now.hour, now.minute) < (start_h, start_m):
+        await ctx.reply(f"⏰ Chưa tới giờ điểm danh. Team này điểm danh từ {start_h:02d}:{start_m:02d}.")
         return
 
     today = today_str_gmt7()
@@ -1426,60 +1485,67 @@ async def cmd_diemdanh(ctx):
         await ctx.reply("✅ Bạn đã điểm danh hôm nay rồi.")
         return
 
-    # đánh dấu
+    # đánh dấu đã điểm danh
     day_data["checked"].append(uid)
     if uid not in day_data["active_members"]:
         day_data["active_members"].append(uid)
 
-    # cộng điểm team: điểm danh = +1
+    # cộng điểm team cơ bản
     add_team_score(ctx.guild.id, role_id, today, 1)
 
-    # cộng nhiệt cá nhân
+    # cộng nhiệt cho cá nhân
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
     ensure_user(exp_data, uid)
     u = exp_data["users"][uid]
-    add_heat(u, 0.5)  # điểm danh = +0.5
+    add_heat(u, 0.5)
     save_json(EXP_FILE, exp_data)
 
+    # lưu lại attendance
     g_att[str(role_id)][today] = day_data
     att["guilds"][guild_id] = g_att
     save_json(ATTEND_FILE, att)
 
+    # báo cho người đó
     checked = len(day_data["checked"])
     await ctx.reply(f"✅ Điểm danh thành công cho **{conf.get('name','Team')}** ({checked}/{total_members})")
 
-    # tag nhắc những người chưa điểm danh
-    if day_data["tag_count"] < conf.get("max_tag",3) and role_obj:
+    # ========== PHẦN BẠN HỎI: TAG NGƯỜI CHƯA ĐIỂM DANH ==========
+    # chỉ tag nếu chưa vượt giới hạn
+    max_tag = conf.get("max_tag", 3)
+    if day_data["tag_count"] < max_tag and role_obj:
         not_checked = [m for m in role_obj.members if str(m.id) not in day_data["checked"]]
         if not_checked:
+            # kênh để tag: kênh cấu hình, nếu không có thì kênh hiện tại
             ch = ctx.guild.get_channel(conf.get("channel_id")) or ctx.channel
+            # tag tối đa 20 người/lần cho đỡ dài
+            mention_list = " ".join(m.mention for m in not_checked[:20])
             await ch.send(
-                f"Các bạn thân yêu ơi! Đã đến giờ hoạt động team rồi, hãy online đi hoạt động cùng **{conf.get('name','Team')}** nha 💛\n"
-                f"Chưa điểm danh: {' '.join(m.mention for m in not_checked[:20])}"
+                f"📣 **{conf.get('name','Team')}** đang điểm danh, còn thiếu: {mention_list}\n"
+                f"↳ Ai chưa điểm danh gõ `/diemdanh` nhé!"
             )
             day_data["tag_count"] += 1
             g_att[str(role_id)][today] = day_data
             att["guilds"][guild_id] = g_att
             save_json(ATTEND_FILE, att)
 
-    # kiểm tra kích hoạt boost
+    # ========== KIỂM TRA KÍCH HOẠT X2 ==========
     need = conf.get("min_count", 9)
     enough_count = checked >= need
     enough_percent = total_members > 0 and checked / total_members >= 0.75
+
     if not day_data.get("boost", False) and (enough_count or enough_percent):
         day_data["boost"] = True
         g_att[str(role_id)][today] = day_data
         att["guilds"][guild_id] = g_att
         save_json(ATTEND_FILE, att)
-        add_team_score(ctx.guild.id, role_id, today, 5)  # thưởng team
-        # thưởng thêm nhiệt cho người vừa kích hoạt
-        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-        ensure_user(exp_data, uid)
-        u = exp_data["users"][uid]
-        add_heat(u, 0.3)
-        save_json(EXP_FILE, exp_data)
+
+        # thưởng điểm team mạnh tay hơn
+        add_team_score(ctx.guild.id, role_id, today, 5)
+
+        # báo kích hoạt
         ch = ctx.guild.get_channel(conf.get("channel_id")) or ctx.channel
-        await ch.send(f"🎉 Team **{conf.get('name','Team')}** đã kích hoạt x2 hôm nay!")
+        await ch.send(f"🎉 Team **{conf.get('name','Team')}** đã đủ người và kích hoạt **X2** hôm nay! Cày thôi!!")
+
 
 # =============== /bxhkimlan (đã sửa cộng điểm quỹ đúng) ===============
 @bot.command(name="bxhkimlan")
@@ -1641,15 +1707,18 @@ async def auto_weekly_reset():
     today = now.date().isoformat()
 
     # 00:00 thứ 7 -> reset tuần + khóa exp
-    if now.weekday() == 5 and now.hour == 0 and last_reset != today:
-        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-        exp_data["prev_week"] = exp_data.get("users", {})
-        exp_data["users"] = {}
-        save_json(EXP_FILE, exp_data)
-        cfg["last_reset"] = today
-        cfg["exp_locked"] = True
-        save_json(CONFIG_FILE, cfg)
-        print("🔁 Reset tuần.")
+# 00:00 Chủ nhật -> reset tuần + khóa exp
+if now.weekday() == 6 and now.hour == 0 and last_reset != today:
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+    exp_data["prev_week"] = exp_data.get("users", {})
+    exp_data["users"] = {}
+    save_json(EXP_FILE, exp_data)
+
+    cfg["last_reset"] = today
+    cfg["exp_locked"] = True
+    save_json(CONFIG_FILE, cfg)
+    print("🔁 Reset tuần (Chủ nhật).")
+
 
     # mở lại T2 14:00 + thu hồi role
     if now.weekday() == 0 and now.hour >= 14 and cfg.get("exp_locked", False):
@@ -1777,6 +1846,154 @@ async def tick_voice_exp():
             try_grant_level_reward(member, total_now)
 
     save_json(EXP_FILE, exp_data)
+
+
+import os
+import shutil
+import datetime
+from discord.ext import tasks, commands
+import discord
+
+# ====== THƯ MỤC / FILE LƯU ======
+DATA_DIR = "data"
+BACKUP_DIR = "backups"
+BACKUP_CONFIG_FILE = os.path.join(DATA_DIR, "backup_config.json")
+
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
+# ====== HÀM JSON CƠ BẢN ======
+def load_json(path, default):
+    import json
+    if not os.path.exists(path):
+        return default
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_json(path, data):
+    import json
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+# ====== HÀM GIỜ GMT+7 ======
+def gmt7_now():
+    return datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+
+
+# ====== TẠO FILE BACKUP ======
+def make_backup_zip():
+    """
+    Nén thư mục data/ thành 1 file .zip trong backups/
+    Trả về đường dẫn file .zip
+    """
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    zip_name = f"backup-{ts}"
+    zip_path = os.path.join(BACKUP_DIR, zip_name)
+    # nén nguyên thư mục data
+    shutil.make_archive(zip_path, "zip", DATA_DIR)
+    return zip_path + ".zip"
+
+
+def cleanup_old_backups(keep: int = 10):
+    """
+    Xóa bớt backup cũ, chỉ giữ lại 'keep' file mới nhất
+    """
+    files = [f for f in os.listdir(BACKUP_DIR) if f.endswith(".zip")]
+    if len(files) <= keep:
+        return
+    files.sort(reverse=True)  # mới nhất đứng đầu
+    for f in files[keep:]:
+        try:
+            os.remove(os.path.join(BACKUP_DIR, f))
+        except:
+            pass
+
+
+# ====== LỆNH ĐẶT KÊNH BACKUP ======
+@bot.command(name="setkenhbackup")
+@commands.has_permissions(administrator=True)
+async def cmd_setkenhbackup(ctx):
+    cfg = load_json(BACKUP_CONFIG_FILE, {"guilds": {}})
+    g = cfg["guilds"].setdefault(str(ctx.guild.id), {})
+    g["channel_id"] = ctx.channel.id
+    save_json(BACKUP_CONFIG_FILE, cfg)
+    await ctx.reply("✅ Đã đặt kênh này làm kênh nhận file backup dữ liệu.")
+
+
+# ====== LỆNH BACKUP BẰNG TAY ======
+@bot.command(name="backup")
+@commands.has_permissions(administrator=True)
+async def cmd_backup(ctx):
+    # tạo file
+    zip_path = make_backup_zip()
+    cleanup_old_backups(keep=10)
+
+    await ctx.reply(
+        content=f"📦 Sao lưu dữ liệu thủ công lúc {gmt7_now().strftime('%Y-%m-%d %H:%M:%S')} (GMT+7)",
+        file=discord.File(zip_path)
+    )
+
+
+# ====== TASK TỰ ĐỘNG BACKUP MỖI NGÀY ======
+@tasks.loop(minutes=5)
+async def auto_backup_task():
+    """
+    Mỗi 5 phút kiểm tra 1 lần.
+    00:30 sáng (GMT+7) mà hôm nay chưa backup thì backup.
+    """
+    now = gmt7_now()
+    today = now.strftime("%Y-%m-%d")
+
+    cfg = load_json(BACKUP_CONFIG_FILE, {"guilds": {}})
+    last_run = cfg.get("last_run")
+
+    # chỉ chạy 1 lần/ngày
+    if last_run == today:
+        return
+
+    # giờ chạy: 00:30
+    if not (now.hour == 0 and now.minute >= 30):
+        return
+
+    # tạo file
+    zip_path = make_backup_zip()
+    cleanup_old_backups(keep=10)
+
+    # gửi cho từng guild đã set kênh
+    for gid, gdata in cfg["guilds"].items():
+        ch_id = gdata.get("channel_id")
+        if not ch_id:
+            continue
+        guild = bot.get_guild(int(gid))
+        if not guild:
+            continue
+        channel = guild.get_channel(int(ch_id))
+        if not channel:
+            continue
+
+        try:
+            await channel.send(
+                content=f"📦 Sao lưu dữ liệu tự động ngày **{today}**",
+                file=discord.File(zip_path)
+            )
+        except Exception as e:
+            print("Backup send failed:", e)
+
+    # đánh dấu đã chạy
+    cfg["last_run"] = today
+    save_json(BACKUP_CONFIG_FILE, cfg)
+
+
+# ====== BẮT ĐẦU TASK KHI BOT ONLINE ======
+@bot.event
+async def on_ready():
+    print("✅ Bot online:", bot.user)
+    if not auto_backup_task.is_running():
+        auto_backup_task.start()
+    # ... ở đây bạn start thêm các task khác của bạn nữa
 
 
 
