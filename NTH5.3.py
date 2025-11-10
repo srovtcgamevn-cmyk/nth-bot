@@ -1568,17 +1568,30 @@ async def auto_patrol_voice():
 
 @bot.command(name="settuantra")
 @commands.has_permissions(manage_guild=True)
-async def cmd_settuantra(ctx, seconds_per_channel: int = 60, *channels: discord.VoiceChannel):
+async def cmd_settuantra(ctx, seconds_per_channel: int = 60, *ids):
     """
-    /settuantra 90 #voice1 #voice2 ...
-    /settuantra 120 #sinh-hoat
+    /settuantra 90 123456789012345678 987654321012345678
+    Dùng ID kênh thoại nhé (do Discord không cho tag voice)
     """
-    if not channels:
-        await ctx.reply("⚙️ Dùng: `/settuantra <số_giây_mỗi_kênh> <#kênh1> <#kênh2> ...`")
+    if not ids:
+        await ctx.reply("⚙️ Dùng: `/settuantra <số_giây_mỗi_kênh> <id_kênh1> <id_kênh2> ...`")
         return
 
     gid = str(ctx.guild.id)
-    ch_ids = [c.id for c in channels]
+    ch_ids = []
+
+    for _id in ids:
+        try:
+            cid = int(_id)
+            ch = ctx.guild.get_channel(cid)
+            if ch and isinstance(ch, discord.VoiceChannel):
+                ch_ids.append(cid)
+        except:
+            continue
+
+    if not ch_ids:
+        await ctx.reply("⚠️ Không có ID kênh thoại hợp lệ.")
+        return
 
     voice_patrol_data["guilds"][gid] = {
         "channels": ch_ids,
@@ -1587,8 +1600,8 @@ async def cmd_settuantra(ctx, seconds_per_channel: int = 60, *channels: discord.
     }
     save_json(VOICE_PATROL_FILE, voice_patrol_data)
 
-    names = ", ".join(c.mention for c in channels)
-    await ctx.reply(f"✅ Đã lưu {len(channels)} kênh tuần tra: {names}\n⏱ Mỗi kênh: `{seconds_per_channel}` giây.")
+    names = ", ".join(f"<#{cid}>" for cid in ch_ids)
+    await ctx.reply(f"✅ Đã lưu {len(ch_ids)} kênh tuần tra: {names}\n⏱ Mỗi kênh: `{seconds_per_channel}` giây.")
 
 
 
