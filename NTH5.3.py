@@ -101,6 +101,8 @@ def is_admin_ctx(ctx) -> bool:
 voice_patrol_config = {}  # {guild_id: [channel_id, ...]}
 VOICE_PATROL_FILE = "voice_patrol.json"
 voice_patrol_data = load_json(VOICE_PATROL_FILE, {"guilds": {}})
+VOICE_BLOCK_FILE = "voice_blocked.json"
+voice_block_data = load_json(VOICE_BLOCK_FILE, {"guilds": {}})
 
 
 # ================== KHÓA EXP THEO LỊCH ==================
@@ -1480,6 +1482,10 @@ async def tick_voice_realtime():
             if len(human_members) < 2:
                 # nếu bạn muốn siết mạnh hơn thì đổi 2 -> 3
                 continue
+                blocked = voice_block_data["guilds"].get(str(guild.id), [])
+            if channel.id in blocked:
+                continue  # kênh này bị cấm tính exp thoại
+
 
             # đủ điều kiện rồi mới cộng
             if (now - start_time).total_seconds() >= 55:
@@ -1510,6 +1516,7 @@ async def tick_voice_realtime():
                 res = try_grant_level_reward(member, total)
                 if asyncio.iscoroutine(res):
                     await res
+                    
 
     save_json(EXP_FILE, exp_data)
 
@@ -1647,6 +1654,90 @@ async def cmd_tuantra(ctx, mode: str):
             await ctx.reply("ℹ️ Tuần tra chưa bật.")
     else:
         await ctx.reply("❔ Dùng: `/tuantra on` hoặc `/tuantra off`")
+
+# ================== CẤM THOẠI LÊN EXP  ==================
+
+
+class CamKenhThoaiView(discord.ui.View):
+    def __init__(self, ctx):
+        super().__init__(timeout=60)
+        self.ctx = ctx  # để check ai bấm
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # chỉ người gọi lệnh mới bấm được
+        return interaction.user.id == self.ctx.author.id
+
+    @discord.ui.button(label="➕ Thêm kênh", style=discord.ButtonStyle.green)
+    async def add_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("📥 Nhập **ID kênh thoại** muốn cấm:", ephemeral=True)
+
+        def check_msg(m: discord.Message):
+            return m.author.id == self.ctx.author.id and m.channel.id == self.ctx.channel.id
+
+        try:
+            msg = await self.ctx.bot.wait_for("message", timeout=30, check=check_msg)
+        except asyncio.TimeoutError:
+            await self.ctx.send("⏰ Hết thời gian nhập ID.", delete_after=5)
+            return
+
+        try:
+            cid = int(msg.content.strip())
+        except:
+            await self.ctx.send("⚠️ ID không hợp lệ.", delete_after=5)
+            return
+
+        gid = str(self.ctx.guild.id)
+        g = voice_block_data["guilds"].setdefault(gid, [])
+        if cid not in g:
+            g.append(cid)
+            save_json(VOICE_BLOCK_FILE, voice_block_data)
+            await self.ctx.send(f"✅ Đã cấm kênh thoại `<#{cid}>` (ID: `{cid}`) không tính EXP.")
+        else:
+            await self.ctx.send("ℹ️ Kênh này đã nằm trong danh sách cấm rồi.", delete_after=5)
+
+    @discord.ui.button(label="🗑 Gỡ kênh", style=discord.ButtonStyle.danger)
+    async def remove_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("📥 Nhập **ID kênh thoại** muốn gỡ cấm:", ephemeral=True)
+
+        def check_msg(m: discord.Message):
+            return m.author.id == self.ctx.author.id and m.channel.id == self.ctx.channel.id
+
+        try:
+            msg = await self.ctx.bot.wait_for("message", timeout=30, check=check_msg)
+        except asyncio.TimeoutError:
+            await self.ctx.send("⏰ Hết thời gian nhập ID.", delete_after=5)
+            return
+
+        try:
+            cid = int(msg.content.strip())
+        except:
+            await self.ctx.send("⚠️ ID không hợp lệ.", delete_after=5)
+            return
+
+        gid = str(self.ctx.guild.id)
+        g = voice_block_data["guilds"].setdefault(gid, [])
+        if cid in g:
+            g.remove(cid)
+            save_json(VOICE_BLOCK_FILE, voice_block_data)
+            await self.ctx.send(f"✅ Đã gỡ cấm kênh thoại `<#{cid}>`.")
+        else:
+            await self.ctx.send("ℹ️ Kênh này không nằm trong danh sách cấm.", delete_after=5)
+
+    @discord.ui.button(label="📋 Danh sách", style=discord.ButtonStyle.secondary)
+    async def list_channels(self, interaction: discord.Interaction, button: discord.ui.Button):
+        gid = str(self.ctx.guild.id)
+        g = voice_block_data["guilds"].get(gid, [])
+        if not g:
+            await interaction.response.send_message("✅ Hiện **không có** kênh thoại nào bị cấm.", ephemeral=True)
+        else:
+            text = "\n".join(f"- <#{cid}> (`{cid}`)" for cid in g)
+            await interaction.response.send_message(f"🚫 Kênh thoại đang bị cấm:\n{text}", ephemeral=True)
+@bot.command(name="camkenhthoai")
+@commands.has_permissions(manage_guild=True)
+async def cmd_camkenhthoai(ctx):
+    """Mở giao diện chặn kênh thoại không tính EXP"""
+    view = CamKenhThoaiView(ctx)
+    await ctx.reply("🛡 Quản lý **kênh thoại bị cấm tính EXP**\nChọn thao tác bên dưới:", view=view)
 
 
 
