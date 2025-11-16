@@ -1038,7 +1038,7 @@ async def cmd_topnhiet(ctx, mode: str=None):
         rows.append((m, info.get("heat",0.0), level, exp_in_level, exp_in_level+to_next, math.floor(info.get("voice_seconds_week",0)/60)))
     rows.sort(key=lambda x: x[1], reverse=True)
     if not rows:
-        await ctx.reply("📭 Không có dữ liệu.")
+        await ctx.reply("📭 Dùng lệnh `/topnhiet tuantruoc` để xem dữ liệu tuần trước.")
         return
     pages = []
     per = 10
