@@ -1045,48 +1045,154 @@ async def cmd_thongke(ctx):
         await ctx.reply(embed=pages[0], view=PageView(ctx, pages))
 
 # ================== /topnhiet ==================
-@bot.command(name="topnhiet")
-async def cmd_topnhiet(ctx, mode: str=None):
-    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-    if mode == "tuantruoc":
-        source = exp_data.get("prev_week", {})
-        title_suf = " (tuần trước)"
-    else:
-        source = exp_data.get("users", {})
-        title_suf = ""
-    rows = []
-    for uid, info in source.items():
-        m = ctx.guild.get_member(int(uid))
-        if not m:
-            continue
-        total = info.get("exp_chat",0) + info.get("exp_voice",0)
-        level, to_next, spent = calc_level_from_total_exp(total)
-        exp_in_level = total - spent
-        rows.append((m, info.get("heat",0.0), level, exp_in_level, exp_in_level+to_next, math.floor(info.get("voice_seconds_week",0)/60)))
-    rows.sort(key=lambda x: x[1], reverse=True)
-    if not rows:
-        await ctx.reply("📭 Dùng lệnh `/topnhiet tuantruoc` để xem dữ liệu tuần trước.")
-        return
-    pages = []
-    per = 10
-    for i in range(0, len(rows), per):
-        chunk = rows[i:i+per]
-        e = discord.Embed(title=f"🔥 TOP NHIỆT HUYẾT{title_suf}", description=f"Trang {i//per+1}", color=0xFF8C00)
-        for idx,(m,heat,lv,ein,eneed,vm) in enumerate(chunk, start=i+1):
-            e.add_field(
-                name=f"{idx}. {m.display_name}",
-                value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
-                inline=False
+
+class TopNhietView(discord.ui.View):
+    def __init__(self, ctx, pages_tuan, pages_tuantruoc):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+        self.pages_tuan = pages_tuan
+        self.pages_tuantruoc = pages_tuantruoc
+        self.current_mode = "tuan"  # "tuan" hoặc "tuantruoc"
+        self.current_index = 0
+
+    def _get_pages(self):
+        if self.current_mode == "tuantruoc":
+            return self.pages_tuantruoc
+        return self.pages_tuan
+
+    async def _ensure_author(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message(
+                "⛔ Chỉ người dùng lệnh mới dùng được nút này.",
+                ephemeral=True
             )
-        pages.append(e)
-    if len(pages) == 1:
-        await ctx.reply(embed=pages[0])
+            return False
+        return True
+
+    async def _refresh(self, interaction: discord.Interaction):
+        pages = self._get_pages()
+        if not pages:
+            await interaction.response.send_message(
+                "📭 Không có dữ liệu cho chế độ này.",
+                ephemeral=True
+            )
+            return
+        # đảm bảo index nằm trong range
+        if self.current_index >= len(pages):
+            self.current_index = len(pages) - 1
+        embed = pages[self.current_index]
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="⟵ Trang", style=discord.ButtonStyle.secondary)
+    async def btn_prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        pages = self._get_pages()
+        if not pages:
+            await interaction.response.send_message("📭 Không có thêm trang.", ephemeral=True)
+            return
+        self.current_index = (self.current_index - 1) % len(pages)
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Trang ⟶", style=discord.ButtonStyle.secondary)
+    async def btn_next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        pages = self._get_pages()
+        if not pages:
+            await interaction.response.send_message("📭 Không có thêm trang.", ephemeral=True)
+            return
+        self.current_index = (self.current_index + 1) % len(pages)
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Tuần này", style=discord.ButtonStyle.primary)
+    async def btn_tuan_nay(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        self.current_mode = "tuan"
+        self.current_index = 0
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Tuần trước", style=discord.ButtonStyle.secondary)
+    async def btn_tuan_truoc(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        self.current_mode = "tuantruoc"
+        self.current_index = 0
+        await self._refresh(interaction)
+
+
+# ================== /topnhiet ==================
+
+
+@bot.command(name="topnhiet")
+async def cmd_topnhiet(ctx, mode: str = None):
+    exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+
+    def build_pages(source: dict, title_suf: str):
+        rows = []
+        for uid, info in source.items():
+            m = ctx.guild.get_member(int(uid))
+            if not m:
+                continue
+            total = info.get("exp_chat", 0) + info.get("exp_voice", 0)
+            level, to_next, spent = calc_level_from_total_exp(total)
+            exp_in_level = total - spent
+            rows.append(
+                (
+                    m,
+                    info.get("heat", 0.0),
+                    level,
+                    exp_in_level,
+                    exp_in_level + to_next,
+                    math.floor(info.get("voice_seconds_week", 0) / 60),
+                )
+            )
+        rows.sort(key=lambda x: x[1], reverse=True)
+        if not rows:
+            return []
+
+        pages = []
+        per = 10
+        for i in range(0, len(rows), per):
+            chunk = rows[i:i + per]
+            e = discord.Embed(
+                title=f"🔥 TOP NHIỆT HUYẾT{title_suf}",
+                description=f"Trang {i // per + 1}",
+                color=0xFF8C00
+            )
+            for idx, (m, heat, lv, ein, eneed, vm) in enumerate(chunk, start=i + 1):
+                e.add_field(
+                    name=f"{idx}. {m.display_name}",
+                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
+                    inline=False
+                )
+            pages.append(e)
+        return pages
+
+    pages_tuan = build_pages(exp_data.get("users", {}), "")
+    pages_tuantruoc = build_pages(exp_data.get("prev_week", {}), " (tuần trước)")
+
+    if not pages_tuan and not pages_tuantruoc:
+        await ctx.reply("📭 Hiện chưa có dữ liệu nhiệt huyết tuần này / tuần trước.")
+        return
+
+    view = TopNhietView(ctx, pages_tuan, pages_tuantruoc)
+
+    # nếu dùng /topnhiet tuantruoc thì mở sẵn tuần trước
+    if mode == "tuantruoc" and pages_tuantruoc:
+        view.current_mode = "tuantruoc"
+        start_pages = pages_tuantruoc
     else:
-        await ctx.reply(embed=pages[0], view=PageView(ctx, pages))
+        view.current_mode = "tuan"
+        start_pages = pages_tuan or pages_tuantruoc
+
+    view.current_index = 0
+    await ctx.reply(embed=start_pages[0], view=view)
 
 
 
-# ================== /bxhkimlan ==================
+# ================== /topnhiet ==================
 # ================== /bxhkimlan ==================
 
 class BXHKimLanView(discord.ui.View):
