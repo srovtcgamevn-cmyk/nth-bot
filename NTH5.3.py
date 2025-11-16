@@ -1046,6 +1046,8 @@ async def cmd_thongke(ctx):
 
 # ================== /topnhiet ==================
 
+# ================== /topnhiet ==================
+
 class TopNhietView(discord.ui.View):
     def __init__(self, ctx, pages_tuan, pages_tuantruoc):
         super().__init__(timeout=60)
@@ -1077,9 +1079,10 @@ class TopNhietView(discord.ui.View):
                 ephemeral=True
             )
             return
-        # đảm bảo index nằm trong range
+
         if self.current_index >= len(pages):
             self.current_index = len(pages) - 1
+
         embed = pages[self.current_index]
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -1087,10 +1090,12 @@ class TopNhietView(discord.ui.View):
     async def btn_prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._ensure_author(interaction):
             return
+
         pages = self._get_pages()
         if not pages:
             await interaction.response.send_message("📭 Không có thêm trang.", ephemeral=True)
             return
+
         self.current_index = (self.current_index - 1) % len(pages)
         await self._refresh(interaction)
 
@@ -1098,10 +1103,12 @@ class TopNhietView(discord.ui.View):
     async def btn_next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._ensure_author(interaction):
             return
+
         pages = self._get_pages()
         if not pages:
             await interaction.response.send_message("📭 Không có thêm trang.", ephemeral=True)
             return
+
         self.current_index = (self.current_index + 1) % len(pages)
         await self._refresh(interaction)
 
@@ -1109,6 +1116,7 @@ class TopNhietView(discord.ui.View):
     async def btn_tuan_nay(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._ensure_author(interaction):
             return
+
         self.current_mode = "tuan"
         self.current_index = 0
         await self._refresh(interaction)
@@ -1117,27 +1125,37 @@ class TopNhietView(discord.ui.View):
     async def btn_tuan_truoc(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._ensure_author(interaction):
             return
+
         self.current_mode = "tuantruoc"
         self.current_index = 0
         await self._refresh(interaction)
 
 
-# ================== /topnhiet ==================
-
 
 @bot.command(name="topnhiet")
-async def cmd_topnhiet(ctx, mode: str = None):
+async def cmd_topnhiet(ctx, role: discord.Role = None):
+    """
+    /topnhiet
+    /topnhiet @role
+    Tuần này / tuần trước đổi bằng nút UI.
+    """
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
 
-    def build_pages(source: dict, title_suf: str):
+    def build_pages(source: dict, title_suf: str, role_filter: discord.Role | None):
         rows = []
         for uid, info in source.items():
             m = ctx.guild.get_member(int(uid))
             if not m:
                 continue
+
+            # lọc theo role nếu có
+            if role_filter is not None and role_filter not in m.roles:
+                continue
+
             total = info.get("exp_chat", 0) + info.get("exp_voice", 0)
             level, to_next, spent = calc_level_from_total_exp(total)
             exp_in_level = total - spent
+
             rows.append(
                 (
                     m,
@@ -1148,9 +1166,14 @@ async def cmd_topnhiet(ctx, mode: str = None):
                     math.floor(info.get("voice_seconds_week", 0) / 60),
                 )
             )
+
         rows.sort(key=lambda x: x[1], reverse=True)
         if not rows:
             return []
+
+        # nếu lọc role, thêm tên role vào title_suf
+        if role_filter is not None:
+            title_suf = f"{title_suf} — {role_filter.name}"
 
         pages = []
         per = 10
@@ -1170,26 +1193,29 @@ async def cmd_topnhiet(ctx, mode: str = None):
             pages.append(e)
         return pages
 
-    pages_tuan = build_pages(exp_data.get("users", {}), "")
-    pages_tuantruoc = build_pages(exp_data.get("prev_week", {}), " (tuần trước)")
+    # build 2 bộ page: tuần này + tuần trước (theo role nếu có)
+    pages_tuan = build_pages(exp_data.get("users", {}), "", role)
+    pages_tuantruoc = build_pages(exp_data.get("prev_week", {}), " (tuần trước)", role)
 
     if not pages_tuan and not pages_tuantruoc:
-        await ctx.reply("📭 Hiện chưa có dữ liệu nhiệt huyết tuần này / tuần trước.")
+        if role is not None:
+            await ctx.reply("📭 Không có dữ liệu nhiệt huyết cho role này (tuần này / tuần trước).")
+        else:
+            await ctx.reply("📭 Hiện chưa có dữ liệu nhiệt huyết tuần này / tuần trước.")
         return
 
     view = TopNhietView(ctx, pages_tuan, pages_tuantruoc)
 
-    # nếu dùng /topnhiet tuantruoc thì mở sẵn tuần trước
-    if mode == "tuantruoc" and pages_tuantruoc:
+    # chọn bộ page khởi đầu: ưu tiên tuần này, nếu rỗng thì lấy tuần trước
+    if pages_tuan:
+        view.current_mode = "tuan"
+        start_pages = pages_tuan
+    else:
         view.current_mode = "tuantruoc"
         start_pages = pages_tuantruoc
-    else:
-        view.current_mode = "tuan"
-        start_pages = pages_tuan or pages_tuantruoc
 
     view.current_index = 0
     await ctx.reply(embed=start_pages[0], view=view)
-
 
 
 # ================== /topnhiet ==================
