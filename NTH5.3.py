@@ -838,11 +838,15 @@ async def cmd_lenh(ctx):
     await ctx.reply(
         "📜 **LỆNH NGƯỜI DÙNG**\n\n"
         "`/hoso` – Xem hồ sơ\n"
-        "`/bangcapdo` – Bảng exp lên cấp\n"
         "`/topnhiet` – Top nhiệt huyết\n"
+        "`/topnhiet` – @team` – Chi tiết 1 team\n"
         "`/diemdanh` – Điểm danh team (nếu đã bật)\n"
         "`/bxhkimlan` – Thống kê điểm danh các team\n"
         "`/bxhkimlan @team` – Chi tiết 1 team"
+        "`/bangcapdo` – Bảng exp lên cấp\n"
+
+
+        
     )
 
 @bot.command(name="lenhadmin")
@@ -998,51 +1002,263 @@ async def cmd_camkenhthoai(ctx):
 # ================== KHU VỰC BXH KIM LAN + TOP NHIỆT  ==================
 
 # ================== /thongke ==================
+# ================== /thongke ==================
+
+class ThongKeView(discord.ui.View):
+    def __init__(self, ctx, pages_tuan, pages_tuantruoc, pages_tong):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+        self.pages_tuan = pages_tuan
+        self.pages_tuantruoc = pages_tuantruoc
+        self.pages_tong = pages_tong
+        self.current_mode = "tuan"  # "tuan" / "tuantruoc" / "tong"
+        self.current_index = 0
+
+    def _get_pages(self):
+        if self.current_mode == "tuantruoc":
+            return self.pages_tuantruoc
+        elif self.current_mode == "tong":
+            return self.pages_tong
+        return self.pages_tuan
+
+    async def _ensure_author(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message(
+                "⛔ Chỉ người dùng lệnh mới dùng được nút này.",
+                ephemeral=True
+            )
+            return False
+        return True
+
+    async def _refresh(self, interaction: discord.Interaction):
+        pages = self._get_pages()
+        if not pages:
+            await interaction.response.send_message(
+                "📭 Không có dữ liệu cho chế độ này.",
+                ephemeral=True
+            )
+            return
+
+        if self.current_index >= len(pages):
+            self.current_index = len(pages) - 1
+
+        embed = pages[self.current_index]
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    # ===== NÚT CHUYỂN TRANG =====
+
+    @discord.ui.button(label="⟵ Trang", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+
+        pages = self._get_pages()
+        if not pages:
+            await interaction.response.send_message("📭 Không có thêm trang.", ephemeral=True)
+            return
+
+        self.current_index = (self.current_index - 1) % len(pages)
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Trang ⟶", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+
+        pages = self._get_pages()
+        if not pages:
+            await interaction.response.send_message("📭 Không có thêm trang.", ephemeral=True)
+            return
+
+        self.current_index = (self.current_index + 1) % len(pages)
+        await self._refresh(interaction)
+
+    # ===== 3 NÚT CHẾ ĐỘ: TUẦN NÀY / TUẦN TRƯỚC / TỔNG =====
+
+    @discord.ui.button(label="Tuần này", style=discord.ButtonStyle.primary)
+    async def btn_tuan_nay(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        self.current_mode = "tuan"
+        self.current_index = 0
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Tuần trước", style=discord.ButtonStyle.secondary)
+    async def btn_tuan_truoc(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        self.current_mode = "tuantruoc"
+        self.current_index = 0
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="Tổng", style=discord.ButtonStyle.secondary)
+    async def btn_tong(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        self.current_mode = "tong"
+        self.current_index = 0
+        await self._refresh(interaction)
+
+
+
 @bot.command(name="thongke")
-async def cmd_thongke(ctx):
+async def cmd_thongke(ctx, role: discord.Role = None):
+    """
+    /thongke
+    /thongke @role
+    Có 3 chế độ bằng nút UI: Tuần này / Tuần trước / Tổng (2 tuần).
+    """
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-    users = exp_data.get("users", {})
-    role_filter = ctx.message.role_mentions[0] if ctx.message.role_mentions else None
-    rows = []
-    for uid, info in users.items():
-        m = ctx.guild.get_member(int(uid))
-        if not m:
-            continue
-        if role_filter and role_filter not in m.roles:
-            continue
-        total = info.get("exp_chat",0) + info.get("exp_voice",0)
-        level, to_next, spent = calc_level_from_total_exp(total)
-        exp_in_level = total - spent
-        rows.append((
-            m,
-            total,
-            level,
-            exp_in_level,
-            exp_in_level + to_next,
-            math.floor(info.get("voice_seconds_week",0)/60),
-            info.get("heat",0.0)
-        ))
-    rows.sort(key=lambda x: x[1], reverse=True)
-    if not rows:
-        await ctx.reply("📭 Không có dữ liệu.")
+    users_cur = exp_data.get("users", {})
+    users_prev = exp_data.get("prev_week", {})
+
+    def build_pages_from_source(source: dict, title_suffix: str, color: int, role_filter: discord.Role | None):
+        rows = []
+        for uid, info in source.items():
+            m = ctx.guild.get_member(int(uid))
+            if not m:
+                continue
+            if role_filter is not None and role_filter not in m.roles:
+                continue
+
+            total = info.get("exp_chat", 0) + info.get("exp_voice", 0)
+            level, to_next, spent = calc_level_from_total_exp(total)
+            exp_in_level = total - spent
+            voice_min = math.floor(info.get("voice_seconds_week", 0) / 60)
+            heat = info.get("heat", 0.0)
+
+            rows.append(
+                (
+                    m,
+                    total,
+                    level,
+                    exp_in_level,
+                    exp_in_level + to_next,
+                    voice_min,
+                    heat
+                )
+            )
+
+        # sort tổng exp giảm dần
+        rows.sort(key=lambda x: x[1], reverse=True)
+        if not rows:
+            return []
+
+        pages = []
+        per = 10
+        for i in range(0, len(rows), per):
+            chunk = rows[i:i + per]
+            e = discord.Embed(
+                title=f"📑 THỐNG KÊ HOẠT ĐỘNG{title_suffix}",
+                description=f"Trang {i // per + 1}",
+                color=color
+            )
+            for idx, (m, total, lv, ein, eneed, vm, heat) in enumerate(chunk, start=i + 1):
+                e.add_field(
+                    name=f"{idx}. {m.display_name}",
+                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
+                    inline=False
+                )
+            pages.append(e)
+        return pages
+
+    def build_pages_total(users_cur: dict, users_prev: dict, role_filter: discord.Role | None):
+        # gộp tuần này + tuần trước
+        all_ids = set(users_cur.keys()) | set(users_prev.keys())
+        rows = []
+        for uid in all_ids:
+            m = ctx.guild.get_member(int(uid))
+            if not m:
+                continue
+            if role_filter is not None and role_filter not in m.roles:
+                continue
+
+            info_cur = users_cur.get(uid, {})
+            info_prev = users_prev.get(uid, {})
+
+            chat_total = info_cur.get("exp_chat", 0) + info_prev.get("exp_chat", 0)
+            voice_total = info_cur.get("exp_voice", 0) + info_prev.get("exp_voice", 0)
+            total = chat_total + voice_total
+
+            level, to_next, spent = calc_level_from_total_exp(total)
+            exp_in_level = total - spent
+
+            # thoại/phút & nhiệt lấy theo tuần này (hoặc 0 nếu không có)
+            voice_min = math.floor(info_cur.get("voice_seconds_week", 0) / 60)
+            heat = info_cur.get("heat", 0.0)
+
+            rows.append(
+                (
+                    m,
+                    total,
+                    level,
+                    exp_in_level,
+                    exp_in_level + to_next,
+                    voice_min,
+                    heat
+                )
+            )
+
+        rows.sort(key=lambda x: x[1], reverse=True)
+        if not rows:
+            return []
+
+        pages = []
+        per = 10
+        for i in range(0, len(rows), per):
+            chunk = rows[i:i + per]
+            e = discord.Embed(
+                title="📑 THỐNG KÊ HOẠT ĐỘNG — TỔNG 2 TUẦN",
+                description=f"Trang {i // per + 1}",
+                color=0xF1C40F  # vàng
+            )
+            for idx, (m, total, lv, ein, eneed, vm, heat) in enumerate(chunk, start=i + 1):
+                e.add_field(
+                    name=f"{idx}. {m.display_name}",
+                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
+                    inline=False
+                )
+            pages.append(e)
+        return pages
+
+    # build 3 bộ page: tuần này / tuần trước / tổng
+    pages_tuan = build_pages_from_source(
+        users_cur,
+        title_suffix=" — TUẦN NÀY",
+        color=0x3498DB,
+        role_filter=role
+    )
+    pages_tuantruoc = build_pages_from_source(
+        users_prev,
+        title_suffix=" — TUẦN TRƯỚC",
+        color=0x95A5A6,
+        role_filter=role
+    )
+    pages_tong = build_pages_total(users_cur, users_prev, role)
+
+    if not pages_tuan and not pages_tuantruoc and not pages_tong:
+        if role is not None:
+            await ctx.reply("📭 Không có dữ liệu thống kê cho role này.")
+        else:
+            await ctx.reply("📭 Hiện chưa có dữ liệu thống kê.")
         return
 
-    pages = []
-    per = 10
-    for i in range(0, len(rows), per):
-        chunk = rows[i:i+per]
-        e = discord.Embed(title="📑 THỐNG KÊ HOẠT ĐỘNG", description=f"Trang {i//per + 1}", color=0x3498DB)
-        for idx,(m,total,lv,ein,eneed,vm,heat) in enumerate(chunk, start=i+1):
-            e.add_field(
-                name=f"{idx}. {m.display_name}",
-                value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
-                inline=False
-            )
-        pages.append(e)
-    if len(pages) == 1:
-        await ctx.reply(embed=pages[0])
+    view = ThongKeView(ctx, pages_tuan, pages_tuantruoc, pages_tong)
+
+    # ưu tiên: nếu có tuần này thì mở tuần này, nếu không thì tuần trước, nếu nữa thì tổng
+    if pages_tuan:
+        view.current_mode = "tuan"
+        start_pages = pages_tuan
+    elif pages_tuantruoc:
+        view.current_mode = "tuantruoc"
+        start_pages = pages_tuantruoc
     else:
-        await ctx.reply(embed=pages[0], view=PageView(ctx, pages))
+        view.current_mode = "tong"
+        start_pages = pages_tong
+
+    view.current_index = 0
+    await ctx.reply(embed=start_pages[0], view=view)
+
 
 # ================== /topnhiet ==================
 
