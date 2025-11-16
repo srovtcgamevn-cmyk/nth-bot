@@ -1221,6 +1221,11 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 # ================== /topnhiet ==================
 # ================== /bxhkimlan ==================
 
+
+
+
+# ================== /bxhkimlan ==================
+
 class BXHKimLanView(discord.ui.View):
     def __init__(self, ctx, guild, teamconf, att, score_data):
         super().__init__(timeout=120)
@@ -1421,28 +1426,285 @@ class BXHKimLanView(discord.ui.View):
         await interaction.response.edit_message(content=None, embed=embed, view=self)
 
 
+
+# ===== VIEW RIÊNG CHO /bxhkimlan @role =====
+
+class BXHKimLanTeamView(discord.ui.View):
+    def __init__(self, ctx, guild, teamconf, att, score_data, role_id: int):
+        super().__init__(timeout=120)
+        self.ctx = ctx
+        self.guild = guild
+        self.teamconf = teamconf
+        self.att = att
+        self.score_data = score_data
+        self.role_id = role_id
+        self.current_tab = "tongket"  # "tongket" hoặc "chitiet"
+        self.detail_page = 0          # trang hiện tại ở tab chi tiết
+        self.detail_per_page = 12     # 12 người / trang
+
+    def _get_week_range(self):
+        # luôn dùng tuần hiện tại cho @role
+        return get_week_range_gmt7(offset_weeks=0)
+
+    def _fmt_day_label(self, d):
+        thu = d.weekday()  # 0 = T2
+        thu_map = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+        return f"{thu_map[thu]} {d.day:02d}/{d.month:02d}"
+
+    async def _ensure_author(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message(
+                "⛔ Chỉ người dùng lệnh mới bấm được nút này.",
+                ephemeral=True
+            )
+            return False
+        return True
+
+    # ===== TỔNG KẾT THEO NGÀY =====
+    def build_summary_embed(self) -> discord.Embed:
+        gid = str(self.guild.id)
+        week_start, week_end = self._get_week_range()
+
+        role = self.guild.get_role(self.role_id)
+        if role is None:
+            return discord.Embed(
+                title="📊 TỔNG KẾT TEAM KIM LAN",
+                description="📭 Role team không tồn tại nữa.",
+                color=0x2ECC71
+            )
+
+        g_att = self.att["guilds"].get(gid, {})
+        g_score_all = self.score_data["guilds"].get(gid, {})
+        rid_str = str(self.role_id)
+
+        team_att = g_att.get(rid_str, {})
+        team_score_by_day = g_score_all.get(rid_str, {})
+
+        lines = []
+        lines.append(f"📊 **TỔNG KẾT ĐIỂM DANH TEAM {role.name}**")
+        lines.append(f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**")
+        lines.append("")
+
+        total_score_week = 0.0
+        total_day_ok = 0
+        total_day_miss = 0
+
+        cur = week_start
+        while cur <= week_end:
+            ds = cur.isoformat()
+            day_rec = team_att.get(ds, {})
+            day_score = float(team_score_by_day.get(ds, 0) or 0)
+            total_score_week += day_score
+
+            checked = len(day_rec.get("checked", [])) if day_rec else 0
+            total = day_rec.get("total_at_day", 0) if day_rec else 0
+            boost = day_rec.get("boost", False) if day_rec else False
+
+            if total > 0:
+                rate_str = f"{checked}/{total}"
+                if checked >= total:
+                    status = "✅ Đủ"
+                    total_day_ok += 1
+                else:
+                    status = "⚠️ Thiếu"
+                    total_day_miss += 1
+            else:
+                rate_str = "—"
+                status = "—"
+
+            boost_str = " (x2)" if boost else ""
+
+            lines.append(
+                f"**{self._fmt_day_label(cur)}** — {status} | Điểm danh: {rate_str}{boost_str} | 🔥 Quỹ: **{day_score:.1f}**"
+            )
+            cur += timedelta(days=1)
+
+        lines.append("")
+        lines.append(f"🔸 Tổng ngày đủ: **{total_day_ok}**  |  Tổng ngày thiếu: **{total_day_miss}**")
+        lines.append(f"🔥 **Tổng quỹ cả tuần:** {total_score_week:.1f}")
+
+        desc = "\n".join(lines)
+        if len(desc) > 4000:
+            desc = desc[:4000] + "\n...(rút gọn bớt vì quá dài)"
+
+        embed = discord.Embed(
+            title=f"📜 TỔNG KẾT TEAM {role.name}",
+            description=desc,
+            color=0x2ECC71
+        )
+        return embed
+
+    # ===== CHI TIẾT THÀNH VIÊN + PHÂN TRANG =====
+    def _collect_member_rows(self):
+        """Thu thập dữ liệu từng member trong team, trả về list để phân trang."""
+        gid = str(self.guild.id)
+        week_start, week_end = self._get_week_range()
+
+        role = self.guild.get_role(self.role_id)
+        if role is None:
+            return [], role, week_start, week_end
+
+        # exp tuần này
+        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+        users = exp_data.get("users", {})
+
+        # điểm quỹ theo member (nếu có)
+        g_score_all = self.score_data["guilds"].get(gid, {})
+        rid_str = str(self.role_id)
+        team_score = g_score_all.get(rid_str, {})
+        member_scores = team_score.get("members", {}) if isinstance(team_score, dict) else {}
+
+        members = [m for m in self.guild.members if role in m.roles]
+
+        rows = []
+        for m in members:
+            u = users.get(str(m.id), {})
+            chat_exp = u.get("exp_chat", 0)
+            voice_exp = u.get("exp_voice", 0)
+            heat = u.get("heat", 0.0)
+            member_quy = float(member_scores.get(str(m.id), 0) or 0)
+            rows.append((m, chat_exp, voice_exp, heat, member_quy))
+
+        # sắp xếp theo quỹ team DESC, rồi theo nhiệt huyết
+        rows.sort(key=lambda r: (r[4], r[3]), reverse=True)
+        return rows, role, week_start, week_end
+
+    def build_detail_embed(self) -> discord.Embed:
+        rows, role, week_start, week_end = self._collect_member_rows()
+
+        if role is None:
+            return discord.Embed(
+                title="📊 CHI TIẾT TEAM KIM LAN",
+                description="📭 Role team không tồn tại nữa.",
+                color=0x2ECC71
+            )
+
+        lines = []
+        lines.append(f"📊 **CHI TIẾT THÀNH VIÊN TEAM {role.name}**")
+        lines.append(f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**")
+        lines.append("")
+
+        if not rows:
+            lines.append("📭 Không có thành viên nào trong team này.")
+        else:
+            per = self.detail_per_page
+            total_pages = max(1, (len(rows) + per - 1) // per)
+            # giữ page trong range
+            if self.detail_page >= total_pages:
+                self.detail_page = total_pages - 1
+
+            start = self.detail_page * per
+            end = start + per
+            chunk = rows[start:end]
+
+            lines.append(f"Trang **{self.detail_page + 1}/{total_pages}**\n")
+
+            for idx, (m, chat_exp, voice_exp, heat, member_quy) in enumerate(chunk, start=start + 1):
+                lines.append(
+                    f"**{idx}. {m.display_name}** — Chat: **{chat_exp}** exp, Thoại: **{voice_exp}** exp, "
+                    f"Nhiệt: **{heat:.1f}/10**"
+                )
+                lines.append(f"🔥 Điểm quỹ team từ thành viên: **{member_quy:.1f}**")
+                lines.append("")
+
+        desc = "\n".join(lines)
+        if len(desc) > 4000:
+            desc = desc[:4000] + "\n...(rút gọn bớt vì quá dài)"
+
+        embed = discord.Embed(
+            title=f"📜 CHI TIẾT TEAM {role.name}",
+            description=desc,
+            color=0x2ECC71
+        )
+        return embed
+
+    # ===== CÁC NÚT UI =====
+
+    @discord.ui.button(label="Tổng kết", style=discord.ButtonStyle.primary)
+    async def btn_tongket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        self.current_tab = "tongket"
+        embed = self.build_summary_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Chi tiết", style=discord.ButtonStyle.secondary)
+    async def btn_chitiet(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        self.current_tab = "chitiet"
+        self.detail_page = 0
+        embed = self.build_detail_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="⟵ Trang", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # chỉ dùng trong tab chi tiết
+        if not await self._ensure_author(interaction):
+            return
+        if self.current_tab != "chitiet":
+            await interaction.response.send_message("📎 Nút này dùng ở tab **Chi tiết**.", ephemeral=True)
+            return
+
+        rows, _, _, _ = self._collect_member_rows()
+        if not rows:
+            await interaction.response.send_message("📭 Không có dữ liệu để chuyển trang.", ephemeral=True)
+            return
+
+        per = self.detail_per_page
+        total_pages = max(1, (len(rows) + per - 1) // per)
+        self.detail_page = (self.detail_page - 1) % total_pages
+
+        embed = self.build_detail_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Trang ⟶", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # chỉ dùng trong tab chi tiết
+        if not await self._ensure_author(interaction):
+            return
+        if self.current_tab != "chitiet":
+            await interaction.response.send_message("📎 Nút này dùng ở tab **Chi tiết**.", ephemeral=True)
+            return
+
+        rows, _, _, _ = self._collect_member_rows()
+        if not rows:
+            await interaction.response.send_message("📭 Không có dữ liệu để chuyển trang.", ephemeral=True)
+            return
+
+        per = self.detail_per_page
+        total_pages = max(1, (len(rows) + per - 1) // per)
+        self.detail_page = (self.detail_page + 1) % total_pages
+
+        embed = self.build_detail_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+
 @bot.command(name="bxhkimlan")
 async def cmd_bxhkimlan(ctx, role: discord.Role = None):
     """
     /bxhkimlan
     - Không tag: hiện BXH tất cả team, tuần NÀY (có nút xem TUẦN TRƯỚC)
-    - /bxhkimlan @role: chỉ xem BXH của 1 team riêng (không cần nút)
+    - /bxhkimlan @role: riêng 1 team, có 2 tab: Tổng kết / Chi tiết
     """
     teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
     att = load_json(ATTEND_FILE, {"guilds": {}})
     score_data = load_json(TEAMSCORE_FILE, {"guilds": {}})
 
-    view = BXHKimLanView(ctx, ctx.guild, teamconf, att, score_data)
-
-    # nếu có @role → chỉ show đúng team đó, không kèm view
+    # ===== TRƯỜNG HỢP @role: view riêng =====
     if role is not None:
-        embed = view.build_week_embed("tuan", filter_role=role.id)
-        await ctx.reply(embed=embed)
+        team_view = BXHKimLanTeamView(ctx, ctx.guild, teamconf, att, score_data, role.id)
+        embed = team_view.build_summary_embed()
+        await ctx.reply(embed=embed, view=team_view)
         return
 
-    # mặc định: show toàn bộ + có nút tuần này / tuần trước
+    # ===== MẶC ĐỊNH: BXH TẤT CẢ TEAM =====
+    view = BXHKimLanView(ctx, ctx.guild, teamconf, att, score_data)
     embed = view.build_week_embed("tuan")
     await ctx.reply(embed=embed, view=view)
+
+
 
 
 # ================== /bxhkimlan ==================
