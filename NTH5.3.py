@@ -838,15 +838,11 @@ async def cmd_lenh(ctx):
     await ctx.reply(
         "📜 **LỆNH NGƯỜI DÙNG**\n\n"
         "`/hoso` – Xem hồ sơ\n"
+        "`/bangcapdo` – Bảng exp lên cấp\n"
         "`/topnhiet` – Top nhiệt huyết\n"
-        "`/topnhiet` – @team` – Chi tiết 1 team\n"
         "`/diemdanh` – Điểm danh team (nếu đã bật)\n"
         "`/bxhkimlan` – Thống kê điểm danh các team\n"
         "`/bxhkimlan @team` – Chi tiết 1 team"
-        "`/bangcapdo` – Bảng exp lên cấp\n"
-
-
-        
     )
 
 @bot.command(name="lenhadmin")
@@ -1002,6 +998,12 @@ async def cmd_camkenhthoai(ctx):
 # ================== KHU VỰC BXH KIM LAN + TOP NHIỆT  ==================
 
 # ================== /thongke ==================
+
+
+
+
+
+
 # ================== /thongke ==================
 
 class ThongKeView(discord.ui.View):
@@ -1260,7 +1262,16 @@ async def cmd_thongke(ctx, role: discord.Role = None):
     await ctx.reply(embed=start_pages[0], view=view)
 
 
-# ================== /topnhiet ==================
+
+
+
+
+
+
+
+
+
+
 
 # ================== /topnhiet ==================
 
@@ -1435,7 +1446,10 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 
 # ================== /topnhiet ==================
+
 # ================== /bxhkimlan ==================
+
+
 
 
 
@@ -1676,6 +1690,7 @@ class BXHKimLanTeamView(discord.ui.View):
             return False
         return True
 
+   
     # ===== TỔNG KẾT THEO NGÀY =====
     def build_summary_embed(self) -> discord.Embed:
         gid = str(self.guild.id)
@@ -1689,12 +1704,23 @@ class BXHKimLanTeamView(discord.ui.View):
                 color=0x2ECC71
             )
 
+        # LẤY DỮ LIỆU ĐIỂM DANH + QUỸ TEAM
         g_att = self.att["guilds"].get(gid, {})
         g_score_all = self.score_data["guilds"].get(gid, {})
         rid_str = str(self.role_id)
 
         team_att = g_att.get(rid_str, {})
-        team_score_by_day = g_score_all.get(rid_str, {})
+        raw_score = g_score_all.get(rid_str, {})
+
+        # tách phần điểm theo ngày (bỏ key "members" nếu có)
+        team_score_by_day = {}
+        if isinstance(raw_score, dict):
+            for k, v in raw_score.items():
+                if k == "members":
+                    continue
+                team_score_by_day[k] = v
+        else:
+            team_score_by_day = {}
 
         lines = []
         lines.append(f"📊 **TỔNG KẾT ĐIỂM DANH TEAM {role.name}**")
@@ -1749,6 +1775,8 @@ class BXHKimLanTeamView(discord.ui.View):
             color=0x2ECC71
         )
         return embed
+
+
 
     # ===== CHI TIẾT THÀNH VIÊN + PHÂN TRANG =====
     def _collect_member_rows(self):
@@ -1923,7 +1951,15 @@ async def cmd_bxhkimlan(ctx, role: discord.Role = None):
 
 
 
+
+
+
+
+
+
+
 # ================== /bxhkimlan ==================
+
 
 
 # ================== DM NHẮC ĐIỂM DANH ==================
@@ -2369,7 +2405,7 @@ async def cmd_diemdanh(ctx):
         day_data["active_members"].append(uid)
 
     # ---- Điểm TEAM: mỗi người +1 ----
-    add_team_score(ctx.guild.id, role_id, today, 1)
+    add_team_score(ctx.guild.id, role_id, today, 1, member.id)
 
     # ---- Nhiệt huyết: mạnh nhất +1.0 ----
     exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
@@ -2494,11 +2530,26 @@ def team_boost_today(gid: int, member: discord.Member):
     return False
 
 
-def add_team_score(gid: int, rid: int, date: str, amount: float):
+def add_team_score(gid: int, rid: int, date: str, amount: float, member_id: int | None = None):
+    """Cộng điểm quỹ cho 1 team trong 1 ngày.
+    - Luôn cộng vào tổng quỹ theo ngày: r[date]
+    - Nếu có member_id: lưu chi tiết đóng góp vào r["members"][date][member_id]
+      để dùng cho BXHKimLanTeamView (tab Chi tiết).
+    """
     ts = load_json(TEAMSCORE_FILE, {"guilds": {}})
     g = ts["guilds"].setdefault(str(gid), {})
     r = g.setdefault(str(rid), {})
-    r[date] = r.get(date, 0) + amount
+
+    # Tổng điểm quỹ của cả team trong ngày
+    r[date] = float(r.get(date, 0) or 0) + float(amount)
+
+    # Ghi chi tiết theo từng thành viên
+    if member_id is not None:
+        ms_by_date = r.setdefault("members", {})
+        day_map = ms_by_date.setdefault(date, {})
+        key = str(member_id)
+        day_map[key] = float(day_map.get(key, 0) or 0) + float(amount)
+
     save_json(TEAMSCORE_FILE, ts)
 
 
@@ -2610,7 +2661,8 @@ async def on_voice_state_update(member, before, after):
                                 team_pts = minutes * 0.05
                                 if di.get("boost", False):
                                     team_pts *= 2
-                                add_team_score(gid, int(rid), today, team_pts)
+                                add_team_score(gid, int(rid), today, team_pts, member.id)
+
                                 break
 
 
