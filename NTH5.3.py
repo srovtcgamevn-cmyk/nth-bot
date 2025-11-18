@@ -3506,19 +3506,23 @@ async def antiraid_on_member_join(member: discord.Member):
     if mode == ANTIRAID_MODE_OFF:
         return
 
-if len(join_list) >= ANTIRAID_CONFIG["JOIN_THRESHOLD"]:
-    if mode != ANTIRAID_MODE_LOCKDOWN:
-        antiraid_set_mode(guild, ANTIRAID_MODE_LOCKDOWN)
+    if len(join_list) >= ANTIRAID_CONFIG["JOIN_THRESHOLD"]:
+        if mode != ANTIRAID_MODE_LOCKDOWN:
+            antiraid_set_mode(guild, ANTIRAID_MODE_LOCKDOWN)
+            await antiraid_log(
+                guild,
+                f"🚨 Anti-Raid: phát hiện {len(join_list)} người join/{jw}s → tự động chuyển sang KHÓA KHẨN CẤP."
+            )
+            # khi tự động vào LOCKDOWN, sau đó quét dọn spam
+            await antiraid_cleanup_spam_messages(guild)
+            await antiraid_alert_auto_lockdown(guild)
 
-        # 🔥 Cảnh báo admin ngay khi tự bật LOCKDOWN
-        await antiraid_alert_auto_lockdown(guild)
+        else:
+            await antiraid_log(
+                guild,
+                f"ℹ️ Anti-Raid: {member} join trong đợt đông (LOCKDOWN đang bật), hãy kiểm tra nếu có dấu hiệu spam."
+            )
 
-        await antiraid_log(
-            guild,
-            f"🚨 Anti-Raid: phát hiện {len(join_list)} người join/{jw}s → tự động chuyển sang KHÓA KHẨN CẤP."
-        )
-
-        await antiraid_cleanup_spam_messages(guild)
 
 
         else:
