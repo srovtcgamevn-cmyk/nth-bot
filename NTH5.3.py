@@ -2991,6 +2991,742 @@ async def cmd_editgioithieubang(ctx, *, noi_dung: str):
 
 
 
+# =============== ANTI RAID NTH 2.0 ===============
+import time, re
+from collections import defaultdict
+from datetime import datetime, timezone, timedelta
+
+import discord
+from discord.ext import tasks, commands
+
+# ID kênh log bảo mật (kênh bot ghi log Anti-Raid)
+ANTIRAID_LOG_CHANNEL_ID = 1414133050526273556
+
+# Role theo dõi (mặc định ai mới vào server sẽ có role này)
+ANTIRAID_MONITOR_ROLE_ID = 1414231129871093911
+
+# Nếu có role hạn chế thì điền ID vào đây (nếu chưa có, để = 0 sẽ dùng timeout)
+ANTIRAID_RESTRICT_ROLE_ID = 0
+
+# Các mode hoạt động
+ANTIRAID_MODE_OFF = "OFF"
+ANTIRAID_MODE_GUARD = "GUARD"
+ANTIRAID_MODE_LOCKDOWN = "LOCKDOWN"
+
+# Cấu hình ngưỡng và hành vi
+ANTIRAID_CONFIG = {
+    # Spam text theo user
+    "SPAM_MSG_THRESHOLD_GUARD": 10,
+    "SPAM_MSG_THRESHOLD_LOCK": 6,
+    "SPAM_WINDOW": 3,  # giây
+
+    # Spam mention
+    "MENTION_LIMIT": 5,
+    "MENTION_WINDOW": 5,  # giây
+
+    # Spam emoji
+    "EMOJI_PER_MSG": 15,
+
+    # Spam link
+    "LINK_PER_WINDOW": 3,
+    "LINK_WINDOW": 20,  # giây
+
+    # Flood toàn server (auto slowmode)
+    "FLOOD_THRESHOLD": 50,  # số tin / 3 giây
+    "SLOWMODE_SECONDS_GUARD": 3,
+    "SLOWMODE_SECONDS_LOCK": 8,
+    "RESET_SILENT": 25,  # giây yên lặng để tắt slowmode
+
+    # Raid join
+    "JOIN_THRESHOLD": 40,  # số người join / 20 giây
+    "JOIN_WINDOW": 20,  # giây
+
+    # Điểm vi phạm (per user)
+    "POINT_DECAY_AFTER": 900,  # 15 phút không vi phạm thì giảm điểm
+    "POINT_DECAY_AMOUNT": 1,
+    "POINT_WARN": 2,
+    "POINT_RESTRICT": 4,
+    "POINT_STRONG": 7,
+
+    # Có cho phép kick tự động trong LOCKDOWN với acc nằm vùng đáng ngờ không
+    "ENABLE_AUTO_KICK": True,
+}
+
+# Bộ nhớ trạng thái, theo guild
+# guild_id:str -> {"mode":..., "last_mode_change": ts, "raid_start": ts|None, "cleanup_done": bool}
+_antiraid_state = {}
+_antiraid_violations = defaultdict(lambda: defaultdict(dict))  # guild_id -> user_id -> info
+
+_spam_tracker = defaultdict(lambda: defaultdict(list))      # guild_id -> user_id -> [ts]
+_mention_tracker = defaultdict(lambda: defaultdict(list))   # guild_id -> user_id -> [ts]
+_link_tracker = defaultdict(lambda: defaultdict(list))      # guild_id -> user_id -> [ts]
+_join_tracker = defaultdict(list)                           # guild_id -> [ts]
+_msg_timestamps = defaultdict(list)                         # guild_id -> [ts]
+
+# user nào bị phát hiện spam/vi phạm trong đợt raid
+_suspicious_users = defaultdict(set)                        # guild_id -> set(user_id)
+
+_antiraid_slowmode_started = False
+
+
+def antiraid_get_state(guild: discord.Guild) -> dict:
+    gid = str(guild.id)
+    st = _antiraid_state.setdefault(
+        gid,
+        {
+            "mode": ANTIRAID_MODE_GUARD,
+            "last_mode_change": time.time(),
+            "raid_start": None,
+            "cleanup_done": False,
+        }
+    )
+    return st
+
+
+def antiraid_get_mode(guild: discord.Guild) -> str:
+    return antiraid_get_state(guild)["mode"]
+
+
+def antiraid_set_mode(guild: discord.Guild, mode: str):
+    st = antiraid_get_state(guild)
+    prev_mode = st["mode"]
+    st["mode"] = mode
+    st["last_mode_change"] = time.time()
+    gid = str(guild.id)
+
+    if mode == ANTIRAID_MODE_LOCKDOWN:
+        # mới vào LOCKDOWN → đánh dấu thời điểm bắt đầu đợt tấn công
+        if st["raid_start"] is None:
+            st["raid_start"] = time.time()
+            st["cleanup_done"] = False
+    else:
+        # thoát LOCKDOWN → reset thông tin raid
+        st["raid_start"] = None
+        st["cleanup_done"] = False
+        _suspicious_users[gid].clear()
+
+
+def antiraid_mark_suspicious(guild: discord.Guild, member: discord.Member):
+    gid = str(guild.id)
+    _suspicious_users[gid].add(member.id)
+
+
+def antiraid_is_staff(member: discord.Member) -> bool:
+    perms = member.guild_permissions
+    return perms.administrator or perms.manage_guild or perms.manage_messages
+
+
+async def antiraid_log(guild: discord.Guild, content: str):
+    if not ANTIRAID_LOG_CHANNEL_ID:
+        return
+    ch = guild.get_channel(ANTIRAID_LOG_CHANNEL_ID)
+    if ch:
+        try:
+            await ch.send(content)
+        except:
+            pass
+
+
+def antiraid_extract_emojis(text: str) -> int:
+    # emoji custom + unicode
+    custom = re.findall(r"<a?:\w+:\d+>", text)
+    uni = [ch for ch in text if ord(ch) > 10000]
+    return len(custom) + len(uni)
+
+
+def antiraid_is_low_activity(member: discord.Member) -> bool:
+    """Acc ít hoạt động: gần như không exp/chat/voice/nhiệt."""
+    try:
+        data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+    except Exception:
+        return True
+    u = data.get("users", {}).get(str(member.id))
+    if not u:
+        return True
+
+    exp_chat = u.get("exp_chat", 0)
+    exp_voice = u.get("exp_voice", 0)
+    voice_sec = u.get("voice_seconds_week", 0)
+    heat = u.get("heat", 0.0)
+
+    total_exp = exp_chat + exp_voice
+    voice_min = voice_sec / 60.0
+
+    if total_exp < 100 and voice_min < 30 and heat < 3.0:
+        return True
+    return False
+
+
+def antiraid_is_suspicious_account(member: discord.Member) -> bool:
+    """Acc đáng ngờ: mới tạo / có role theo dõi / không role."""
+    try:
+        age_days = (datetime.now(timezone.utc) - member.created_at).days
+    except Exception:
+        age_days = 999
+
+    # acc mới tạo
+    if age_days < 3:
+        return True
+
+    # có role theo dõi
+    if ANTIRAID_MONITOR_ROLE_ID in [r.id for r in member.roles]:
+        return True
+
+    # không role gì ngoài @everyone
+    if len(member.roles) <= 1:
+        return True
+
+    return False
+
+
+def antiraid_get_violation(guild: discord.Guild, member: discord.Member) -> dict:
+    gid = str(guild.id)
+    uid = str(member.id)
+    v = _antiraid_violations[gid].setdefault(
+        uid,
+        {
+            "points": 0,
+            "last_violation": 0.0,
+            "reasons": [],
+        }
+    )
+    now = time.time()
+    if v["points"] > 0 and (now - v["last_violation"]) > ANTIRAID_CONFIG["POINT_DECAY_AFTER"]:
+        v["points"] = max(0, v["points"] - ANTIRAID_CONFIG["POINT_DECAY_AMOUNT"])
+    return v
+
+
+async def antiraid_apply_restrict(guild: discord.Guild, member: discord.Member, reason: str, minutes: int = 15):
+    """Hạn chế: gán role hạn chế hoặc timeout."""
+    if ANTIRAID_RESTRICT_ROLE_ID:
+        r = guild.get_role(ANTIRAID_RESTRICT_ROLE_ID)
+        if r and r not in member.roles:
+            try:
+                await member.add_roles(r, reason=f"Anti-Raid hạn chế: {reason}")
+            except:
+                pass
+    else:
+        try:
+            until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+            await member.timeout(until, reason=f"Anti-Raid hạn chế: {reason}")
+        except:
+            pass
+
+
+async def antiraid_cleanup_spam_messages(guild: discord.Guild):
+    """
+    Quét lại log quanh thời điểm raid và xoá sạch tin nhắn
+    của các user bị đánh dấu nghi ngờ (không chỉ tin gần nhất).
+    """
+    st = antiraid_get_state(guild)
+    raid_start = st.get("raid_start")
+    gid = str(guild.id)
+
+    if not raid_start or st.get("cleanup_done"):
+        return
+
+    suspicious_ids = _suspicious_users[gid]
+    if not suspicious_ids:
+        st["cleanup_done"] = True
+        return
+
+    # lấy thời gian trước raid 120s để chắc chắn quét hết đợt spam
+    after_dt = datetime.fromtimestamp(raid_start - 120, tz=timezone.utc)
+
+    deleted_total = 0
+
+    for ch in guild.text_channels:
+        try:
+            def check_func(m, s=suspicious_ids, a=after_dt):
+                return m.author.id in s and m.created_at >= a
+
+            deleted = await ch.purge(
+                limit=300,
+                after=after_dt,
+                check=check_func,
+                bulk=True
+            )
+            if isinstance(deleted, list):
+                deleted_total += len(deleted)
+        except Exception:
+            continue
+
+    st["cleanup_done"] = True
+    await antiraid_log(
+        guild,
+        f"🧹 Anti-Raid: đã quét dọn tin nhắn spam trong đợt tấn công, xoá khoảng {deleted_total} tin nhắn nghi ngờ."
+    )
+
+
+async def antiraid_handle_violation(
+    message: discord.Message,
+    member: discord.Member,
+    reason: str,
+    severity: int
+):
+    """
+    severity:
+        1: nhẹ (xoá tin, +1 điểm)
+        2: vừa (xoá tin, +2 điểm, có thể hạn chế)
+        3: nặng (xoá tin, +3 điểm, LOCKDOWN có thể kick)
+    """
+    guild = message.guild
+    mode = antiraid_get_mode(guild)
+    v = antiraid_get_violation(guild, member)
+
+    # đánh dấu user này là nghi ngờ trong đợt raid
+    antiraid_mark_suspicious(guild, member)
+
+    # cộng điểm
+    v["points"] += severity
+    v["last_violation"] = time.time()
+    v["reasons"].append((int(v["last_violation"]), reason))
+
+    # xoá tin bị spam
+    try:
+        await message.delete()
+    except:
+        pass
+
+    await antiraid_log(
+        guild,
+        f"⚠️ Anti-Raid: {member.mention} vi phạm ({reason}), điểm = {v['points']} (chế độ {mode})."
+    )
+
+    low_activity = antiraid_is_low_activity(member)
+    suspicious = antiraid_is_suspicious_account(member)
+    pts = v["points"]
+
+    # xử lý mạnh nhất
+    if pts >= ANTIRAID_CONFIG["POINT_STRONG"]:
+        if mode == ANTIRAID_MODE_LOCKDOWN and low_activity and suspicious and ANTIRAID_CONFIG["ENABLE_AUTO_KICK"]:
+            try:
+                await guild.kick(member, reason="Anti-Raid: spam nặng trong LOCKDOWN")
+                await antiraid_log(
+                    guild,
+                    f"⛔ Anti-Raid: đã kick {member} (spam nặng, acc nằm vùng/đáng ngờ trong LOCKDOWN)."
+                )
+                return
+            except:
+                pass
+        await antiraid_apply_restrict(guild, member, reason, minutes=60)
+        return
+
+    # mức trung bình
+    if pts >= ANTIRAID_CONFIG["POINT_RESTRICT"]:
+        if low_activity or mode == ANTIRAID_MODE_LOCKDOWN:
+            await antiraid_apply_restrict(guild, member, reason, minutes=20)
+        return
+
+    # cảnh báo nhẹ
+    if pts >= ANTIRAID_CONFIG["POINT_WARN"]:
+        try:
+            await message.channel.send(
+                f"⚠️ {member.mention} đang spam ({reason}), vui lòng dừng lại.",
+                delete_after=10
+            )
+        except:
+            pass
+
+
+@tasks.loop(seconds=1)
+async def antiraid_auto_slowmode():
+    """Theo dõi flood toàn server để bật/tắt slowmode."""
+    now = time.time()
+    for guild in bot.guilds:
+        gid = str(guild.id)
+        st = antiraid_get_state(guild)
+        mode = st["mode"]
+
+        ts_list = _msg_timestamps[gid]
+        ts_list[:] = [t for t in ts_list if now - t <= 3]
+
+        if mode == ANTIRAID_MODE_OFF:
+            continue
+
+        flood_threshold = ANTIRAID_CONFIG["FLOOD_THRESHOLD"]
+        if len(ts_list) >= flood_threshold:
+            delay = (
+                ANTIRAID_CONFIG["SLOWMODE_SECONDS_LOCK"]
+                if mode == ANTIRAID_MODE_LOCKDOWN
+                else ANTIRAID_CONFIG["SLOWMODE_SECONDS_GUARD"]
+            )
+            for ch in guild.text_channels:
+                try:
+                    if ch.slowmode_delay < delay:
+                        await ch.edit(slowmode_delay=delay)
+                except:
+                    pass
+            await antiraid_log(
+                guild,
+                f"⚠️ Anti-Raid: flood {len(ts_list)} tin/3s → bật slowmode {delay}s."
+            )
+            antiraid_auto_slowmode.last_trigger = now
+
+        last = getattr(antiraid_auto_slowmode, "last_trigger", None)
+        if last is not None and now - last > ANTIRAID_CONFIG["RESET_SILENT"]:
+            for ch in guild.text_channels:
+                try:
+                    if ch.slowmode_delay > 0:
+                        await ch.edit(slowmode_delay=0)
+                except:
+                    pass
+            await antiraid_log(
+                guild,
+                "✅ Anti-Raid: tắt slowmode (server đã ổn định)."
+            )
+            antiraid_auto_slowmode.last_trigger = None
+
+
+@bot.listen("on_message")
+async def antiraid_on_message(message: discord.Message):
+    global _antiraid_slowmode_started
+
+    if not message.guild or message.author.bot:
+        return
+
+    guild = message.guild
+    member = message.author
+    gid = str(guild.id)
+
+    # start loop slowmode 1 lần
+    if not _antiraid_slowmode_started:
+        try:
+            antiraid_auto_slowmode.start()
+            _antiraid_slowmode_started = True
+        except RuntimeError:
+            _antiraid_slowmode_started = True
+
+    st = antiraid_get_state(guild)
+    mode = st["mode"]
+    now = time.time()
+
+    # theo dõi flood
+    _msg_timestamps[gid].append(now)
+
+    if mode == ANTIRAID_MODE_OFF:
+        return
+
+    if antiraid_is_staff(member):
+        return
+
+    uid = str(member.id)
+    content = message.content or ""
+
+    # ===== Spam text (số tin / cửa sổ) =====
+    spam_list = _spam_tracker[gid][uid]
+    spam_list.append(now)
+    spam_window = ANTIRAID_CONFIG["SPAM_WINDOW"]
+    spam_list[:] = [t for t in spam_list if now - t <= spam_window]
+
+    threshold = (
+        ANTIRAID_CONFIG["SPAM_MSG_THRESHOLD_LOCK"]
+        if mode == ANTIRAID_MODE_LOCKDOWN
+        else ANTIRAID_CONFIG["SPAM_MSG_THRESHOLD_GUARD"]
+    )
+    if len(spam_list) >= threshold:
+        await antiraid_handle_violation(
+            message,
+            member,
+            reason=f"spam chat {len(spam_list)} tin/{spam_window}s",
+            severity=2 if mode == ANTIRAID_MODE_GUARD else 3
+        )
+        _spam_tracker[gid][uid].clear()
+        return
+
+    # ===== Spam tag / @everyone =====
+    if message.mention_everyone:
+        await antiraid_handle_violation(
+            message,
+            member,
+            reason="@everyone / @here",
+            severity=3 if mode == ANTIRAID_MODE_LOCKDOWN else 2
+        )
+        return
+
+    if message.mentions:
+        ment_list = _mention_tracker[gid][uid]
+        ment_list.append(now)
+        mw = ANTIRAID_CONFIG["MENTION_WINDOW"]
+        ment_list[:] = [t for t in ment_list if now - t <= mw]
+        if len(ment_list) >= ANTIRAID_CONFIG["MENTION_LIMIT"]:
+            await antiraid_handle_violation(
+                message,
+                member,
+                reason=f"spam tag ({len(ment_list)} tag/{mw}s)",
+                severity=2
+            )
+            _mention_tracker[gid][uid].clear()
+            return
+
+    # ===== Spam link =====
+    if "http://" in content or "https://" in content or "discord.gg/" in content:
+        link_list = _link_tracker[gid][uid]
+        link_list.append(now)
+        lw = ANTIRAID_CONFIG["LINK_WINDOW"]
+        link_list[:] = [t for t in link_list if now - t <= lw]
+        if len(link_list) >= ANTIRAID_CONFIG["LINK_PER_WINDOW"]:
+            await antiraid_handle_violation(
+                message,
+                member,
+                reason=f"spam link ({len(link_list)} link/{lw}s)",
+                severity=2
+            )
+            _link_tracker[gid][uid].clear()
+            return
+
+    # ===== Spam emoji =====
+    emoji_count = antiraid_extract_emojis(content)
+    if emoji_count >= ANTIRAID_CONFIG["EMOJI_PER_MSG"]:
+        await antiraid_handle_violation(
+            message,
+            member,
+            reason=f"spam emoji ({emoji_count} emoji/tin)",
+            severity=1
+        )
+        return
+
+
+@bot.listen("on_member_join")
+async def antiraid_on_member_join(member: discord.Member):
+    if member.bot or not member.guild:
+        return
+
+    guild = member.guild
+    gid = str(guild.id)
+    now = time.time()
+    st = antiraid_get_state(guild)
+    mode = st["mode"]
+
+    join_list = _join_tracker[gid]
+    join_list.append(now)
+    jw = ANTIRAID_CONFIG["JOIN_WINDOW"]
+    join_list[:] = [t for t in join_list if now - t <= jw]
+
+    if mode == ANTIRAID_MODE_OFF:
+        return
+
+if len(join_list) >= ANTIRAID_CONFIG["JOIN_THRESHOLD"]:
+    if mode != ANTIRAID_MODE_LOCKDOWN:
+        antiraid_set_mode(guild, ANTIRAID_MODE_LOCKDOWN)
+
+        # 🔥 Cảnh báo admin ngay khi tự bật LOCKDOWN
+        await antiraid_alert_auto_lockdown(guild)
+
+        await antiraid_log(
+            guild,
+            f"🚨 Anti-Raid: phát hiện {len(join_list)} người join/{jw}s → tự động chuyển sang KHÓA KHẨN CẤP."
+        )
+
+        await antiraid_cleanup_spam_messages(guild)
+
+
+        else:
+            await antiraid_log(
+                guild,
+                f"ℹ️ Anti-Raid: {member} join trong đợt đông (LOCKDOWN đang bật), hãy kiểm tra nếu có dấu hiệu spam."
+            )
+
+
+# =============== UI ANTI-RAID PANEL ===============
+
+def antiraid_build_status_embed(guild: discord.Guild, user: discord.abc.User) -> discord.Embed:
+    st = antiraid_get_state(guild)
+    mode = st["mode"]
+    mode_str = {
+        ANTIRAID_MODE_OFF: "TẮT",
+        ANTIRAID_MODE_GUARD: "BẢO VỆ",
+        ANTIRAID_MODE_LOCKDOWN: "KHÓA KHẨN CẤP",
+    }.get(mode, mode)
+
+    desc = (
+        f"🛡 Chế độ hiện tại: **{mode_str}**\n\n"
+        "• **TẮT**: không chặn spam (chủ yếu dùng bảo mật của Discord).\n"
+        "• **BẢO VỆ**: chặn spam chat, link, tag, emoji; tự bật slowmode khi flood.\n"
+        "• **KHÓA KHẨN CẤP**: siết rất mạnh, dùng khi đang bị tấn công/raid.\n\n"
+        f"👤 Người điều khiển: {user.mention}"
+    )
+    embed = discord.Embed(
+        title="ANTI RAID – Nghịch Thủy Hàn",
+        description=desc,
+        color=0xE67E22
+    )
+    return embed
+
+
+class AntiRaidView(discord.ui.View):
+    def __init__(self, ctx: commands.Context):
+        super().__init__(timeout=120)
+        self.ctx = ctx
+
+    async def _ensure_author(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message(
+                "⛔ Chỉ người dùng lệnh mới bấm được nút này.",
+                ephemeral=True
+            )
+            return False
+        return True
+
+    async def _refresh(self, interaction: discord.Interaction):
+        embed = antiraid_build_status_embed(self.ctx.guild, self.ctx.author)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="TẮT", style=discord.ButtonStyle.danger)
+    async def btn_tat(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        antiraid_set_mode(self.ctx.guild, ANTIRAID_MODE_OFF)
+        await antiraid_log(self.ctx.guild, f"🔕 Anti-Raid: {interaction.user} đã TẮT hệ thống.")
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="BẢO VỆ", style=discord.ButtonStyle.success)
+    async def btn_baove(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        antiraid_set_mode(self.ctx.guild, ANTIRAID_MODE_GUARD)
+        await antiraid_log(self.ctx.guild, f"🛡 Anti-Raid: {interaction.user} đã bật chế độ BẢO VỆ.")
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="KHÓA KHẨN CẤP", style=discord.ButtonStyle.primary)
+    async def btn_lockdown(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        antiraid_set_mode(self.ctx.guild, ANTIRAID_MODE_LOCKDOWN)
+        await antiraid_log(self.ctx.guild, f"🚨 Anti-Raid: {interaction.user} đã bật chế độ KHÓA KHẨN CẤP.")
+        # admin tự bấm LOCKDOWN → chạy quét dọn spam
+        await antiraid_cleanup_spam_messages(self.ctx.guild)
+        await self._refresh(interaction)
+
+    @discord.ui.button(label="XEM LOG", style=discord.ButtonStyle.secondary)
+    async def btn_xemlog(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_author(interaction):
+            return
+        ch = self.ctx.guild.get_channel(ANTIRAID_LOG_CHANNEL_ID)
+        if ch:
+            await interaction.response.send_message(
+                f"📜 Log Anti-Raid đang gửi về kênh: {ch.mention}",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                "⚠️ Không tìm thấy kênh log (kiểm tra lại ANTIRAID_LOG_CHANNEL_ID).",
+                ephemeral=True
+            )
+
+
+# =============== LỆNH ANTI-RAID ===============
+
+@bot.command(name="antiraid")
+@commands.has_permissions(manage_guild=True)
+async def cmd_antiraid(ctx: commands.Context):
+    """Mở bảng điều khiển Anti-Raid (TẮT / BẢO VỆ / KHÓA KHẨN CẤP / XEM LOG)."""
+    embed = antiraid_build_status_embed(ctx.guild, ctx.author)
+    view = AntiRaidView(ctx)
+    await ctx.reply(embed=embed, view=view)
+
+
+@bot.command(name="antiraid_info")
+@commands.has_permissions(manage_guild=True)
+async def cmd_antiraid_info(ctx: commands.Context, member: discord.Member):
+    """Xem hồ sơ vi phạm Anti-Raid của 1 thành viên."""
+    v = antiraid_get_violation(ctx.guild, member)
+    low = antiraid_is_low_activity(member)
+    suspicious = antiraid_is_suspicious_account(member)
+
+    desc = (
+        f"👤 {member.mention}\n"
+        f"• Điểm vi phạm: **{v['points']}**\n"
+        f"• Lần vi phạm gần nhất: "
+        f"{datetime.fromtimestamp(v['last_violation']).strftime('%d/%m %H:%M') if v['last_violation'] else 'Chưa có'}\n"
+        f"• Mức độ hoạt động: {'Thấp / nằm vùng' if low else 'Thành viên hoạt động'}\n"
+        f"• Tài khoản: {'Đáng ngờ (role theo dõi / mới tạo / không role)' if suspicious else 'Bình thường'}\n"
+    )
+    if v["reasons"]:
+        desc += "\n🧾 Một số vi phạm gần nhất:\n"
+        for ts, r in sorted(v["reasons"][-5:], key=lambda x: x[0], reverse=True):
+            desc += f"- {datetime.fromtimestamp(ts).strftime('%d/%m %H:%M')}: {r}\n"
+
+    embed = discord.Embed(
+        title="ANTI RAID – HỒ SƠ THÀNH VIÊN",
+        description=desc,
+        color=0x3498DB
+    )
+    await ctx.reply(embed=embed)
+
+
+@bot.command(name="antiraid_hanche")
+@commands.has_permissions(manage_guild=True)
+async def cmd_antiraid_hanche(ctx: commands.Context, member: discord.Member):
+    """Hạn chế một thành viên (gán role hạn chế hoặc timeout)."""
+    await antiraid_apply_restrict(ctx.guild, member, reason="Admin hạn chế thủ công", minutes=30)
+    await antiraid_log(ctx.guild, f"⛓ Admin {ctx.author} đã hạn chế {member} thủ công.")
+    await ctx.reply(f"✅ Đã hạn chế {member.mention}.")
+
+
+@bot.command(name="antiraid_bo")
+@commands.has_permissions(manage_guild=True)
+async def cmd_antiraid_bo(ctx: commands.Context, member: discord.Member):
+    """Bỏ hạn chế một thành viên (bỏ role hạn chế / timeout)."""
+    if ANTIRAID_RESTRICT_ROLE_ID:
+        r = ctx.guild.get_role(ANTIRAID_RESTRICT_ROLE_ID)
+        if r and r in member.roles:
+            try:
+                await member.remove_roles(r, reason="Anti-Raid bỏ hạn chế")
+            except:
+                pass
+    try:
+        await member.timeout(None, reason="Anti-Raid bỏ hạn chế")
+    except:
+        pass
+
+    await antiraid_log(ctx.guild, f"✅ Admin {ctx.author} đã bỏ hạn chế {member}.")
+    await ctx.reply(f"✅ Đã bỏ hạn chế {member.mention}.")
+
+
+# =============== ANTI-RAID ALERT WHEN AUTO LOCKDOWN ===============
+
+# ID role admin để ping khi có LOCKDOWN tự động
+ANTIRAID_ADMIN_ROLE_PING = 0  # điền ID role admin tại đây (nếu muốn ping)
+# Ví dụ: ANTIRAID_ADMIN_ROLE_PING = 141400000000000000
+
+async def antiraid_alert_auto_lockdown(guild: discord.Guild):
+    """
+    Gửi cảnh báo tới admin khi Anti-Raid tự động bật KHÓA KHẨN CẤP.
+    - Gửi DM cho chủ server
+    - Ping role admin (nếu có)
+    - Log kênh Anti-Raid
+    """
+    # 1. Gửi log vào kênh log
+    await antiraid_log(
+        guild,
+        "🚨 **CẢNH BÁO**: Anti-Raid đã **TỰ ĐỘNG** bật **KHÓA KHẨN CẤP** do phát hiện tấn công."
+    )
+
+    # 2. Ping role admin nếu cấu hình
+    if ANTIRAID_ADMIN_ROLE_PING:
+        role = guild.get_role(ANTIRAID_ADMIN_ROLE_PING)
+        if role:
+            log_ch = guild.get_channel(ANTIRAID_LOG_CHANNEL_ID)
+            if log_ch:
+                try:
+                    await log_ch.send(f"⚠️ Ping {role.mention} — Anti-Raid đã bật **KHÓA KHẨN CẤP**.")
+                except:
+                    pass
+
+    # 3. Gửi DM cho chủ server
+    try:
+        owner = guild.owner
+        if owner:
+            await owner.send(
+                f"🚨 **CẢNH BÁO KHẨN**\n"
+                f"Anti-Raid tại server **{guild.name}** đã tự bật **KHÓA KHẨN CẤP**.\n"
+                "Hệ thống đang xử lý spam / tấn công hàng loạt."
+            )
+    except:
+        pass
+
+
 
 
 # ================== CHẠY BOT ==================
