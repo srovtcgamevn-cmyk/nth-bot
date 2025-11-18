@@ -3495,11 +3495,13 @@ async def antiraid_on_member_join(member: discord.Member):
     guild = member.guild
     gid = str(guild.id)
     now = time.time()
+
     st = antiraid_get_state(guild)
     mode = st["mode"]
 
     join_list = _join_tracker[gid]
     join_list.append(now)
+
     jw = ANTIRAID_CONFIG["JOIN_WINDOW"]
     join_list[:] = [t for t in join_list if now - t <= jw]
 
@@ -3509,27 +3511,23 @@ async def antiraid_on_member_join(member: discord.Member):
     if len(join_list) >= ANTIRAID_CONFIG["JOIN_THRESHOLD"]:
         if mode != ANTIRAID_MODE_LOCKDOWN:
             antiraid_set_mode(guild, ANTIRAID_MODE_LOCKDOWN)
+
+            # Nếu bạn đã thêm hàm cảnh báo auto-lockdown thì mở comment dòng này:
+            # await antiraid_alert_auto_lockdown(guild)
+
             await antiraid_log(
                 guild,
                 f"🚨 Anti-Raid: phát hiện {len(join_list)} người join/{jw}s → tự động chuyển sang KHÓA KHẨN CẤP."
             )
             # khi tự động vào LOCKDOWN, sau đó quét dọn spam
             await antiraid_cleanup_spam_messages(guild)
-            await antiraid_alert_auto_lockdown(guild)
-
         else:
             await antiraid_log(
                 guild,
-                f"ℹ️ Anti-Raid: {member} join trong đợt đông (LOCKDOWN đang bật), hãy kiểm tra nếu có dấu hiệu spam."
+                f"ℹ️ Anti-Raid: {member} join trong đợt đông (LOCKDOWN đang bật), "
+                f"hãy kiểm tra nếu có dấu hiệu spam."
             )
 
-
-
-        else:
-            await antiraid_log(
-                guild,
-                f"ℹ️ Anti-Raid: {member} join trong đợt đông (LOCKDOWN đang bật), hãy kiểm tra nếu có dấu hiệu spam."
-            )
 
 
 # =============== UI ANTI-RAID PANEL ===============
