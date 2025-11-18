@@ -2896,6 +2896,99 @@ async def heat_decay_loop():
 
 
 
+# ================== GIỚI THIỆU BANG ==================
+GIOITHIEU_FILE = os.path.join(DATA_DIR, "gioithieu.json")
+if not os.path.exists(GIOITHIEU_FILE):
+    with open(GIOITHIEU_FILE, "w", encoding="utf-8") as f:
+        json.dump({"guilds": {}}, f, ensure_ascii=False, indent=2)
+
+def format_gioithieu(raw: str) -> str:
+    """Tự động làm đẹp nội dung người dùng nhập."""
+    lines = raw.split("\n")
+    out = []
+
+    for line in lines:
+        l = line.strip()
+
+        # Tiêu đề lớn
+        if l.startswith("#"):
+            l = f"🌙 **{l[1:].strip().upper()}**"
+            out.append(l)
+            continue
+
+        # Đầu dòng danh sách
+        if l.startswith("-"):
+            out.append(f"• {l[1:].strip()}")
+            continue
+
+        # Quote
+        if l.startswith(">"):
+            out.append(f"> *{l[1:].strip()}*")
+            continue
+
+        # Mặc định giữ nguyên
+        out.append(l)
+
+    return "\n".join(out)
+
+
+@bot.command(name="gioithieubang")
+async def cmd_gioithieubang(ctx, *, noi_dung: str):
+    """Tạo phần giới thiệu bang – người dùng nhập nội dung thô."""
+    fmt = format_gioithieu(noi_dung)
+
+    embed = discord.Embed(
+        title="🏯 GIỚI THIỆU BANG HỘI",
+        description=fmt,
+        color=0xFFD700
+    )
+    embed.set_footer(text=f"{ctx.guild.name} • soạn bởi {ctx.author.display_name}")
+
+    # ⭐ GỬI TIN NHẮN MỚI – KHÔNG REPLY
+    msg = await ctx.send(embed=embed)
+
+    data = load_json(GIOITHIEU_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {})
+    g["message_id"] = msg.id
+    g["channel_id"] = ctx.channel.id
+    save_json(GIOITHIEU_FILE, data)
+
+    await ctx.send("✅ **Đã đăng phần giới thiệu bang!**\nDùng `/editgioithieubang` để sửa lại.")
+
+
+@bot.command(name="editgioithieubang")
+async def cmd_editgioithieubang(ctx, *, noi_dung: str):
+    """Sửa lại phần giới thiệu bang – không tạo tin nhắn mới."""
+    data = load_json(GIOITHIEU_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(ctx.guild.id))
+
+    if not g:
+        await ctx.reply("❌ Chưa có giới thiệu để sửa. Hãy dùng `/gioithieubang` trước.")
+        return
+
+    ch = ctx.guild.get_channel(g["channel_id"])
+    if not ch:
+        await ctx.reply("❌ Không tìm thấy kênh chứa message cũ.")
+        return
+
+    try:
+        msg = await ch.fetch_message(g["message_id"])
+    except:
+        await ctx.reply("❌ Tin nhắn cũ đã bị xoá. Hãy đăng lại bằng `/gioithieubang`.")
+        return
+
+    fmt = format_gioithieu(noi_dung)
+
+    embed = discord.Embed(
+        title="🏯 GIỚI THIỆU BANG HỘI (ĐÃ CHỈNH SỬA)",
+        description=fmt,
+        color=0x00BFFF
+    )
+    embed.set_footer(text=f"{ctx.guild.name} • chỉnh bởi {ctx.author.display_name}")
+
+    await msg.edit(embed=embed)
+    await ctx.reply("✅ **Đã chỉnh sửa giới thiệu bang thành công!**")
+
 
 
 
