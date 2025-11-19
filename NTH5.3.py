@@ -3570,7 +3570,8 @@ class AntiRaidView(discord.ui.View):
             return False
         return True
 
-    async def _refresh(self, interaction: discord.Interaction):
+    async def _refresh_view(self, interaction: discord.Interaction):
+        """Cập nhật lại embed trạng thái Anti-Raid."""
         embed = antiraid_build_status_embed(self.ctx.guild, self.ctx.author)
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -3580,7 +3581,7 @@ class AntiRaidView(discord.ui.View):
             return
         antiraid_set_mode(self.ctx.guild, ANTIRAID_MODE_OFF)
         await antiraid_log(self.ctx.guild, f"🔕 Anti-Raid: {interaction.user} đã TẮT hệ thống.")
-        await self._refresh(interaction)
+        await self._refresh_view(interaction)
 
     @discord.ui.button(label="BẢO VỆ", style=discord.ButtonStyle.success)
     async def btn_baove(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3588,7 +3589,7 @@ class AntiRaidView(discord.ui.View):
             return
         antiraid_set_mode(self.ctx.guild, ANTIRAID_MODE_GUARD)
         await antiraid_log(self.ctx.guild, f"🛡 Anti-Raid: {interaction.user} đã bật chế độ BẢO VỆ.")
-        await self._refresh(interaction)
+        await self._refresh_view(interaction)
 
     @discord.ui.button(label="KHÓA KHẨN CẤP", style=discord.ButtonStyle.primary)
     async def btn_lockdown(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3596,9 +3597,12 @@ class AntiRaidView(discord.ui.View):
             return
         antiraid_set_mode(self.ctx.guild, ANTIRAID_MODE_LOCKDOWN)
         await antiraid_log(self.ctx.guild, f"🚨 Anti-Raid: {interaction.user} đã bật chế độ KHÓA KHẨN CẤP.")
-        # admin tự bấm LOCKDOWN → chạy quét dọn spam
+
+        # nếu có dùng hàm cảnh báo auto-lockdown thì có thể gọi thêm:
+        # await antiraid_alert_auto_lockdown(self.ctx.guild)
+
         await antiraid_cleanup_spam_messages(self.ctx.guild)
-        await self._refresh(interaction)
+        await self._refresh_view(interaction)
 
     @discord.ui.button(label="XEM LOG", style=discord.ButtonStyle.secondary)
     async def btn_xemlog(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3615,6 +3619,7 @@ class AntiRaidView(discord.ui.View):
                 "⚠️ Không tìm thấy kênh log (kiểm tra lại ANTIRAID_LOG_CHANNEL_ID).",
                 ephemeral=True
             )
+
 
 
 # =============== LỆNH ANTI-RAID ===============
