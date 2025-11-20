@@ -1747,15 +1747,16 @@ class BXHKimLanView(discord.ui.View):
             week_bonus = r["week_bonus"]
 
             lines.append(f"**{rank}. {role.name}**")
-
+            # 🔥 hiển thị ngày điểm danh đủ dạng: T2: 24.2 | T3: 30.3 | T4: 19.1
             if r["days_ok"]:
-                dd = ", ".join(
-                    f"{fmt_day_label(d)} {c}/{t}{' (x2)' if boost else ''} – 🔥 {day_quy:.1f}"
+                parts = [
+                    f"{fmt_day_label(d)}: {day_quy:.1f}"
                     for (d, c, t, boost, day_quy) in r["days_ok"]
-                )
-                lines.append(f"🔥 Ngày điểm danh đủ: {dd}")
+                ]
+                dd = " | ".join(parts)
+                lines.append(f"🔥 {dd}")
             else:
-                lines.append("🔥 Ngày điểm danh đủ: —")
+                lines.append("🔥 —")
 
             if r["days_miss"]:
                 miss = ", ".join(
