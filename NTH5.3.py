@@ -2683,26 +2683,23 @@ def team_boost_today(gid: int, member: discord.Member):
 
 
 def add_team_score(gid: int, rid: int, date: str, amount: float, member_id: int | None = None):
-    """Cộng điểm quỹ cho 1 team trong 1 ngày.
-    - Luôn cộng vào tổng quỹ theo ngày: r[date]
-    - Nếu có member_id: lưu chi tiết đóng góp vào r["members"][date][member_id]
-      để dùng cho BXHKimLanTeamView (tab Chi tiết).
     """
-    ts = load_json(TEAMSCORE_FILE, {"guilds": {}})
-    g = ts["guilds"].setdefault(str(gid), {})
-    r = g.setdefault(str(rid), {})
+    Cộng điểm quỹ team cho 1 ngày (dùng cho điểm danh).
+    Dùng chung hạ tầng với _team_quy_add để:
+    - Mỗi ngày / mỗi team: lưu "score" tổng quỹ
+    - Ghi chi tiết đóng góp từng thành viên trong "members"
+    """
+    from datetime import datetime
 
-    # Tổng điểm quỹ của cả team trong ngày
-    r[date] = float(r.get(date, 0) or 0) + float(amount)
+    try:
+        # date là chuỗi dạng YYYY-MM-DD (isoformat từ ATTEND_FILE)
+        dt = datetime.fromisoformat(date).replace(tzinfo=TEAM_QUY_TZ)
+    except Exception:
+        # nếu có gì sai thì fallback về "bây giờ" theo GMT+7
+        dt = datetime.now(TEAM_QUY_TZ)
 
-    # Ghi chi tiết theo từng thành viên
-    if member_id is not None:
-        ms_by_date = r.setdefault("members", {})
-        day_map = ms_by_date.setdefault(date, {})
-        key = str(member_id)
-        day_map[key] = float(day_map.get(key, 0) or 0) + float(amount)
+    _team_quy_add(gid, rid, member_id, dt, amount)
 
-    save_json(TEAMSCORE_FILE, ts)
 
 
 # ================== THƯỞNG CẤP ==================
