@@ -1629,10 +1629,11 @@ class BXHKimLanView(discord.ui.View):
 
         rows = []
 
+
         def fmt_day_label(d):
             thu = d.weekday()  # 0 = T2
             thu_map = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
-            return f"{thu_map[thu]} {d.day:02d}/{d.month:02d}"
+            return thu_map[thu]
 
         for rid_str, conf in teams.items():
             role_id = int(rid_str)
@@ -1829,10 +1830,12 @@ class BXHKimLanTeamView(discord.ui.View):
     def _get_week_range(self):
         return get_week_range_gmt7(offset_weeks=0)
 
+
     def _fmt_day_label(self, d):
         thu = d.weekday()
         thu_map = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
-        return f"{thu_map[thu]} {d.day:02d}/{d.month:02d}"
+        return thu_map[thu]
+
 
     async def _ensure_author(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.ctx.author.id:
