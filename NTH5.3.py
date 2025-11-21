@@ -702,6 +702,50 @@ async def cmd_tatbuff(ctx):
     save_json(BUFF_FILE, data)
     await ctx.reply("✅ Đã tắt buff.")
 
+
+
+# ================== /buffmembot ==================
+@bot.command(name="buffmembot")
+async def cmd_buffmembot(ctx, bot_acc: discord.Member, *roles: discord.Role):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot dùng được.")
+        return
+
+    if not bot_acc.bot:
+        await ctx.reply("❌ Bạn phải tag một BOT.")
+        return
+
+    data = load_json(BOTBUFF_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {})
+    g[str(bot_acc.id)] = [r.id for r in roles]
+    save_json(BOTBUFF_FILE, data)
+
+    await ctx.reply(
+        f"✅ Đã cấu hình cho {bot_acc.mention}.\n"
+        f"• Auto đổi tên khi bot này mời thành viên.\n"
+        f"• Auto cấp role: {', '.join(r.mention for r in roles)}"
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ================== on_ready DUY NHẤT ==================
 @bot.event
 async def on_ready():
@@ -3692,6 +3736,41 @@ async def antiraid_on_member_join(member: discord.Member):
 
 
 
+    # ===== BUFFMEM BOT: kiểm tra nếu được mời bởi bot =====
+    try:
+        inviter = None
+        async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.bot_add):
+            if entry.target.id == member.id:
+                inviter = entry.user
+                break
+    except:
+        inviter = None
+
+    if inviter and inviter.bot:
+        data = load_json(BOTBUFF_FILE, {"guilds": {}})
+        g = data["guilds"].get(str(member.guild.id), {})
+        roles = g.get(str(inviter.id))
+
+        if roles:
+            # auto đổi tên
+            newname = generate_nickname(member.guild.id)
+            try:
+                await member.edit(nick=newname)
+            except:
+                pass
+
+            # auto cấp role
+            for rid in roles:
+                r = member.guild.get_role(rid)
+                if r:
+                    try:
+                        await member.add_roles(r)
+                    except:
+                        pass
+
+
+
+
 # =============== UI ANTI-RAID PANEL ===============
 
 def antiraid_build_status_embed(guild: discord.Guild, user: discord.abc.User) -> discord.Embed:
@@ -3895,305 +3974,11 @@ async def antiraid_alert_auto_lockdown(guild: discord.Guild):
     except:
         pass
 
-
-# ================== BUFFMEM BOT 2.0 ==================
-# Lưu ý:
-# - Lệnh: /buffmembot @Bot
-# - Lệnh không dấu, text hiển thị tiếng Việt.
-# - Khi 1 bot nằm trong danh sách buffmembot mời người vào,
-#   bot NTH sẽ tự đổi nickname thành: "TenBot • TenThanhVien"
-# - Bạn CHỈ cần đảm bảo:
-#   + Đã có hàm load_json, save_json
-#   + Bot có quyền Manage Nicknames + role cao hơn member mới
-
-# Nếu phía trên file đã có BUFFMEMBOT_FILE thì bỏ dòng này đi, tránh trùng:
-BUFFMEMBOT_FILE = "buffmembot.json"
-
-
-# ---------- HÀM PHỤ ĐỌC / GHI CẤU HÌNH BUFFMEMBOT ----------
-
-def load_buffmembot():
-    """Đọc cấu hình buffmembot từ file JSON."""
-    return load_json(BUFFMEMBOT_FILE, {"guilds": {}})
-
-
-def save_buffmembot(data: dict):
-    """Lưu cấu hình buffmembot vào file JSON."""
-    save_json(BUFFMEMBOT_FILE, data)
-
-
-def is_buffmembot(guild_id: int, bot_id: int) -> bool:
-    """Check xem 1 bot có đang được theo dõi buffmem trong server này không."""
-    data = load_buffmembot()
-    g = data["guilds"].get(str(guild_id), {})
-    bots = g.get("bots", {})
-    return str(bot_id) in bots
-
-
-# ---------- HÀM ĐỔI TÊN KHI MEMBER ĐƯỢC MỜI BỞI BUFFMEMBOT ----------
-
-async def handle_buffmembot_rename(member: discord.Member, inviter: discord.Member | None):
-    """
-    Gọi hàm này khi có member join và bạn đã xác định được 'inviter' (người mời).
-    Nếu inviter là 1 BOT nằm trong danh sách buffmembot -> tự đổi tên member.
-    """
-    # không xử lý nếu member là bot
-    if member.bot:
-        return
-
-    # phải có inviter, và inviter phải là bot
-    if inviter is None or not inviter.bot:
-        return
-
-    guild = member.guild
-    gid = str(guild.id)
-
-    # nếu bot mời không nằm trong danh sách buffmembot => bỏ qua
-    if not is_buffmembot(guild.id, inviter.id):
-        return
-
-    data = load_buffmembot()
-    g = data["guilds"].get(gid, {})
-    bots = g.get("bots", {})
-    cfg = bots.get(str(inviter.id), {})
-
-    # Mẫu đổi tên: có thể sửa sau nếu muốn cho custom template
-    # {inviter} = tên bot mời
-    # {name}    = tên gốc của member
-    template = cfg.get("template") or "{inviter} • {name}"
-
-    old_name = member.display_name
-    inviter_name = inviter.display_name
-
-    new_nick = template.format(inviter=inviter_name, name=old_name)
-
-    # Discord giới hạn nickname 32 ký tự
-    if len(new_nick) > 32:
-        new_nick = new_nick[:32]
-
-    try:
-        await member.edit(nick=new_nick, reason="Buffmembot - auto rename theo bot mời")
-    except discord.Forbidden:
-        # Bot không đủ quyền đổi tên (role thấp, thiếu Manage Nicknames...)
-        pass
-    except discord.HTTPException:
-        # Lỗi HTTP linh tinh -> bỏ qua
-        pass
-
-
-# ================== /buffmembot – VIEW UI ==================
-
-class BuffMemBotView(discord.ui.View):
-    def __init__(self, ctx, target_bot: discord.Member):
-        super().__init__(timeout=60)
-        self.ctx = ctx
-        self.guild = ctx.guild
-        self.target_bot = target_bot
-
-    def _build_embed(self) -> discord.Embed:
-        data = load_buffmembot()
-        g = data["guilds"].get(str(self.guild.id), {})
-        bots = g.get("bots", {})
-        cfg = bots.get(str(self.target_bot.id), {})
-
-        enabled = bool(cfg)
-        status = "✅ ĐANG THEO DÕI" if enabled else "⛔ CHƯA THEO DÕI"
-
-        e = discord.Embed(
-            title="⚙️ CẤU HÌNH BUFFMEM BOT",
-            description=(
-                f"**Bot:** {self.target_bot.mention} (`{self.target_bot.id}`)\n"
-                f"**Trạng thái:** {status}\n\n"
-                "• Khi bot này mời thành viên vào server,\n"
-                "  bot NTH sẽ tự đổi tên theo mẫu:\n"
-                "  `TênBot • TênThànhViên`\n"
-            ),
-            color=0xE67E22
-        )
-
-        # hiển thị danh sách buffmembot hiện tại trong server
-        if bots:
-            lines = []
-            for bid, bcfg in bots.items():
-                m = self.guild.get_member(int(bid))
-                if m:
-                    lines.append(f"- {m.mention} (`{m.id}`)")
-                else:
-                    lines.append(f"- <@{bid}> (`{bid}`)")
-            e.add_field(
-                name="📜 Danh sách buffmembot trong server",
-                value="\n".join(lines),
-                inline=False
-            )
-        else:
-            e.add_field(
-                name="📜 Danh sách buffmembot trong server",
-                value="(Chưa có bot nào được cấu hình.)",
-                inline=False
-            )
-
-        e.set_footer(text=f"Người cấu hình: {self.ctx.author}", icon_url=self.ctx.author.display_avatar.url)
-        return e
-
-    async def _ensure_author(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.ctx.author.id:
-            await interaction.response.send_message(
-                "⛔ Chỉ người dùng lệnh mới bấm được nút này.",
-                ephemeral=True
-            )
-            return False
-        return True
-
-    @discord.ui.button(label="BẬT THEO DÕI", style=discord.ButtonStyle.success)
-    async def btn_enable(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._ensure_author(interaction):
-            return
-
-        data = load_buffmembot()
-        g = data["guilds"].setdefault(str(self.guild.id), {})
-        bots = g.setdefault("bots", {})
-
-        # Sau này nếu muốn cho custom template, có thể thêm lệnh riêng để sửa "template"
-        bots[str(self.target_bot.id)] = {
-            "template": "{inviter} • {name}"
-        }
-
-        save_buffmembot(data)
-
-        embed = self._build_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="TẮT THEO DÕI", style=discord.ButtonStyle.danger)
-    async def btn_disable(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._ensure_author(interaction):
-            return
-
-        data = load_buffmembot()
-        g = data["guilds"].setdefault(str(self.guild.id), {})
-        bots = g.setdefault("bots", {})
-
-        bots.pop(str(self.target_bot.id), None)
-        save_buffmembot(data)
-
-        embed = self._build_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="XEM DANH SÁCH", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_list(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._ensure_author(interaction):
-            return
-
-        data = load_buffmembot()
-        g = data["guilds"].get(str(self.guild.id), {})
-        bots = g.get("bots", {})
-
-        if not bots:
-            await interaction.response.send_message(
-                "📭 Hiện chưa có buffmembot nào được cấu hình trong server này.",
-                ephemeral=True
-            )
-            return
-
-        lines = []
-        for bid, bcfg in bots.items():
-            m = self.guild.get_member(int(bid))
-            if m:
-                lines.append(f"- {m.mention} (`{m.id}`)")
-            else:
-                lines.append(f"- <@{bid}> (`{bid}`)")
-
-        await interaction.response.send_message(
-            "📜 **Danh sách buffmembot đang hoạt động:**\n" + "\n".join(lines),
-            ephemeral=True
-        )
-
-
-# ================== /buffmembot – LỆNH CHÍNH ==================
-
-@bot.command(name="buffmembot")
-@commands.has_permissions(manage_guild=True)
-async def cmd_buffmembot(ctx, bot_member: discord.Member):
-    """
-    /buffmembot @Bot
-    - Dùng cho các bot buff mem / kéo mem vào server.
-    - Khi bot này mời người vào, bot NTH sẽ tự đổi tên thành:
-      'TênBot • TênThànhViên'.
-    - Mọi cấu hình bật/tắt xem bằng UI nút.
-    """
-    if not bot_member.bot:
-        await ctx.reply("❌ Bạn phải tag **một BOT** (không phải user thường).")
-        return
-
-    view = BuffMemBotView(ctx, bot_member)
-    embed = view._build_embed()
-    await ctx.reply(embed=embed, view=view)
+# =============== ANTI-RAID ALERT WHEN AUTO LOCKDOWN ===============
 
 
 
-@bot.command(name="buffmembot")
-async def cmd_buffmembot(ctx, bot_acc: discord.Member, *roles: discord.Role):
-    if not is_owner(ctx.author.id):
-        await ctx.reply("⛔ Chỉ chủ bot dùng được.")
-        return
 
-    if not bot_acc.bot:
-        await ctx.reply("❌ Tag một **BOT** hợp lệ.")
-        return
-
-    data = load_json(BOTBUFF_FILE, {"guilds": {}})
-    g = data["guilds"].setdefault(str(ctx.guild.id), {})
-    g[str(bot_acc.id)] = [r.id for r in roles]
-    save_json(BOTBUFF_FILE, data)
-
-    await ctx.reply(
-        f"✅ Khi **{bot_acc.mention}** mời thành viên mới:\n"
-        f"• Auto đổi tên\n"
-        f"• Auto cấp role: {', '.join(r.mention for r in roles)}"
-    )
-
-
-
-@bot.listen("on_member_join")
-async def buffmembot_on_join(member: discord.Member):
-    if member.bot:
-        return
-
-    guild = member.guild
-    data = load_json(BOTBUFF_FILE, {"guilds": {}})
-    g = data["guilds"].get(str(guild.id), {})
-
-    # tìm bot nào mời
-    inviter = None
-    try:
-        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.bot_add):
-            if entry.target.id == member.id:
-                inviter = entry.user
-                break
-    except:
-        pass
-
-    if not inviter or not inviter.bot:
-        return
-
-    roles = g.get(str(inviter.id))
-    if not roles:
-        return
-
-    # đổi tên giống buffmem
-    new_name = generate_nickname(guild.id)
-    try:
-        await member.edit(nick=new_name, reason="buff membot")
-    except:
-        pass
-
-    # cấp role
-    for rid in roles:
-        r = guild.get_role(rid)
-        if r:
-            try:
-                await member.add_roles(r)
-            except:
-                pass
 
 
 
