@@ -1632,6 +1632,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 
 
+
 # ================== /bxhkimlan ==================
 
 
@@ -1750,8 +1751,6 @@ class BXHKimLanView(discord.ui.View):
                 now_gmt7 = datetime.utcnow() + timedelta(hours=7)
                 week_finished = now_gmt7.date() > week_end
 
-                
-                
                 if week_finished:
                     week_bonus = 10.0
                     total_score += week_bonus
