@@ -1635,6 +1635,8 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 # ================== /bxhkimlan ==================
 
 
+# ================== /bxhkimlan ==================
+
 class BXHKimLanView(discord.ui.View):
     def __init__(self, ctx, guild, teamconf, att, score_data):
         super().__init__(timeout=120)
@@ -1676,7 +1678,6 @@ class BXHKimLanView(discord.ui.View):
 
         rows = []
 
-
         def fmt_day_label(d):
             thu = d.weekday()  # 0 = T2
             thu_map = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
@@ -1701,27 +1702,21 @@ class BXHKimLanView(discord.ui.View):
             full_days = 0
             total_att_days = 0
 
-        cur = week_start
-        while cur <= week_end:
-            # BỎ CN (chủ nhật) khỏi thống kê tuần
-            if cur.weekday() == 6:  # 6 = Sunday = CN
-                cur += timedelta(days=1)
-                continue
+            cur = week_start
+            while cur <= week_end:
+                ds = cur.isoformat()
+                day_rec = team_att.get(ds, {})
 
-            ds = cur.isoformat()
-            day_rec = team_att.get(ds, {})
+                # điểm quỹ từ voice
+                raw_day_score = team_score_by_day.get(ds, 0)
+                if isinstance(raw_day_score, dict):
+                    voice_quy = float(raw_day_score.get("score", 0.0))
+                else:
+                    voice_quy = float(raw_day_score or 0.0)
 
-            raw_day_score = team_score_by_day.get(ds, 0)
-            if isinstance(raw_day_score, dict):
-                voice_quy = float(raw_day_score.get("score", 0.0))
-            else:
-                voice_quy = float(raw_day_score or 0.0)
-
-            checked = len(day_rec.get("checked", [])) if day_rec else 0
-            total = day_rec.get("total_at_day", 0) if day_rec else 0
-            boost = day_rec.get("boost", False) if day_rec else False
-
-
+                checked = len(day_rec.get("checked", [])) if day_rec else 0
+                total = day_rec.get("total_at_day", 0) if day_rec else 0
+                boost = day_rec.get("boost", False) if day_rec else False
 
                 # điểm quỹ từ điểm danh
                 day_quy_att = 0.0
@@ -1801,7 +1796,8 @@ class BXHKimLanView(discord.ui.View):
             week_bonus = r["week_bonus"]
 
             lines.append(f"**{rank}. {role.name}**")
-            # 🔥 hiển thị ngày điểm danh đủ dạng: T2: 24.2 | T3: 30.3 | T4: 19.1
+
+            # 🔥 hiển thị dạng: T2: 24.2 | T3: 30.3 | T4: 19.1
             if r["days_ok"]:
                 parts = [
                     f"{fmt_day_label(d)}: {day_quy:.1f}"
@@ -1863,6 +1859,8 @@ class BXHKimLanView(discord.ui.View):
         self.current_mode = "tuantruoc"
         embed = self.build_week_embed("tuantruoc")
         await interaction.response.edit_message(content=None, embed=embed, view=self)
+
+
 
 
 # ===== VIEW RIÊNG CHO /bxhkimlan @role =====
