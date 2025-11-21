@@ -3281,9 +3281,7 @@ async def cmd_editgioithieubang(ctx, *, noi_dung: str):
 
 
 
-
-
-# =============== ANTI RAID NTH 2.1 ===============
+# =============== ANTI RAID NTH 3.0 ===============
 import time
 import re
 from collections import defaultdict
@@ -3354,6 +3352,24 @@ _msg_timestamps = defaultdict(list)                        # guild_id -> [ts]
 _suspicious_users = defaultdict(set)                       # guild_id -> set(user_id)
 _antiraid_slowmode_started = False
 
+# =============== DANH SÁCH BỎ QUA ANTI-RAID ===============
+
+ANTI_IGNORE_USERS: set[int] = set()   # ID user được bỏ qua
+ANTI_IGNORE_ROLES: set[int] = set()   # ID role được bỏ qua
+
+
+def antiraid_is_ignored(member: discord.Member) -> bool:
+    """User/role nằm trong danh sách bỏ qua Anti-Raid."""
+    try:
+        if member.id in ANTI_IGNORE_USERS:
+            return True
+        if any(r.id in ANTI_IGNORE_ROLES for r in member.roles):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 # =============== TRẠNG THÁI & TIỆN ÍCH ===============
 
 def antiraid_get_state(guild: discord.Guild) -> dict:
@@ -3419,11 +3435,17 @@ def antiraid_extract_emojis(text: str) -> int:
 
 
 def antiraid_is_low_activity(member: discord.Member) -> bool:
-    """Acc ít hoạt động: exp ít, voice ít, nhiệt thấp."""
+    """
+    Acc ít hoạt động:
+    - Gần như không exp chat / voice
+    - Ít vào voice
+    - Nhiệt huyết thấp
+    """
     try:
         data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
     except Exception:
         return True
+
     u = data.get("users", {}).get(str(member.id))
     if not u:
         return True
@@ -3442,19 +3464,44 @@ def antiraid_is_low_activity(member: discord.Member) -> bool:
 
 
 def antiraid_is_suspicious_account(member: discord.Member) -> bool:
-    """Acc đáng ngờ: mới tạo / có role theo dõi / không role."""
+    """
+    Acc đáng ngờ khi:
+    - Tài khoản mới tạo (< 3 ngày), HOẶC
+    - Vào server < 24h và gần như chưa hoạt động, HOẶC
+    - Ít hoạt động + chỉ có role theo dõi / không role gì
+    """
+    now = datetime.now(timezone.utc)
+
     try:
-        age_days = (datetime.now(timezone.utc) - member.created_at).days
+        age_days = (now - member.created_at).days
     except Exception:
         age_days = 999
 
+    try:
+        join_age_hours = (now - member.joined_at).total_seconds() / 3600.0
+    except Exception:
+        join_age_hours = 9999.0
+
+    low_activity = antiraid_is_low_activity(member)
+
+    # acc mới tạo → luôn đáng ngờ
     if age_days < 3:
         return True
 
-    if ANTIRAID_MONITOR_ROLE_ID in [r.id for r in member.roles]:
+    # vào server < 24h và gần như chưa hoạt động
+    if join_age_hours < 24 and low_activity:
         return True
 
-    if len(member.roles) <= 1:  # chỉ @everyone
+    # có role theo dõi + ít hoạt động → đáng ngờ
+    if (
+        ANTIRAID_MONITOR_ROLE_ID
+        and low_activity
+        and any(r.id == ANTIRAID_MONITOR_ROLE_ID for r in member.roles)
+    ):
+        return True
+
+    # chỉ có @everyone (không role gì) + ít hoạt động → đáng ngờ
+    if len(member.roles) <= 1 and low_activity:
         return True
 
     return False
@@ -3546,7 +3593,7 @@ async def antiraid_handle_violation(
     """
     severity:
         1: nhẹ  (xoá tin, +1 điểm)
-        2: vừa  (xoá tin, +2 điểm, có thể hạn chế)
+        2: vừa  (xoá tin, +2 điểm)
         3: nặng (xoá tin, +3 điểm, LOCKDOWN có thể kick)
     """
     guild = message.guild
@@ -3650,50 +3697,6 @@ async def antiraid_auto_slowmode():
             antiraid_auto_slowmode.last_trigger = None
 
 
-# =============== WHITELIST LINK ===============
-
-ALLOWED_LINK_DOMAINS = [
-    "facebook.com",
-    "fb.com",
-    "fb.me",
-    "tiktok.com",
-    "docs.google.com",
-    "nghichthuyhan.vnggames.com",
-    "https://discord.gg/nghichthuyhan",
-
-]
-
-def antiraid_is_internal_discord_link(url: str, guild: discord.Guild) -> bool:
-    """
-    Chỉ cho phép link Discord nội bộ:
-    - https://discord.com/channels/<guild_id>/...
-    (link invite discord.gg đều bị chặn – tránh spam kéo người ra ngoài)
-    """
-    u = url.lower()
-    m = re.search(r"discord\.com/channels/(\d+)/", u)
-    if m and m.group(1) == str(guild.id):
-        return True
-    return False
-
-
-def antiraid_is_allowed_link(url: str, guild: discord.Guild) -> bool:
-    """
-    Luật link:
-    - Cho: Discord nội bộ (channels), domain trong ALLOWED_LINK_DOMAINS
-    - Còn lại: CẤM
-    """
-    u = url.lower()
-
-    if "discord.com/channels/" in u:
-        return antiraid_is_internal_discord_link(u, guild)
-
-    for dom in ALLOWED_LINK_DOMAINS:
-        if dom in u:
-            return True
-
-    return False
-
-
 # =============== LISTENER CHÍNH: on_message ===============
 
 @bot.listen("on_message")
@@ -3717,7 +3720,6 @@ async def antiraid_on_message(message: discord.Message):
                 await message.delete()
             except:
                 pass
-            # cố BAN bot + xoá lịch sử 1 ngày
             try:
                 await guild.ban(
                     member,
@@ -3729,7 +3731,6 @@ async def antiraid_on_message(message: discord.Message):
                     f"⛔ Anti-Raid: đã BAN bot/webhook {member} vì gửi link: {urls[0]}"
                 )
             except:
-                # nếu ban fail → kick, nếu vẫn fail thì chỉ log
                 try:
                     await guild.kick(member, reason="Anti-Raid: Bot/Webhook gửi link bị cấm")
                     await antiraid_log(
@@ -3741,9 +3742,13 @@ async def antiraid_on_message(message: discord.Message):
                         guild,
                         f"⚠️ Anti-Raid: không thể xử lý bot/webhook {member} gửi link: {urls[0]}"
                     )
-        return  # không xử lý gì thêm cho bot/webhook
+        return
 
     # ===== 1. MEMBER THƯỜNG =====
+
+    # Bỏ qua user/role được cấu hình /boquaanti
+    if isinstance(member, discord.Member) and antiraid_is_ignored(member):
+        return
 
     # Khởi động auto slowmode (1 lần)
     if not _antiraid_slowmode_started:
@@ -3761,7 +3766,7 @@ async def antiraid_on_message(message: discord.Message):
     if mode == ANTIRAID_MODE_OFF:
         return
 
-    if antiraid_is_staff(member):
+    if isinstance(member, discord.Member) and antiraid_is_staff(member):
         return
 
     uid = str(member.id)
@@ -3816,7 +3821,9 @@ async def antiraid_on_message(message: discord.Message):
     # ----- Link & spam link (member) -----
     if urls:
         # 1) Acc đáng ngờ / ít hoạt động → không cho gửi link
-        if antiraid_is_suspicious_account(member) or antiraid_is_low_activity(member):
+        if isinstance(member, discord.Member) and (
+            antiraid_is_suspicious_account(member) or antiraid_is_low_activity(member)
+        ):
             await antiraid_handle_violation(
                 message,
                 member,
@@ -3825,18 +3832,7 @@ async def antiraid_on_message(message: discord.Message):
             )
             return
 
-        # 2) Domain link phải hợp lệ
-        for u in urls:
-            if not antiraid_is_allowed_link(u, guild):
-                await antiraid_handle_violation(
-                    message,
-                    member,
-                    reason=f"gửi link không được phép: {u}",
-                    severity=2 if mode == ANTIRAID_MODE_GUARD else 3
-                )
-                return
-
-        # 3) Spam link (>3/10s hoặc >3/60s)
+        # 2) Thành viên bình thường → được gửi link, nhưng bị chặn nếu spam nhiều
         link_list = _link_tracker[gid][uid]
         link_list.append(now)
         link_list[:] = [t for t in link_list if now - t <= 60]
@@ -3871,6 +3867,10 @@ async def antiraid_on_message(message: discord.Message):
 @bot.listen("on_member_join")
 async def antiraid_on_member_join(member: discord.Member):
     if member.bot or not member.guild:
+        return
+
+    # bỏ qua nếu user/role được boquaanti
+    if antiraid_is_ignored(member):
         return
 
     guild = member.guild
@@ -4013,7 +4013,7 @@ async def cmd_antiraid_info(ctx: commands.Context, member: discord.Member):
         f"• Lần vi phạm gần nhất: "
         f"{datetime.fromtimestamp(v['last_violation']).strftime('%d/%m %H:%M') if v['last_violation'] else 'Chưa có'}\n"
         f"• Mức độ hoạt động: {'Thấp / nằm vùng' if low else 'Thành viên hoạt động'}\n"
-        f"• Tài khoản: {'Đáng ngờ (role theo dõi / mới tạo / không role)' if suspicious else 'Bình thường'}\n"
+        f"• Tài khoản: {'Đáng ngờ' if suspicious else 'Bình thường'}\n"
     )
     if v["reasons"]:
         desc += "\n🧾 Một số vi phạm gần nhất:\n"
@@ -4057,6 +4057,38 @@ async def cmd_antiraid_bo(ctx: commands.Context, member: discord.Member):
     await ctx.reply(f"✅ Đã bỏ hạn chế {member.mention}.")
 
 
+# =============== LỆNH BỎ QUA ANTI-RAID ===============
+
+@bot.command(name="boquaanti")
+@commands.has_permissions(manage_guild=True)
+async def cmd_boquaanti(ctx: commands.Context, target: discord.Member | discord.Role):
+    """
+    /boquaanti @user hoặc @role
+    → Bỏ user/role này khỏi toàn bộ Anti-Raid (spam, link, hạn chế).
+    """
+    if isinstance(target, discord.Member):
+        ANTI_IGNORE_USERS.add(target.id)
+        await ctx.reply(f"✅ Đã **bỏ qua Anti-Raid** cho {target.mention}")
+    else:
+        ANTI_IGNORE_ROLES.add(target.id)
+        await ctx.reply(f"✅ Đã **bỏ qua Anti-Raid** cho role **{target.name}**")
+
+
+@bot.command(name="xoaboqua")
+@commands.has_permissions(manage_guild=True)
+async def cmd_xoaboqua(ctx: commands.Context, target: discord.Member | discord.Role):
+    """
+    /xoaboqua @user hoặc @role
+    → Gỡ user/role khỏi danh sách bỏ qua Anti-Raid.
+    """
+    if isinstance(target, discord.Member):
+        ANTI_IGNORE_USERS.discard(target.id)
+        await ctx.reply(f"♻️ Đã gỡ {target.mention} khỏi danh sách bỏ qua Anti-Raid.")
+    else:
+        ANTI_IGNORE_ROLES.discard(target.id)
+        await ctx.reply(f"♻️ Đã gỡ role **{target.name}** khỏi danh sách bỏ qua Anti-Raid.")
+
+
 # =============== /xoalichsu – XÓA LỊCH SỬ TIN NHẮN 1 THÀNH VIÊN ===============
 
 @bot.command(name="xoalichsu")
@@ -4093,6 +4125,8 @@ async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, max_per_c
         f"trong các kênh văn bản của server.",
         allowed_mentions=discord.AllowedMentions.none()
     )
+
+
 
 
 
