@@ -4182,37 +4182,43 @@ async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, limit_per
 
 # =============== WHITELIST LINK ===============
 
-DISCORD_SERVER_ID = "1413785749215510680"
-
 WHITELIST_DOMAINS = [
     "facebook.com",
     "fb.com",
     "m.facebook.com",
     "tiktok.com",
     "docs.google.com",
-    "nghichthuyhan.vnggames.com",
+]
+
+WHITELIST_FULL_DOMAINS = [
+    "nghichthuyhan.vnggames.com",  # cho phép mọi link từ domain này
+    
 ]
 
 def is_whitelisted_link(url: str) -> bool:
     url = url.lower()
 
-    # Cho phép Facebook
+    # Cho phép các domain whitelist bình thường
     for domain in WHITELIST_DOMAINS:
         if domain in url:
             return True
 
+    # Cho phép toàn bộ domain nghichthuyhan.vnggames.com
+    for dom in WHITELIST_FULL_DOMAINS:
+        if dom in url:   # kiểm tra domain nằm trong URL
+            return True
+
     # Cho phép link discord nội bộ
-    # Ví dụ: https://discord.com/channels/1413785749215510680/xxxx/yyyy
     if "discord.com/channels/" in url:
         try:
-            parts = url.split("/")
-            gid = parts[4]
+            gid = url.split("/")[4]
             if gid == DISCORD_SERVER_ID:
                 return True
         except:
             pass
 
     return False
+
 
 
 
