@@ -3975,6 +3975,177 @@ async def antiraid_alert_auto_lockdown(guild: discord.Guild):
 # =============== ANTI-RAID ALERT WHEN AUTO LOCKDOWN ===============
 
 
+# =============== CẤU HÌNH ANTI-LINK ===============
+
+import re
+from datetime import timedelta
+import discord
+from discord.ext import commands
+
+# Các role ĐƯỢC PHÉP gửi link (admin, mod...)
+ANTILINK_WHITELIST_ROLE_IDS = [
+    1414703559429062676,  # ví dụ: role Admin
+    1413844407740006411,  # ví dụ: role Mod
+    1414231129871093911,  # ví dụ: role Mod
+    
+]
+
+# Regex bắt link nói chung + link invite Discord
+ANTILINK_REGEX = re.compile(
+    r"(https?://\S+|discord\.gg/\S+|discord\.com/invite/\S+)",
+    re.IGNORECASE
+)
+
+def antilink_has_link(text: str) -> bool:
+    if not text:
+        return False
+    return bool(ANTILINK_REGEX.search(text))
+# =============== ANTI-LINK – CHẶN BOT VÀ USER KHÔNG ROLE ===============
+
+@bot.listen("on_message")
+async def antiraid_antilink_on_message(message: discord.Message):
+    """
+    - BOT gửi link  -> xoá tin + cố gắng kick + log
+    - User KHÔNG có role whitelist gửi link -> xoá tin + timeout 10 phút + log
+    - User có role whitelist -> được phép gửi link
+    """
+
+    # Bỏ qua DM, system message, v.v.
+    if message.guild is None:
+        return
+
+    # Không xử lý nếu không có link
+    if not antilink_has_link(message.content):
+        return
+
+    guild = message.guild
+
+    # ===== 1) BOT GỬI LINK -> XOÁ + KICK + LOG =====
+    if message.author.bot or message.webhook_id is not None:
+        # Xóa tin nhắn
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+        # Thử kick nếu là Member thật sự trong server
+        if isinstance(message.author, discord.Member):
+            try:
+                await guild.kick(
+                    message.author,
+                    reason="Anti-Link: Bot gửi link bị chặn"
+                )
+            except Exception:
+                # có thể không đủ quyền kick, bỏ qua
+                pass
+
+        # Log lại
+        try:
+            await antiraid_log(
+                guild,
+                f"🤖 Anti-Link: Đã xoá tin và cố gắng kick bot **{message.author}** vì gửi link: {message.content[:150]}"
+            )
+        except Exception:
+            pass
+
+        return
+
+    # ===== 2) NGƯỜI DÙNG – CHECK ROLE WHITELIST =====
+    member: discord.Member = message.author  # kiểu cho chắc
+
+    # Có role nào trong whitelist hay không
+    allow_role_ids = set(ANTILINK_WHITELIST_ROLE_IDS)
+    has_whitelist_role = any(r.id in allow_role_ids for r in member.roles)
+
+    # Nếu có role whitelist -> cho qua, không làm gì
+    if has_whitelist_role:
+        return
+
+    # ===== 3) USER KHÔNG ROLE WHITELIST GỬI LINK -> XOÁ + TIMEOUT 10 PHÚT =====
+
+    # Xoá tin nhắn
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    # Timeout 10 phút
+    until = discord.utils.utcnow() + timedelta(minutes=10)
+    try:
+        await member.timeout(
+            until,
+            reason="Anti-Link: Gửi link khi chưa có role được phép"
+        )
+        timeout_info = "đã timeout 10 phút."
+    except Exception:
+        # nếu không đủ quyền timeout
+        timeout_info = "không timeout được (thiếu quyền)."
+
+    # Log lại
+    try:
+        await antiraid_log(
+            guild,
+            (
+                f"🔗 Anti-Link: Đã xoá tin nhắn chứa link của {member.mention} "
+                f"tại kênh {message.channel.mention} và {timeout_info}\n"
+                f"Nội dung: {message.content[:200]}"
+            )
+        )
+    except Exception:
+        pass
+# =============== LỆNH XÓA LỊCH SỬ MỘT THÀNH VIÊN ===============
+
+@bot.command(name="xoalichsu")
+@commands.has_permissions(manage_messages=True)
+async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, limit_per_channel: int = 2000):
+    """
+    /xoalichsu @user [limit_per_channel]
+    - Quét toàn bộ kênh text trong server
+    - Xóa tối đa limit_per_channel tin nhắn của user đó trên mỗi kênh
+    - Chỉ dùng được với người có quyền manage_messages
+    """
+
+    await ctx.reply(
+        f"⏳ Đang xoá lịch sử tin nhắn của {member.mention} (tối đa {limit_per_channel} tin mỗi kênh)...",
+        mention_author=False
+    )
+
+    total_deleted = 0
+    for channel in ctx.guild.text_channels:
+        # Bỏ qua kênh mà bot không có quyền
+        perms = channel.permissions_for(ctx.guild.me)
+        if not perms.read_message_history or not perms.manage_messages:
+            continue
+
+        def _check(m: discord.Message) -> bool:
+            return m.author.id == member.id
+
+        try:
+            deleted = await channel.purge(
+                limit=limit_per_channel,
+                check=_check,
+                bulk=True
+            )
+            total_deleted += len(deleted)
+        except Exception:
+            # có thể không đủ quyền / kênh quá lớn, bỏ qua
+            continue
+
+    await ctx.send(
+        f"✅ Đã xoá khoảng **{total_deleted}** tin nhắn của {member.mention} trong toàn server "
+        f"(tối đa {limit_per_channel} tin mỗi kênh, các tin >14 ngày có thể không xoá được)."
+    )
+
+    # log lại cho Anti-Raid
+    try:
+        await antiraid_log(
+            ctx.guild,
+            f"🧹 Anti-Link: {ctx.author.mention} đã dùng /xoalichsu để xoá ~{total_deleted} tin nhắn của {member.mention}."
+        )
+    except Exception:
+        pass
+
+
 
 
 
