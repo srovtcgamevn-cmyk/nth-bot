@@ -3589,13 +3589,41 @@ async def antiraid_auto_slowmode():
 async def antiraid_on_message(message: discord.Message):
     global _antiraid_slowmode_started
 
-    if not message.guild or message.author.bot:
+    # Bỏ qua DM
+    if not message.guild:
         return
 
     guild = message.guild
     member = message.author
     gid = str(guild.id)
+    now = time.time()
 
+    # =========== TRƯỜNG HỢP BOT GỬI LINK ===========
+    if member.bot:
+        content = message.content or ""
+        # bắt mọi link
+        urls = re.findall(r"(https?://\S+)", content)
+        if urls:
+            # Xoá tin nhắn
+            try:
+                await message.delete()
+            except:
+                pass
+
+            # Không tự kick chính mình
+            if member != guild.me:
+                try:
+                    await guild.kick(member, reason="Anti-Raid: BOT gửi link bị chặn")
+                except:
+                    pass
+
+            await antiraid_log(
+                guild,
+                f"⛔ Anti-Raid: Bot {member} gửi link → xoá tin + kick (nếu có quyền)."
+            )
+        return  # Không xử lý gì thêm cho bot
+
+    # =========== TỪ ĐÂY TRỞ XUỐNG: CHỈ XỬ LÝ THÀNH VIÊN THƯỜNG ===========
     # start loop slowmode 1 lần
     if not _antiraid_slowmode_started:
         try:
@@ -3606,14 +3634,14 @@ async def antiraid_on_message(message: discord.Message):
 
     st = antiraid_get_state(guild)
     mode = st["mode"]
-    now = time.time()
 
-    # theo dõi flood
+    # theo dõi flood toàn server
     _msg_timestamps[gid].append(now)
 
     if mode == ANTIRAID_MODE_OFF:
         return
 
+    # Bỏ qua staff (admin, manage_guild, manage_messages)
     if antiraid_is_staff(member):
         return
 
@@ -3641,7 +3669,7 @@ async def antiraid_on_message(message: discord.Message):
         _spam_tracker[gid][uid].clear()
         return
 
-    # ===== Spam tag / @everyone =====
+    # ===== Spam @everyone / @here =====
     if message.mention_everyone:
         await antiraid_handle_violation(
             message,
@@ -3651,6 +3679,7 @@ async def antiraid_on_message(message: discord.Message):
         )
         return
 
+    # ===== Spam tag user =====
     if message.mentions:
         ment_list = _mention_tracker[gid][uid]
         ment_list.append(now)
@@ -3667,8 +3696,8 @@ async def antiraid_on_message(message: discord.Message):
             return
 
     # ===== Link & Spam link =====
-    has_link = ("http://" in content) or ("https://" in content) or ("https://" in content) or ("discord.gg/" in content)
-    if has_link:
+    urls = re.findall(r"(https?://\S+)", content)
+    if urls:
         # 1) Acc mới / ít hoạt động / đáng ngờ -> không cho gửi link
         if antiraid_is_suspicious_account(member) or antiraid_is_low_activity(member):
             await antiraid_handle_violation(
@@ -3679,16 +3708,25 @@ async def antiraid_on_message(message: discord.Message):
             )
             return
 
-        # 2) Theo dõi spam link cho acc bình thường
+        # 2) Lọc domain: chỉ cho phép các link trong danh sách
+        for u in urls:
+            if not antiraid_is_allowed_link(u, guild):
+                await antiraid_handle_violation(
+                    message,
+                    member,
+                    reason=f"gửi link không được phép: {u}",
+                    severity=2 if mode == ANTIRAID_MODE_GUARD else 3,
+                )
+                return
+
+        # 3) Spam link (chỉ tính các link đã qua bộ lọc domain)
         link_list = _link_tracker[gid][uid]
         link_list.append(now)
-
-        # giữ lại trong 60s gần nhất
+        # giữ trong 60s
         link_list[:] = [t for t in link_list if now - t <= 60]
 
-        # đếm link trong 10s & 60s
         short_links = [t for t in link_list if now - t <= 10]
-        long_links = link_list  # đã filter <= 60s
+        long_links = link_list
 
         # >3 link/10s HOẶC >3 link/60s -> coi là spam
         if len(short_links) > 3 or len(long_links) > 3:
@@ -3701,7 +3739,6 @@ async def antiraid_on_message(message: discord.Message):
             _link_tracker[gid][uid].clear()
             return
 
-
     # ===== Spam emoji =====
     emoji_count = antiraid_extract_emojis(content)
     if emoji_count >= ANTIRAID_CONFIG["EMOJI_PER_MSG"]:
@@ -3712,6 +3749,7 @@ async def antiraid_on_message(message: discord.Message):
             severity=1
         )
         return
+
 
 
 @bot.listen("on_member_join")
@@ -3757,37 +3795,7 @@ async def antiraid_on_member_join(member: discord.Member):
 
 
 
-    # ===== BUFFMEM BOT: kiểm tra nếu được mời bởi bot =====
-    try:
-        inviter = None
-        async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.bot_add):
-            if entry.target.id == member.id:
-                inviter = entry.user
-                break
-    except:
-        inviter = None
-
-    if inviter and inviter.bot:
-        data = load_json(BOTBUFF_FILE, {"guilds": {}})
-        g = data["guilds"].get(str(member.guild.id), {})
-        roles = g.get(str(inviter.id))
-
-        if roles:
-            # auto đổi tên
-            newname = generate_nickname(member.guild.id)
-            try:
-                await member.edit(nick=newname)
-            except:
-                pass
-
-            # auto cấp role
-            for rid in roles:
-                r = member.guild.get_role(rid)
-                if r:
-                    try:
-                        await member.add_roles(r)
-                    except:
-                        pass
+   
 
 
 
@@ -4151,75 +4159,136 @@ async def antiraid_antilink_on_message(message: discord.Message):
         pass
 
 
-# =============== /xoalichsu – XOÁ LỊCH SỬ TIN NHẮN 1 THÀNH VIÊN ===============
-
+# =============== /xoalichsu – XÓA LỊCH SỬ TIN NHẮN 1 THÀNH VIÊN ===============
 @bot.command(name="xoalichsu")
 @commands.has_permissions(manage_messages=True)
-async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, limit_per_channel: int = 1000):
+async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, max_per_channel: int = 1000):
     """
-    /xoalichsu @user [limit_per_channel]
-    Xoá tin nhắn của 1 thành viên trên toàn bộ kênh text (tối đa limit_per_channel mỗi kênh).
-    Lưu ý: Discord chỉ cho xoá tin nhắn trong ~14 ngày gần nhất.
+    Xóa lịch sử tin nhắn của 1 người trong TOÀN BỘ kênh text của server.
+    - max_per_channel: tối đa số tin duyệt ở mỗi kênh (mặc định 1000).
     """
+    await ctx.reply(
+        f"🧹 Đang quét và xoá tin nhắn của {member.mention} (tối đa {max_per_channel} tin/kênh)...",
+        delete_after=5
+    )
 
     total_deleted = 0
 
     for ch in ctx.guild.text_channels:
         try:
-            def check(m: discord.Message):
-                return m.author.id == member.id
+            def _check(m: discord.Message, target_id=member.id):
+                return m.author.id == target_id
 
-            deleted = await ch.purge(limit=limit_per_channel, check=check, bulk=True)
-            total_deleted += len(deleted)
-        except Exception:
-            # bỏ qua kênh không có quyền / lỗi
+            deleted = await ch.purge(
+                limit=max_per_channel,
+                check=_check,
+                bulk=True
+            )
+            if isinstance(deleted, list):
+                total_deleted += len(deleted)
+        except:
+            # Không có quyền ở kênh nào đó thì bỏ qua
             continue
 
-    await ctx.reply(
-        f"✅ Đã xoá tổng cộng **{total_deleted}** tin nhắn của {member.mention} "
-        f"(tối đa {limit_per_channel} tin/kênh, tin quá cũ Discord có thể không cho xoá)."
+    await ctx.send(
+        f"✅ Đã xoá khoảng **{total_deleted}** tin nhắn của {member.mention} "
+        f"trong các kênh văn bản của server.",
+        allowed_mentions=discord.AllowedMentions.none()
     )
+
 
 # =============== WHITELIST LINK ===============
 
-WHITELIST_DOMAINS = [
+# Cho phép các domain link an toàn
+ALLOWED_LINK_DOMAINS = [
     "facebook.com",
     "fb.com",
-    "m.facebook.com",
+    "fb.me",
     "tiktok.com",
     "docs.google.com",
+    "nghichthuyhan.vnggames.com",
 ]
 
-WHITELIST_FULL_DOMAINS = [
-    "nghichthuyhan.vnggames.com",  # cho phép mọi link từ domain này
-    
-]
+def antiraid_is_internal_discord_link(url: str, guild: discord.Guild) -> bool:
+    """
+    Chỉ cho phép link Discord NỘI BỘ:
+    - Link dạng https://discord.com/channels/<guild_id>/...
+    - Link invite có code thuộc chính guild này (dựa vào invite_cache)
+    """
+    u = url.lower()
 
-def is_whitelisted_link(url: str) -> bool:
-    url = url.lower()
+    # Link kênh/tin nhắn nội bộ
+    m = re.search(r"discord\.com/channels/(\d+)/", u)
+    if m and m.group(1) == str(guild.id):"1413785749215510680"
+        return True
 
-    # Cho phép các domain whitelist bình thường
-    for domain in WHITELIST_DOMAINS:
-        if domain in url:
+    # Link invite nội bộ (discord.gg / discord.com/invite)
+    m = re.search(r"(?:discord\.gg/|discord\.com/invite/)([a-zA-Z0-9]+)", u)
+    if m:
+        code = m.group(1)
+        guild_invites = invite_cache.get(guild.id, {})
+        if code in guild_invites:
             return True
-
-    # Cho phép toàn bộ domain nghichthuyhan.vnggames.com
-    for dom in WHITELIST_FULL_DOMAINS:
-        if dom in url:   # kiểm tra domain nằm trong URL
-            return True
-
-    # Cho phép link discord nội bộ
-    if "discord.com/channels/" in url:
-        try:
-            gid = url.split("/")[4]
-            if gid == DISCORD_SERVER_ID:
-                return True
-        except:
-            pass
 
     return False
 
 
+def antiraid_is_allowed_link(url: str, guild: discord.Guild) -> bool:
+    """
+    Luật link:
+    - Cho phép: Discord nội bộ, Facebook, TikTok, Google Docs, nghichthuyhan.vnggames.com
+    - Còn lại: CẤM
+    """
+    u = url.lower()
+
+    # 1) Discord nội bộ server
+    if "discord.com/channels/" in u or "discord.gg/" in u or "discord.com/invite/" in u:
+        if antiraid_is_internal_discord_link(u, guild):
+            return True
+        else:
+            return False
+
+    # 2) Domain whitelis
+    for dom in ALLOWED_LINK_DOMAINS:
+        if dom in u:
+            return True
+
+    # 3) Mặc định: KHÔNG CHO
+    return False
+
+# =============== WHITELIST LINK ===============
+
+ # ===== BUFFMEM BOT: kiểm tra nếu được mời bởi bot =====
+    try:
+        inviter = None
+        async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.bot_add):
+            if entry.target.id == member.id:
+                inviter = entry.user
+                break
+    except:
+        inviter = None
+
+    if inviter and inviter.bot:
+        data = load_json(BOTBUFF_FILE, {"guilds": {}})
+        g = data["guilds"].get(str(member.guild.id), {})
+        roles = g.get(str(inviter.id))
+
+        if roles:
+            # auto đổi tên
+            newname = generate_nickname(member.guild.id)
+            try:
+                await member.edit(nick=newname)
+            except:
+                pass
+
+            # auto cấp role
+            for rid in roles:
+                r = member.guild.get_role(rid)
+                if r:
+                    try:
+                        await member.add_roles(r)
+                    except:
+                        pass
 
 
 
