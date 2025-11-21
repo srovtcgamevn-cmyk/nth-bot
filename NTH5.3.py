@@ -1748,7 +1748,10 @@ class BXHKimLanView(discord.ui.View):
             if total_att_days > 0 and full_days == total_att_days:
                 # chỉ cộng thưởng sau khi tuần kết thúc (đã qua CN)
                 now_gmt7 = datetime.utcnow() + timedelta(hours=7)
-                week_finished = now_gmt7.date() > week_end.date()
+                week_finished = now_gmt7.date() > week_end
+
+                
+                
                 if week_finished:
                     week_bonus = 10.0
                     total_score += week_bonus
@@ -1984,7 +1987,8 @@ class BXHKimLanTeamView(discord.ui.View):
         week_bonus = 0.0
         if total_att_days > 0 and full_days == total_att_days:
             now_gmt7 = datetime.utcnow() + timedelta(hours=7)
-            week_finished = now_gmt7.date() > week_end.date()
+            week_finished = now_gmt7.date() > week_end
+
             if week_finished:
                 week_bonus = 10.0
                 total_score_week += week_bonus
