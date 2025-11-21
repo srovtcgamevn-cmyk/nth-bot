@@ -4005,21 +4005,20 @@ def antilink_has_link(text: str) -> bool:
 async def antiraid_antilink_on_message(message: discord.Message):
     """
     - BOT gửi link  -> xoá tin + cố gắng kick + log
-    - User KHÔNG có role whitelist gửi link -> xoá tin + timeout 10 phút + log
-    - User có role whitelist -> được phép gửi link
+    - Người dùng thường: cho qua, để antiraid_on_message xử lý spam (link nhiều, flood...).
     """
 
     # Bỏ qua DM, system message, v.v.
     if message.guild is None:
         return
 
-    # Không xử lý nếu không có link
+    # Không có link thì bỏ qua luôn
     if not antilink_has_link(message.content):
         return
 
     guild = message.guild
 
-    # ===== 1) BOT GỬI LINK -> XOÁ + KICK + LOG =====
+    # ===== 1) BOT / WEBHOOK GỬI LINK -> XOÁ + KICK + LOG =====
     if message.author.bot or message.webhook_id is not None:
         # Xóa tin nhắn
         try:
@@ -4048,6 +4047,14 @@ async def antiraid_antilink_on_message(message: discord.Message):
             pass
 
         return
+
+    # ===== 2) NGƯỜI DÙNG THƯỜNG -> CHO HỆ THỐNG ANTI-SPAM CŨ XỬ LÝ =====
+    # Không làm gì ở đây. antiraid_on_message (hệ thống spam cũ) sẽ kiểm tra:
+    # - Spam text
+    # - Spam link (3 link / 20s)
+    # - Spam emoji, tag...
+    return
+
 
     # ===== 2) NGƯỜI DÙNG – CHECK ROLE WHITELIST =====
     member: discord.Member = message.author  # kiểu cho chắc
