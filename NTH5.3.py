@@ -4026,68 +4026,71 @@ def antilink_has_link(text: str) -> bool:
 
 @bot.listen("on_message")
 async def antiraid_antilink_on_message(message: discord.Message):
-    """
-    - BOT / webhook gửi link  -> xoá tin + cố gắng ban/kick + log.
-    - Người dùng thường: vẫn được gửi link, hệ thống Anti-Raid chính sẽ xử lý nếu spam.
-    """
-
-    # Bỏ qua DM, system message, v.v.
     if message.guild is None:
         return
 
     content = message.content or ""
-    if not antilink_has_link(content):
-        return
+    urls = re.findall(r"https?://\S+", content)
+
+    if not urls:
+        return  # không có link thì bỏ qua
 
     guild = message.guild
+    author = message.author
 
-    # ===== 1) BOT / WEBHOOK GỬI LINK -> XOÁ + BAN/KICK + LOG =====
-    if message.author.bot or message.webhook_id is not None:
-        # Xoá tin nhắn
-        try:
-            await message.delete()
-        except Exception:
-            pass
+    # Kiểm tra từng link trong tin nhắn
+    for url in urls:
 
-        # Cố gắng BAN trước, nếu không được thì KICK
-        if isinstance(message.author, discord.Member):
-            # thử BAN
+        # Nếu link hợp lệ → cho gửi
+        if is_whitelisted_link(url):
+            continue
+
+        # ======================
+        # 1) BOT / WEBHOOK gửi link bị chặn
+        # ======================
+        if author.bot or message.webhook_id is not None:
             try:
-                await guild.ban(
-                    message.author,
-                    reason="Anti-Link: Bot gửi link bị cấm",
-                    delete_message_days=1
-                )
-                await antiraid_log(
-                    guild,
-                    f"⛔ Anti-Link: đã **BAN** bot {message.author} vì gửi link."
-                )
+                await message.delete()
+            except:
+                pass
+
+            # cố ban → nếu fail thì kick
+            try:
+                await guild.ban(author, reason="Bot gửi link bị cấm", delete_message_days=1)
+                await antiraid_log(guild, f"⛔ Bot {author} bị BAN vì gửi link cấm: {url}")
                 return
-            except Exception:
-                # nếu ban fail (không đủ quyền) thì thử KICK
+            except:
                 try:
-                    await guild.kick(
-                        message.author,
-                        reason="Anti-Link: Bot gửi link bị kick"
-                    )
-                    await antiraid_log(
-                        guild,
-                        f"⛔ Anti-Link: đã **KICK** bot {message.author} vì gửi link."
-                    )
+                    await guild.kick(author, reason="Bot gửi link bị cấm")
+                    await antiraid_log(guild, f"⛔ Bot {author} bị KICK vì gửi link cấm: {url}")
                     return
-                except Exception:
+                except:
                     pass
 
-        # nếu không ban/kick được thì ít nhất vẫn log lại
+            await antiraid_log(guild, f"⚠️ Không thể xử lý bot {author} gửi link cấm.")
+            return
+
+        # ======================
+        # 2) USER gửi link không hợp lệ → xoá + log + phạt Anti-Raid
+        # ======================
         try:
-            await antiraid_log(
-                guild,
-                f"🤖 Anti-Link: đã xoá link do bot/webhook **{message.author}** gửi: {content[:200]}"
-            )
-        except Exception:
+            await message.delete()
+        except:
             pass
 
+        await antiraid_handle_violation(
+            message,
+            author,
+            reason=f"Gửi link bị cấm: {url}",
+            severity=2
+        )
+
+        await antiraid_log(
+            guild,
+            f"🚫 ĐÃ XOÁ: {author.mention} gửi link **không nằm trong whitelist**: {url}"
+        )
         return
+
 
     # ===== 2) NGƯỜI DÙNG THƯỜNG -> ĐỂ HỆ THỐNG ANTI-SPAM CHÍNH XỬ LÝ =====
     # Không xoá link của user ở đây – antiraid_on_message đã xử lý:
@@ -4188,8 +4191,6 @@ WHITELIST_DOMAINS = [
     "tiktok.com",
     "docs.google.com",
     "nghichthuyhan.vnggames.com",
-    "https://discord.gg/nghichthuyhan",
-   
 ]
 
 def is_whitelisted_link(url: str) -> bool:
