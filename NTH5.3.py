@@ -3193,6 +3193,9 @@ async def cmd_editgioithieubang(ctx, *, noi_dung: str):
     await msg.edit(embed=embed)
     await ctx.reply("✅ **Đã chỉnh sửa giới thiệu bang thành công!**")
 
+# =====================================================================================
+
+
 
 
 # =============== ANTI RAID NTH 2.0 ===============
@@ -3663,21 +3666,41 @@ async def antiraid_on_message(message: discord.Message):
             _mention_tracker[gid][uid].clear()
             return
 
-    # ===== Spam link =====
-    if "http://" in content or "https://" in content or "discord.gg/" in content:
-        link_list = _link_tracker[gid][uid]
-        link_list.append(now)
-        lw = ANTIRAID_CONFIG["LINK_WINDOW"]
-        link_list[:] = [t for t in link_list if now - t <= lw]
-        if len(link_list) >= ANTIRAID_CONFIG["LINK_PER_WINDOW"]:
+    # ===== Link & Spam link =====
+    has_link = ("http://" in content) or ("https://" in content) or ("https://" in content) or ("discord.gg/" in content)
+    if has_link:
+        # 1) Acc mới / ít hoạt động / đáng ngờ -> không cho gửi link
+        if antiraid_is_suspicious_account(member) or antiraid_is_low_activity(member):
             await antiraid_handle_violation(
                 message,
                 member,
-                reason=f"spam link ({len(link_list)} link/{lw}s)",
-                severity=2
+                reason="acc mới / ít hoạt động gửi link",
+                severity=3 if mode == ANTIRAID_MODE_LOCKDOWN else 2,
+            )
+            return
+
+        # 2) Theo dõi spam link cho acc bình thường
+        link_list = _link_tracker[gid][uid]
+        link_list.append(now)
+
+        # giữ lại trong 60s gần nhất
+        link_list[:] = [t for t in link_list if now - t <= 60]
+
+        # đếm link trong 10s & 60s
+        short_links = [t for t in link_list if now - t <= 10]
+        long_links = link_list  # đã filter <= 60s
+
+        # >3 link/10s HOẶC >3 link/60s -> coi là spam
+        if len(short_links) > 3 or len(long_links) > 3:
+            await antiraid_handle_violation(
+                message,
+                member,
+                reason=f"spam link ({len(short_links)} link/10s, {len(long_links)} link/60s)",
+                severity=3 if mode == ANTIRAID_MODE_LOCKDOWN else 2,
             )
             _link_tracker[gid][uid].clear()
             return
+
 
     # ===== Spam emoji =====
     emoji_count = antiraid_extract_emojis(content)
@@ -3999,54 +4022,78 @@ def antilink_has_link(text: str) -> bool:
     if not text:
         return False
     return bool(ANTILINK_REGEX.search(text))
-# =============== ANTI-LINK – CHẶN BOT VÀ USER KHÔNG ROLE ===============
+# =============== ANTI-LINK – CHẶN LINK TỪ BOT, GIỮ LINK CHO MEMBER ===============
 
 @bot.listen("on_message")
 async def antiraid_antilink_on_message(message: discord.Message):
     """
-    - BOT gửi link  -> xoá tin + cố gắng kick + log
-    - Người dùng thường: cho qua, để antiraid_on_message xử lý spam (link nhiều, flood...).
+    - BOT / webhook gửi link  -> xoá tin + cố gắng ban/kick + log.
+    - Người dùng thường: vẫn được gửi link, hệ thống Anti-Raid chính sẽ xử lý nếu spam.
     """
 
     # Bỏ qua DM, system message, v.v.
     if message.guild is None:
         return
 
-    # Không có link thì bỏ qua luôn
-    if not antilink_has_link(message.content):
+    content = message.content or ""
+    if not antilink_has_link(content):
         return
 
     guild = message.guild
 
-    # ===== 1) BOT / WEBHOOK GỬI LINK -> XOÁ + KICK + LOG =====
+    # ===== 1) BOT / WEBHOOK GỬI LINK -> XOÁ + BAN/KICK + LOG =====
     if message.author.bot or message.webhook_id is not None:
-        # Xóa tin nhắn
+        # Xoá tin nhắn
         try:
             await message.delete()
         except Exception:
             pass
 
-        # Thử kick nếu là Member thật sự trong server
+        # Cố gắng BAN trước, nếu không được thì KICK
         if isinstance(message.author, discord.Member):
+            # thử BAN
             try:
-                await guild.kick(
+                await guild.ban(
                     message.author,
-                    reason="Anti-Link: Bot gửi link bị chặn"
+                    reason="Anti-Link: Bot gửi link bị cấm",
+                    delete_message_days=1
                 )
+                await antiraid_log(
+                    guild,
+                    f"⛔ Anti-Link: đã **BAN** bot {message.author} vì gửi link."
+                )
+                return
             except Exception:
-                # có thể không đủ quyền kick, bỏ qua
-                pass
+                # nếu ban fail (không đủ quyền) thì thử KICK
+                try:
+                    await guild.kick(
+                        message.author,
+                        reason="Anti-Link: Bot gửi link bị kick"
+                    )
+                    await antiraid_log(
+                        guild,
+                        f"⛔ Anti-Link: đã **KICK** bot {message.author} vì gửi link."
+                    )
+                    return
+                except Exception:
+                    pass
 
-        # Log lại
+        # nếu không ban/kick được thì ít nhất vẫn log lại
         try:
             await antiraid_log(
                 guild,
-                f"🤖 Anti-Link: Đã xoá tin và cố gắng kick bot **{message.author}** vì gửi link: {message.content[:150]}"
+                f"🤖 Anti-Link: đã xoá link do bot/webhook **{message.author}** gửi: {content[:200]}"
             )
         except Exception:
             pass
 
         return
+
+    # ===== 2) NGƯỜI DÙNG THƯỜNG -> ĐỂ HỆ THỐNG ANTI-SPAM CHÍNH XỬ LÝ =====
+    # Không xoá link của user ở đây – antiraid_on_message đã xử lý:
+    #  - Acc đáng ngờ gửi link -> phạt luôn
+    #  - Spam link (>3/10s hoặc >3/60s) -> phạt
+    return
 
     # ===== 2) NGƯỜI DÙNG THƯỜNG -> CHO HỆ THỐNG ANTI-SPAM CŨ XỬ LÝ =====
     # Không làm gì ở đây. antiraid_on_message (hệ thống spam cũ) sẽ kiểm tra:
@@ -4099,59 +4146,36 @@ async def antiraid_antilink_on_message(message: discord.Message):
         )
     except Exception:
         pass
-# =============== LỆNH XÓA LỊCH SỬ MỘT THÀNH VIÊN ===============
+
+
+# =============== /xoalichsu – XOÁ LỊCH SỬ TIN NHẮN 1 THÀNH VIÊN ===============
 
 @bot.command(name="xoalichsu")
 @commands.has_permissions(manage_messages=True)
-async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, limit_per_channel: int = 2000):
+async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, limit_per_channel: int = 1000):
     """
     /xoalichsu @user [limit_per_channel]
-    - Quét toàn bộ kênh text trong server
-    - Xóa tối đa limit_per_channel tin nhắn của user đó trên mỗi kênh
-    - Chỉ dùng được với người có quyền manage_messages
+    Xoá tin nhắn của 1 thành viên trên toàn bộ kênh text (tối đa limit_per_channel mỗi kênh).
+    Lưu ý: Discord chỉ cho xoá tin nhắn trong ~14 ngày gần nhất.
     """
 
-    await ctx.reply(
-        f"⏳ Đang xoá lịch sử tin nhắn của {member.mention} (tối đa {limit_per_channel} tin mỗi kênh)...",
-        mention_author=False
-    )
-
     total_deleted = 0
-    for channel in ctx.guild.text_channels:
-        # Bỏ qua kênh mà bot không có quyền
-        perms = channel.permissions_for(ctx.guild.me)
-        if not perms.read_message_history or not perms.manage_messages:
-            continue
 
-        def _check(m: discord.Message) -> bool:
-            return m.author.id == member.id
-
+    for ch in ctx.guild.text_channels:
         try:
-            deleted = await channel.purge(
-                limit=limit_per_channel,
-                check=_check,
-                bulk=True
-            )
+            def check(m: discord.Message):
+                return m.author.id == member.id
+
+            deleted = await ch.purge(limit=limit_per_channel, check=check, bulk=True)
             total_deleted += len(deleted)
         except Exception:
-            # có thể không đủ quyền / kênh quá lớn, bỏ qua
+            # bỏ qua kênh không có quyền / lỗi
             continue
 
-    await ctx.send(
-        f"✅ Đã xoá khoảng **{total_deleted}** tin nhắn của {member.mention} trong toàn server "
-        f"(tối đa {limit_per_channel} tin mỗi kênh, các tin >14 ngày có thể không xoá được)."
+    await ctx.reply(
+        f"✅ Đã xoá tổng cộng **{total_deleted}** tin nhắn của {member.mention} "
+        f"(tối đa {limit_per_channel} tin/kênh, tin quá cũ Discord có thể không cho xoá)."
     )
-
-    # log lại cho Anti-Raid
-    try:
-        await antiraid_log(
-            ctx.guild,
-            f"🧹 Anti-Link: {ctx.author.mention} đã dùng /xoalichsu để xoá ~{total_deleted} tin nhắn của {member.mention}."
-        )
-    except Exception:
-        pass
-
-
 
 
 
