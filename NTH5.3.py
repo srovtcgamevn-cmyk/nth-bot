@@ -4153,6 +4153,50 @@ async def cmd_buffmembot(ctx, bot_acc: discord.Member, *roles: discord.Role):
 
 
 
+@bot.listen("on_member_join")
+async def buffmembot_on_join(member: discord.Member):
+    if member.bot:
+        return
+
+    guild = member.guild
+    data = load_json(BOTBUFF_FILE, {"guilds": {}})
+    g = data["guilds"].get(str(guild.id), {})
+
+    # tìm bot nào mời
+    inviter = None
+    try:
+        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.bot_add):
+            if entry.target.id == member.id:
+                inviter = entry.user
+                break
+    except:
+        pass
+
+    if not inviter or not inviter.bot:
+        return
+
+    roles = g.get(str(inviter.id))
+    if not roles:
+        return
+
+    # đổi tên giống buffmem
+    new_name = generate_nickname(guild.id)
+    try:
+        await member.edit(nick=new_name, reason="buff membot")
+    except:
+        pass
+
+    # cấp role
+    for rid in roles:
+        r = guild.get_role(rid)
+        if r:
+            try:
+                await member.add_roles(r)
+            except:
+                pass
+
+
+
 # ================== CHẠY BOT ==================
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
