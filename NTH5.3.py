@@ -1713,10 +1713,28 @@ class BXHKimLanView(discord.ui.View):
                 day_rec = team_att.get(ds, {})
 
                 raw_day_score = team_score_by_day.get(ds, 0)
+
+                # ===== điểm quỹ từ thoại / members =====
+                voice_quy = 0.0
                 if isinstance(raw_day_score, dict):
-                    voice_quy = float(raw_day_score.get("score", 0.0))
+                    # tổng quỹ ngày chung (nếu có)
+                    try:
+                        voice_quy += float(raw_day_score.get("score", 0.0))
+                    except Exception:
+                        pass
+
+                    # cộng thêm từng member (mem thoại, event, v.v.)
+                    members = raw_day_score.get("members", {})
+                    for val in members.values():
+                        try:
+                            voice_quy += float(val or 0.0)
+                        except Exception:
+                            continue
                 else:
-                    voice_quy = float(raw_day_score or 0.0)
+                    try:
+                        voice_quy = float(raw_day_score or 0.0)
+                    except Exception:
+                        voice_quy = 0.0
 
                 checked = len(day_rec.get("checked", [])) if day_rec else 0
                 total = day_rec.get("total_at_day", 0) if day_rec else 0
@@ -1942,10 +1960,27 @@ class BXHKimLanTeamView(discord.ui.View):
             day_rec = team_att.get(ds, {})
 
             raw_day_score = team_score_by_day.get(ds, 0)
+
+            voice_quy = 0.0
             if isinstance(raw_day_score, dict):
-                voice_quy = float(raw_day_score.get("score", 0.0))
+                # tổng quỹ ngày chung (nếu có)
+                try:
+                    voice_quy += float(raw_day_score.get("score", 0.0))
+                except Exception:
+                    pass
+
+                # cộng quỹ từng member
+                members = raw_day_score.get("members", {})
+                for val in members.values():
+                    try:
+                        voice_quy += float(val or 0.0)
+                    except Exception:
+                        continue
             else:
-                voice_quy = float(raw_day_score or 0.0)
+                try:
+                    voice_quy = float(raw_day_score or 0.0)
+                except Exception:
+                    voice_quy = 0.0
 
             checked = len(day_rec.get("checked", [])) if day_rec else 0
             total = day_rec.get("total_at_day", 0) if day_rec else 0
