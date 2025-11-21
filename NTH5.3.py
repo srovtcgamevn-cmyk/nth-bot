@@ -4208,6 +4208,7 @@ ALLOWED_LINK_DOMAINS = [
     "docs.google.com",
     "nghichthuyhan.vnggames.com",
 ]
+DISCORD_SERVER_ID = "1413785749215510680"
 
 def antiraid_is_internal_discord_link(url: str, guild: discord.Guild) -> bool:
     """
@@ -4219,7 +4220,7 @@ def antiraid_is_internal_discord_link(url: str, guild: discord.Guild) -> bool:
 
     # Link kênh/tin nhắn nội bộ
     m = re.search(r"discord\.com/channels/(\d+)/", u)
-    if m and m.group(1) == str(guild.id):"1413785749215510680"
+    if m and m.group(1) == str(guild.id):
         return True
 
     # Link invite nội bộ (discord.gg / discord.com/invite)
