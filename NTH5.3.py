@@ -3986,7 +3986,6 @@ from discord.ext import commands
 ANTILINK_WHITELIST_ROLE_IDS = [
     1414703559429062676,  # ví dụ: role Admin
     1413844407740006411,  # ví dụ: role Mod
-    1414231129871093911,  # ví dụ: role Mod
     
 ]
 
