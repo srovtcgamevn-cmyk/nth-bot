@@ -3625,6 +3625,8 @@ ALLOWED_LINK_DOMAINS = [
     "tiktok.com",
     "docs.google.com",
     "nghichthuyhan.vnggames.com",
+    "https://discord.gg/nghichthuyhan",
+
 ]
 
 def antiraid_is_internal_discord_link(url: str, guild: discord.Guild) -> bool:
