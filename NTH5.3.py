@@ -57,6 +57,13 @@ for p, d in default_files:
         with open(p, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False, indent=2)
 
+BOTBUFF_FILE = os.path.join(DATA_DIR, "buff_membot.json")
+if not os.path.exists(BOTBUFF_FILE):
+    with open(BOTBUFF_FILE, "w", encoding="utf-8") as f:
+        json.dump({"guilds": {}}, f, ensure_ascii=False, indent=2)
+
+
+
 # intents
 intents = discord.Intents.default()
 intents.guilds = True
@@ -4121,6 +4128,28 @@ async def cmd_buffmembot(ctx, bot_member: discord.Member):
     embed = view._build_embed()
     await ctx.reply(embed=embed, view=view)
 
+
+
+@bot.command(name="buffmembot")
+async def cmd_buffmembot(ctx, bot_acc: discord.Member, *roles: discord.Role):
+    if not is_owner(ctx.author.id):
+        await ctx.reply("⛔ Chỉ chủ bot dùng được.")
+        return
+
+    if not bot_acc.bot:
+        await ctx.reply("❌ Tag một **BOT** hợp lệ.")
+        return
+
+    data = load_json(BOTBUFF_FILE, {"guilds": {}})
+    g = data["guilds"].setdefault(str(ctx.guild.id), {})
+    g[str(bot_acc.id)] = [r.id for r in roles]
+    save_json(BOTBUFF_FILE, data)
+
+    await ctx.reply(
+        f"✅ Khi **{bot_acc.mention}** mời thành viên mới:\n"
+        f"• Auto đổi tên\n"
+        f"• Auto cấp role: {', '.join(r.mention for r in roles)}"
+    )
 
 
 
