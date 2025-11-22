@@ -1633,6 +1633,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 
 
+
 # ================== /bxhkimlan ==================
 
 
@@ -1715,15 +1716,10 @@ class BXHKimLanView(discord.ui.View):
                 raw_day_score = team_score_by_day.get(ds, 0)
 
                 # ===== điểm quỹ từ thoại / members =====
+                # QUỸ TEAM = TỔNG TỪNG MEMBER
                 voice_quy = 0.0
                 if isinstance(raw_day_score, dict):
-                    # tổng quỹ ngày chung (nếu có)
-                    try:
-                        voice_quy += float(raw_day_score.get("score", 0.0))
-                    except Exception:
-                        pass
-
-                    # cộng thêm từng member (mem thoại, event, v.v.)
+                    # cộng quỹ từng member (mem thoại, event, v.v.)
                     members = raw_day_score.get("members", {})
                     for val in members.values():
                         try:
@@ -1731,6 +1727,7 @@ class BXHKimLanView(discord.ui.View):
                         except Exception:
                             continue
                 else:
+                    # dữ liệu cũ dạng số: coi như tổng quỹ ngày
                     try:
                         voice_quy = float(raw_day_score or 0.0)
                     except Exception:
@@ -1961,15 +1958,10 @@ class BXHKimLanTeamView(discord.ui.View):
 
             raw_day_score = team_score_by_day.get(ds, 0)
 
+            # QUỸ TEAM NGÀY = TỔNG QUỸ TỪNG MEMBER
             voice_quy = 0.0
             if isinstance(raw_day_score, dict):
-                # tổng quỹ ngày chung (nếu có)
-                try:
-                    voice_quy += float(raw_day_score.get("score", 0.0))
-                except Exception:
-                    pass
-
-                # cộng quỹ từng member
+                # cộng quỹ từng member (mem thoại)
                 members = raw_day_score.get("members", {})
                 for val in members.values():
                     try:
@@ -1977,6 +1969,7 @@ class BXHKimLanTeamView(discord.ui.View):
                     except Exception:
                         continue
             else:
+                # dữ liệu cũ dạng số
                 try:
                     voice_quy = float(raw_day_score or 0.0)
                 except Exception:
@@ -2209,7 +2202,6 @@ async def cmd_bxhkimlan(ctx, role: discord.Role = None):
 
 
 # ================== /bxhkimlan ==================
-
 
 
 
