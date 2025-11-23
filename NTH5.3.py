@@ -1629,7 +1629,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 
 # ================== /topnhiet ==================
-# ================== /bxhkimlan ==================
+
 
 
 
@@ -2215,8 +2215,6 @@ async def cmd_bxhkimlan(ctx, role: discord.Role = None):
 
 
 # ================== /bxhkimlan ==================
-
-
 
 
 
