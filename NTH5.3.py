@@ -1632,6 +1632,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 # ================== /bxhkimlan ==================
 
 
+
 # ================== /bxhkimlan ==================
 
 
@@ -1717,7 +1718,6 @@ class BXHKimLanView(discord.ui.View):
                 # QUỸ TEAM = TỔNG TỪNG MEMBER
                 voice_quy = 0.0
                 if isinstance(raw_day_score, dict):
-                    # cộng quỹ từng member (mem thoại, event, v.v.)
                     members = raw_day_score.get("members", {})
                     for val in members.values():
                         try:
@@ -1760,8 +1760,8 @@ class BXHKimLanView(discord.ui.View):
             # ===== thưởng tuần nếu full tất cả ngày có điểm danh VÀ đã tới thứ 7 =====
             week_bonus = 0.0
             if total_att_days > 0 and full_days == total_att_days:
-                # từ 00:00 thứ 7 trở đi coi như đã "tổng kết tuần"
                 now_gmt7 = datetime.utcnow() + timedelta(hours=7)
+                # từ 00:00 thứ 7 trở đi coi như "tổng kết tuần"
                 # 0=Mon, 5=Sat, 6=Sun
                 week_finished = now_gmt7.weekday() >= 5
 
@@ -1960,7 +1960,6 @@ class BXHKimLanTeamView(discord.ui.View):
             # QUỸ TEAM NGÀY = TỔNG QUỸ TỪNG MEMBER
             voice_quy = 0.0
             if isinstance(raw_day_score, dict):
-                # cộng quỹ từng member (mem thoại)
                 members = raw_day_score.get("members", {})
                 for val in members.values():
                     try:
@@ -2027,7 +2026,7 @@ class BXHKimLanTeamView(discord.ui.View):
 
         desc = "\n".join(lines)
         if len(desc) > 4000:
-            desc = desc[:4000] + "\n...(rút gọn bớt vì quá dài)"
+            desc = desc[:4000} + "\n...(rút gọn bớt vì quá dài)"
 
         embed = discord.Embed(
             title=f"📜 TỔNG KẾT TEAM {role.name}",
@@ -2051,13 +2050,28 @@ class BXHKimLanTeamView(discord.ui.View):
         rid_str = str(self.role_id)
         team_score_by_day = g_score_all.get(rid_str, {})
 
-        # cộng dồn quỹ theo member qua từng ngày
+        # cộng dồn quỹ theo member TRONG TUẦN NÀY (bỏ CN)
         member_quy_total = {}
         for ds, raw in team_score_by_day.items():
+            try:
+                d = datetime.fromisoformat(ds)
+            except Exception:
+                continue
+
+            # lọc theo range tuần hiện tại
+            d_date = d.date()
+            if d_date < week_start.date() or d_date > week_end.date():
+                continue
+            if d.weekday() == 6:  # CN nghỉ
+                continue
+
             if isinstance(raw, dict):
                 members = raw.get("members", {})
                 for uid, val in members.items():
-                    member_quy_total[uid] = float(member_quy_total.get(uid, 0.0)) + float(val or 0.0)
+                    try:
+                        member_quy_total[uid] = float(member_quy_total.get(uid, 0.0)) + float(val or 0.0)
+                    except Exception:
+                        continue
 
         members = [m for m in self.guild.members if role in m.roles]
         rows = []
@@ -2106,7 +2120,7 @@ class BXHKimLanTeamView(discord.ui.View):
                     f"**{idx}. {m.display_name}** — Chat: **{chat_exp}** exp, "
                     f"Thoại: **{voice_exp}** exp, Nhiệt: **{heat:.1f}/10**"
                 )
-                lines.append(f"🔥 Điểm quỹ team từ thành viên: **{member_quy:.1f}**")
+                lines.append(f"🔥 Điểm quỹ team từ thành viên (tuần này): **{member_quy:.1f}**")
                 lines.append("")
 
         desc = "\n".join(lines)
