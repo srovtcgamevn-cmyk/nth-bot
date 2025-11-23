@@ -1632,7 +1632,6 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 
 
-
 # ================== /bxhkimlan ==================
 
 
@@ -2026,7 +2025,7 @@ class BXHKimLanTeamView(discord.ui.View):
 
         desc = "\n".join(lines)
         if len(desc) > 4000:
-            desc = desc[:4000} + "\n...(rút gọn bớt vì quá dài)"
+            desc = desc[:4000] + "\n...(rút gọn bớt vì quá dài)"
 
         embed = discord.Embed(
             title=f"📜 TỔNG KẾT TEAM {role.name}",
