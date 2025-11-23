@@ -1629,9 +1629,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 
 # ================== /topnhiet ==================
-
-
-
+# ================== /bxhkimlan ==================
 
 
 # ================== /bxhkimlan ==================
@@ -1743,7 +1741,7 @@ class BXHKimLanView(discord.ui.View):
                     day_quy_att += 1.0  # có điểm danh
                     total_att_days += 1
                     if checked >= total:
-                        # đủ 100% → x2 +5
+                        # đủ 100% → +1 +5
                         day_quy_att += 1.0
                         day_quy_att += 5.0
                         full_days += 1
@@ -1759,12 +1757,13 @@ class BXHKimLanView(discord.ui.View):
 
                 cur += timedelta(days=1)
 
-            # ===== thưởng tuần nếu full tất cả ngày có điểm danh VÀ tuần đã kết thúc =====
+            # ===== thưởng tuần nếu full tất cả ngày có điểm danh VÀ đã tới thứ 7 =====
             week_bonus = 0.0
             if total_att_days > 0 and full_days == total_att_days:
-                # chỉ cộng thưởng sau khi tuần kết thúc (đã qua CN)
+                # từ 00:00 thứ 7 trở đi coi như đã "tổng kết tuần"
                 now_gmt7 = datetime.utcnow() + timedelta(hours=7)
-                week_finished = now_gmt7.date() > week_end
+                # 0=Mon, 5=Sat, 6=Sun
+                week_finished = now_gmt7.weekday() >= 5
 
                 if week_finished:
                     week_bonus = 10.0
@@ -2010,11 +2009,11 @@ class BXHKimLanTeamView(discord.ui.View):
             )
             cur += timedelta(days=1)
 
-        # ===== thưởng tuần: chỉ khi full & tuần đã kết thúc =====
+        # ===== thưởng tuần: chỉ khi full & đã tới thứ 7 =====
         week_bonus = 0.0
         if total_att_days > 0 and full_days == total_att_days:
             now_gmt7 = datetime.utcnow() + timedelta(hours=7)
-            week_finished = now_gmt7.date() > week_end
+            week_finished = now_gmt7.weekday() >= 5  # từ thứ 7 trở đi
 
             if week_finished:
                 week_bonus = 10.0
@@ -2208,6 +2207,8 @@ async def cmd_bxhkimlan(ctx, role: discord.Role = None):
 
 
 
+
+# ================== /bxhkimlan ==================
 # ================== DM NHẮC ĐIỂM DANH ==================
 @tasks.loop(minutes=10)
 async def auto_diemdanh_dm():
