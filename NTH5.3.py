@@ -1631,7 +1631,6 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 # ================== /topnhiet ==================
 
 
-
 # ================== /bxhkimlan ==================
 
 
@@ -1676,7 +1675,7 @@ class BXHKimLanView(discord.ui.View):
 
         rows = []
 
-        def fmt_day_label(d):
+        def fmt_day_label(d: datetime):
             thu = d.weekday()  # 0 = T2
             thu_map = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
             return thu_map[thu]
@@ -1693,6 +1692,36 @@ class BXHKimLanView(discord.ui.View):
 
             team_att = g_att.get(rid_str, {})
             team_score_by_day = g_score_all.get(rid_str, {})
+
+            # --- gom quỹ thoại theo NGÀY trong tuần này (bỏ CN) ---
+            voice_by_date = {}  # key: datetime.date, value: float
+            for ds, raw in team_score_by_day.items():
+                try:
+                    d = datetime.fromisoformat(ds)
+                except Exception:
+                    continue
+
+                d_date = d.date()
+                if d_date < week_start.date() or d_date > week_end.date():
+                    continue
+                if d.weekday() == 6:  # CN nghỉ
+                    continue
+
+                v = 0.0
+                if isinstance(raw, dict):
+                    members = raw.get("members", {})
+                    for val in members.values():
+                        try:
+                            v += float(val or 0.0)
+                        except Exception:
+                            continue
+                else:
+                    try:
+                        v += float(raw or 0.0)
+                    except Exception:
+                        v = 0.0
+
+                voice_by_date[d_date] = voice_by_date.get(d_date, 0.0) + v
 
             days_ok = []
             days_miss = []
@@ -1711,24 +1740,8 @@ class BXHKimLanView(discord.ui.View):
                 ds = cur.isoformat()
                 day_rec = team_att.get(ds, {})
 
-                raw_day_score = team_score_by_day.get(ds, 0)
-
-                # ===== điểm quỹ từ thoại / members =====
-                # QUỸ TEAM = TỔNG TỪNG MEMBER
-                voice_quy = 0.0
-                if isinstance(raw_day_score, dict):
-                    members = raw_day_score.get("members", {})
-                    for val in members.values():
-                        try:
-                            voice_quy += float(val or 0.0)
-                        except Exception:
-                            continue
-                else:
-                    # dữ liệu cũ dạng số: coi như tổng quỹ ngày
-                    try:
-                        voice_quy = float(raw_day_score or 0.0)
-                    except Exception:
-                        voice_quy = 0.0
+                # quỹ thoại của đúng NGÀY cur (nếu có)
+                voice_quy = float(voice_by_date.get(cur.date(), 0.0))
 
                 checked = len(day_rec.get("checked", [])) if day_rec else 0
                 total = day_rec.get("total_at_day", 0) if day_rec else 0
@@ -1740,7 +1753,7 @@ class BXHKimLanView(discord.ui.View):
                     day_quy_att += 1.0  # có điểm danh
                     total_att_days += 1
                     if checked >= total:
-                        # đủ 100% → +1 +5
+                        # đủ chỉ tiêu → +1 +5
                         day_quy_att += 1.0
                         day_quy_att += 5.0
                         full_days += 1
@@ -1900,7 +1913,7 @@ class BXHKimLanTeamView(discord.ui.View):
     def _get_week_range(self):
         return get_week_range_gmt7(offset_weeks=0)
 
-    def _fmt_day_label(self, d):
+    def _fmt_day_label(self, d: datetime):
         thu = d.weekday()
         thu_map = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
         return thu_map[thu]
@@ -1933,6 +1946,36 @@ class BXHKimLanTeamView(discord.ui.View):
         team_att = g_att.get(rid_str, {})
         team_score_by_day = g_score_all.get(rid_str, {})
 
+        # --- gom quỹ thoại theo NGÀY trong tuần này (bỏ CN) ---
+        voice_by_date = {}
+        for ds, raw in team_score_by_day.items():
+            try:
+                d = datetime.fromisoformat(ds)
+            except Exception:
+                continue
+
+            d_date = d.date()
+            if d_date < week_start.date() or d_date > week_end.date():
+                continue
+            if d.weekday() == 6:
+                continue
+
+            v = 0.0
+            if isinstance(raw, dict):
+                members = raw.get("members", {})
+                for val in members.values():
+                    try:
+                        v += float(val or 0.0)
+                    except Exception:
+                        continue
+            else:
+                try:
+                    v += float(raw or 0.0)
+                except Exception:
+                    v = 0.0
+
+            voice_by_date[d_date] = voice_by_date.get(d_date, 0.0) + v
+
         lines = []
         lines.append(f"📊 **TỔNG KẾT ĐIỂM DANH TEAM {role.name}**")
         lines.append(f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**")
@@ -1954,23 +1997,7 @@ class BXHKimLanTeamView(discord.ui.View):
             ds = cur.isoformat()
             day_rec = team_att.get(ds, {})
 
-            raw_day_score = team_score_by_day.get(ds, 0)
-
-            # QUỸ TEAM NGÀY = TỔNG QUỸ TỪNG MEMBER
-            voice_quy = 0.0
-            if isinstance(raw_day_score, dict):
-                members = raw_day_score.get("members", {})
-                for val in members.values():
-                    try:
-                        voice_quy += float(val or 0.0)
-                    except Exception:
-                        continue
-            else:
-                # dữ liệu cũ dạng số
-                try:
-                    voice_quy = float(raw_day_score or 0.0)
-                except Exception:
-                    voice_quy = 0.0
+            voice_quy = float(voice_by_date.get(cur.date(), 0.0))
 
             checked = len(day_rec.get("checked", [])) if day_rec else 0
             total = day_rec.get("total_at_day", 0) if day_rec else 0
@@ -2057,7 +2084,6 @@ class BXHKimLanTeamView(discord.ui.View):
             except Exception:
                 continue
 
-            # lọc theo range tuần hiện tại
             d_date = d.date()
             if d_date < week_start.date() or d_date > week_end.date():
                 continue
@@ -2211,6 +2237,9 @@ async def cmd_bxhkimlan(ctx, role: discord.Role = None):
     view = BXHKimLanView(ctx, ctx.guild, teamconf, att, score_data)
     embed = view.build_week_embed("tuan")
     await ctx.reply(embed=embed, view=view)
+
+
+# ================== /bxhkimlan ==================
 
 
 # ================== /bxhkimlan ==================
