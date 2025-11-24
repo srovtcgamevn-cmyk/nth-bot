@@ -1634,6 +1634,9 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 # ================== /bxhkimlan ==================
 
 
+# ================== /bxhkimlan ==================
+
+
 class BXHKimLanView(discord.ui.View):
     def __init__(self, ctx, guild, teamconf, att, score_data):
         super().__init__(timeout=120)
@@ -1657,8 +1660,12 @@ class BXHKimLanView(discord.ui.View):
         else:
             week_start, week_end = get_week_range_gmt7(offset_weeks=0)
             title_suffix = "TUẦN NÀY"
-            week_emoji = "📗"
-            color = 0x2ECC71  # xanh lá
+            week_emoji = "📕"
+            color = 0xE74C3C  # đỏ
+
+        # thời điểm hiện tại GMT+7 – dùng chung cho thưởng tuần
+        now_gmt7 = datetime.utcnow() + timedelta(hours=7)
+        now_weekday = now_gmt7.weekday()  # 0=Mon, 5=Sat, 6=Sun
 
         guild_conf = self.teamconf["guilds"].get(gid, {})
         teams = guild_conf.get("teams", {})
@@ -1694,7 +1701,7 @@ class BXHKimLanView(discord.ui.View):
             team_score_by_day = g_score_all.get(rid_str, {})
 
             # --- gom quỹ thoại theo NGÀY trong tuần này (bỏ CN) ---
-            voice_by_date = {}  # key: datetime.date, value: float
+            voice_by_date: dict[datetime.date, float] = {}
             for ds, raw in team_score_by_day.items():
                 try:
                     d = datetime.fromisoformat(ds)
@@ -1702,7 +1709,8 @@ class BXHKimLanView(discord.ui.View):
                     continue
 
                 d_date = d.date()
-                if d_date < week_start.date() or d_date > week_end.date():
+                # get_week_range_gmt7 trả về date, so sánh trực tiếp
+                if d_date < week_start or d_date > week_end:
                     continue
                 if d.weekday() == 6:  # CN nghỉ
                     continue
@@ -1730,6 +1738,7 @@ class BXHKimLanView(discord.ui.View):
             full_days = 0
             total_att_days = 0
 
+            # cur là date (do get_week_range_gmt7 trả về date)
             cur = week_start
             while cur <= week_end:
                 # BỎ CN (chủ nhật) khỏi thống kê tuần
@@ -1741,7 +1750,7 @@ class BXHKimLanView(discord.ui.View):
                 day_rec = team_att.get(ds, {})
 
                 # quỹ thoại của đúng NGÀY cur (nếu có)
-                voice_quy = float(voice_by_date.get(cur.date(), 0.0))
+                voice_quy = float(voice_by_date.get(cur, 0.0))
 
                 checked = len(day_rec.get("checked", [])) if day_rec else 0
                 total = day_rec.get("total_at_day", 0) if day_rec else 0
@@ -1750,10 +1759,11 @@ class BXHKimLanView(discord.ui.View):
                 # điểm quỹ từ điểm danh
                 day_quy_att = 0.0
                 if total > 0:
-                    day_quy_att += 1.0  # có điểm danh
+                    # có điểm danh → +1
+                    day_quy_att += 1.0
                     total_att_days += 1
+                    # ĐỦ CHỈ TIÊU (checked ≥ total_at_day) → +1 +5
                     if checked >= total:
-                        # đủ chỉ tiêu → +1 +5
                         day_quy_att += 1.0
                         day_quy_att += 5.0
                         full_days += 1
@@ -1769,13 +1779,15 @@ class BXHKimLanView(discord.ui.View):
 
                 cur += timedelta(days=1)
 
-            # ===== thưởng tuần nếu full tất cả ngày có điểm danh VÀ đã tới thứ 7 =====
+            # ===== thưởng tuần nếu full tất cả ngày có điểm danh =====
             week_bonus = 0.0
             if total_att_days > 0 and full_days == total_att_days:
-                now_gmt7 = datetime.utcnow() + timedelta(hours=7)
-                # từ 00:00 thứ 7 trở đi coi như "tổng kết tuần"
-                # 0=Mon, 5=Sat, 6=Sun
-                week_finished = now_gmt7.weekday() >= 5
+                # với TUẦN NÀY: chỉ cộng khi đã tới thứ 7 (00:00 trở đi)
+                # với TUẦN TRƯỚC: luôn coi là đã kết thúc tuần
+                if mode == "tuan":
+                    week_finished = now_weekday >= 5  # từ thứ 7 trở đi
+                else:  # tuantruoc
+                    week_finished = True
 
                 if week_finished:
                     week_bonus = 10.0
@@ -1810,6 +1822,7 @@ class BXHKimLanView(discord.ui.View):
                 color=color
             )
 
+        # sort theo tổng quỹ giảm dần
         rows.sort(key=lambda r: r["total_score"], reverse=True)
 
         lines = []
@@ -1831,7 +1844,7 @@ class BXHKimLanView(discord.ui.View):
             week_bonus = r["week_bonus"]
 
             lines.append(f"**{rank}. {role.name}**")
-            # 🔥 hiển thị ngày điểm danh đủ dạng: T2: 24.2 | T3: 30.3 | T4: 19.1
+            # 🔥 hiển thị ngày có điểm danh: T2: 24.2 | T3: 30.3 | ...
             if r["days_ok"]:
                 parts = [
                     f"{fmt_day_label(d)}: {day_quy:.1f}"
@@ -1947,7 +1960,7 @@ class BXHKimLanTeamView(discord.ui.View):
         team_score_by_day = g_score_all.get(rid_str, {})
 
         # --- gom quỹ thoại theo NGÀY trong tuần này (bỏ CN) ---
-        voice_by_date = {}
+        voice_by_date: dict[datetime.date, float] = {}
         for ds, raw in team_score_by_day.items():
             try:
                 d = datetime.fromisoformat(ds)
@@ -1955,7 +1968,7 @@ class BXHKimLanTeamView(discord.ui.View):
                 continue
 
             d_date = d.date()
-            if d_date < week_start.date() or d_date > week_end.date():
+            if d_date < week_start or d_date > week_end:
                 continue
             if d.weekday() == 6:
                 continue
@@ -1997,7 +2010,7 @@ class BXHKimLanTeamView(discord.ui.View):
             ds = cur.isoformat()
             day_rec = team_att.get(ds, {})
 
-            voice_quy = float(voice_by_date.get(cur.date(), 0.0))
+            voice_quy = float(voice_by_date.get(cur, 0.0))
 
             checked = len(day_rec.get("checked", [])) if day_rec else 0
             total = day_rec.get("total_at_day", 0) if day_rec else 0
@@ -2077,7 +2090,7 @@ class BXHKimLanTeamView(discord.ui.View):
         team_score_by_day = g_score_all.get(rid_str, {})
 
         # cộng dồn quỹ theo member TRONG TUẦN NÀY (bỏ CN)
-        member_quy_total = {}
+        member_quy_total: dict[str, float] = {}
         for ds, raw in team_score_by_day.items():
             try:
                 d = datetime.fromisoformat(ds)
@@ -2085,7 +2098,7 @@ class BXHKimLanTeamView(discord.ui.View):
                 continue
 
             d_date = d.date()
-            if d_date < week_start.date() or d_date > week_end.date():
+            if d_date < week_start or d_date > week_end:
                 continue
             if d.weekday() == 6:  # CN nghỉ
                 continue
@@ -2108,6 +2121,7 @@ class BXHKimLanTeamView(discord.ui.View):
             member_quy = float(member_quy_total.get(str(m.id), 0.0))
             rows.append((m, chat_exp, voice_exp, heat, member_quy))
 
+        # sort theo quỹ member giảm dần, tie-break bằng heat
         rows.sort(key=lambda r: (r[4], r[3]), reverse=True)
         return rows, role, week_start, week_end
 
@@ -2240,11 +2254,6 @@ async def cmd_bxhkimlan(ctx, role: discord.Role = None):
 
 
 # ================== /bxhkimlan ==================
-
-
-# ================== /bxhkimlan ==================
-
-
 
 
 
