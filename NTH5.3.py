@@ -1451,11 +1451,6 @@ async def cmd_thongke(ctx, role: discord.Role = None):
 
 
 
-
-
-
-
-
 # ================== /topnhiet ==================
 
 class TopNhietView(discord.ui.View):
@@ -1464,7 +1459,7 @@ class TopNhietView(discord.ui.View):
         self.ctx = ctx
         self.pages_tuan = pages_tuan
         self.pages_tuantruoc = pages_tuantruoc
-        self.current_mode = "tuan"  # "tuan" hoặc "tuantruoc"
+        self.current_mode = "tuan"
         self.current_index = 0
 
     def _get_pages(self):
@@ -1526,7 +1521,6 @@ class TopNhietView(discord.ui.View):
     async def btn_tuan_nay(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._ensure_author(interaction):
             return
-
         self.current_mode = "tuan"
         self.current_index = 0
         await self._refresh(interaction)
@@ -1535,7 +1529,6 @@ class TopNhietView(discord.ui.View):
     async def btn_tuan_truoc(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._ensure_author(interaction):
             return
-
         self.current_mode = "tuantruoc"
         self.current_index = 0
         await self._refresh(interaction)
@@ -1566,10 +1559,13 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
             level, to_next, spent = calc_level_from_total_exp(total)
             exp_in_level = total - spent
 
+            # 🚀 KHÔNG GIỚI HẠN 10 ĐIỂM NỮA
+            heat = float(info.get("heat", 0))
+
             rows.append(
                 (
                     m,
-                    info.get("heat", 0.0),
+                    heat,   # giữ nguyên heat không giới hạn
                     level,
                     exp_in_level,
                     exp_in_level + to_next,
@@ -1586,7 +1582,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
             title_suf = f"{title_suf} — {role_filter.name}"
 
         pages = []
-        per = 10
+        per = 25  # tối đa 25 người/1 embed (giới hạn field Discord)
         for i in range(0, len(rows), per):
             chunk = rows[i:i + per]
             e = discord.Embed(
@@ -1595,15 +1591,17 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
                 color=0xFF8C00
             )
             for idx, (m, heat, lv, ein, eneed, vm) in enumerate(chunk, start=i + 1):
+
+                # ⭐ HIỂN THỊ NHIỆT KHÔNG CÒN /10
                 e.add_field(
                     name=f"{idx}. {m.display_name}",
-                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
+                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}",
                     inline=False
                 )
+
             pages.append(e)
         return pages
 
-    # build 2 bộ page: tuần này + tuần trước (theo role nếu có)
     pages_tuan = build_pages(exp_data.get("users", {}), "", role)
     pages_tuantruoc = build_pages(exp_data.get("prev_week", {}), " (tuần trước)", role)
 
@@ -1616,7 +1614,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
     view = TopNhietView(ctx, pages_tuan, pages_tuantruoc)
 
-    # chọn bộ page khởi đầu: ưu tiên tuần này, nếu rỗng thì lấy tuần trước
+    # chọn bộ page khởi đầu: ưu tiên tuần này
     if pages_tuan:
         view.current_mode = "tuan"
         start_pages = pages_tuan
@@ -1629,6 +1627,12 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 
 # ================== /topnhiet ==================
+
+
+
+
+
+
 
 
 # ================== /bxhkimlan ==================
