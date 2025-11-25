@@ -2053,11 +2053,20 @@ class BXHKimLanTeamView(discord.ui.View):
 
         # cộng dồn quỹ theo member TRONG TUẦN NÀY (bỏ CN)
         member_quy_total = {}
+  
+
         for ds, raw in team_score_by_day.items():
             try:
-                d = datetime.fromisoformat(ds)
-            except Exception:
+                d = datetime.fromisoformat(ds).date()
+            except:
                 continue
+
+    # chỉ lấy ngày trong tuần này + bỏ CN
+            if d < week_start or d > week_end:
+                continue
+            if d.weekday() == 6:
+                continue
+    
 
             d_date = d.date()
             # lọc đúng range tuần hiện tại
