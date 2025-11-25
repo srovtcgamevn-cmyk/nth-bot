@@ -1630,6 +1630,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 # ================== /topnhiet ==================
 
+
 # ================== /bxhkimlan ==================
 
 
@@ -1647,7 +1648,7 @@ class BXHKimLanView(discord.ui.View):
         gid = str(self.guild.id)
 
         # chọn tuần
-        mode = mode.lower()
+        mode = (mode or "tuan").lower()
         if mode == "tuantruoc":
             week_start, week_end = get_week_range_gmt7(offset_weeks=-1)
             title_suffix = "TUẦN TRƯỚC"
@@ -1666,7 +1667,7 @@ class BXHKimLanView(discord.ui.View):
             return discord.Embed(
                 title="📊 BẢNG ĐIỂM DANH TEAM KIM LAN",
                 description="📭 Chưa có team nào được cấu hình điểm danh.",
-                color=color
+                color=color,
             )
 
         g_att = self.att["guilds"].get(gid, {})
@@ -1696,22 +1697,23 @@ class BXHKimLanView(discord.ui.View):
             days_miss = []
             total_score = 0.0
 
-            full_days = 0
-            total_att_days = 0
+            full_days = 0          # số ngày đủ (đạt >= total_at_day)
+            total_att_days = 0     # số ngày có cấu hình điểm danh (total_at_day > 0)
 
             cur = week_start
             while cur <= week_end:
-                # BỎ CN (chủ nhật) khỏi thống kê tuần
-                if cur.weekday() == 6:  # 6 = CN
+                # BỎ CHỦ NHẬT KHỎI TÍNH TOÁN
+                if cur.weekday() == 6:  # 6 = Sunday = CN
                     cur += timedelta(days=1)
                     continue
 
                 ds = cur.isoformat()
                 day_rec = team_att.get(ds, {})
 
-                # ===== điểm quỹ từ thoại / members =====
-                # QUỸ TEAM = TỔNG TỪNG MEMBER trong ngày đó (nếu có)
                 raw_day_score = team_score_by_day.get(ds, 0)
+
+                # ===== điểm quỹ từ thoại / members =====
+                # QUỸ TEAM NGÀY = TỔNG QUỸ TỪNG THÀNH VIÊN
                 voice_quy = 0.0
                 if isinstance(raw_day_score, dict):
                     members = raw_day_score.get("members", {})
@@ -1734,14 +1736,12 @@ class BXHKimLanView(discord.ui.View):
                 # điểm quỹ từ điểm danh
                 day_quy_att = 0.0
                 if total > 0:
-                    # có điểm danh
-                    day_quy_att += 1.0
                     total_att_days += 1
+                    day_quy_att += 1.0  # có cấu hình điểm danh trong ngày
                     if checked >= total:
-                        # đủ "full ngày" theo config (đủ số cần điểm danh)
-                        # +1 +5 như mô tả
-                        day_quy_att += 1.0
-                        day_quy_att += 5.0
+                        # ĐỦ SỐ NGƯỜI THEO CẤU HÌNH (không phải 100% role)
+                        day_quy_att += 1.0  # x2
+                        day_quy_att += 5.0  # thưởng thêm 5
                         full_days += 1
 
                 day_total_quy = day_quy_att + voice_quy
@@ -1758,8 +1758,9 @@ class BXHKimLanView(discord.ui.View):
             # ===== thưởng tuần nếu full tất cả ngày có điểm danh VÀ đã tới thứ 7 =====
             week_bonus = 0.0
             if total_att_days > 0 and full_days == total_att_days:
-                now_gmt7 = datetime.utcnow() + timedelta(hours=7)
-                # 0=Mon, 5=Sat, 6=Sun → từ 00:00 thứ 7 trở đi coi như đã tổng kết tuần
+                now_gmt7 = gmt7_now()
+                # weekday(): 0=Mon ... 5=Sat, 6=Sun
+                # từ 00:00 THỨ 7 trở đi coi như tổng kết tuần
                 if now_gmt7.weekday() >= 5:
                     week_bonus = 10.0
                     total_score += week_bonus
@@ -1767,21 +1768,23 @@ class BXHKimLanView(discord.ui.View):
             # tính % điểm danh TB theo ngày có total_at_day > 0
             sum_rate = 0.0
             cnt_rate = 0
-            for d, c, t, _, _ in days_ok + days_miss:
+            for d, c, t, _boost, _day_quy in days_ok + days_miss:
                 if t > 0:
                     sum_rate += c / t
                     cnt_rate += 1
             avg_rate = (sum_rate / cnt_rate * 100) if cnt_rate else 0.0
 
-            rows.append({
-                "role": role,
-                "conf": conf,
-                "total_score": round(total_score, 1),
-                "avg_rate": round(avg_rate),
-                "days_ok": days_ok,
-                "days_miss": days_miss,
-                "week_bonus": week_bonus,
-            })
+            rows.append(
+                {
+                    "role": role,
+                    "conf": conf,
+                    "total_score": round(total_score, 1),
+                    "avg_rate": round(avg_rate),
+                    "days_ok": days_ok,
+                    "days_miss": days_miss,
+                    "week_bonus": week_bonus,
+                }
+            )
 
         if not rows:
             desc = "📭 Không tìm thấy dữ liệu điểm danh cho tuần đã chọn."
@@ -1790,18 +1793,18 @@ class BXHKimLanView(discord.ui.View):
             return discord.Embed(
                 title="📊 BẢNG ĐIỂM DANH TEAM KIM LAN",
                 description=desc,
-                color=color
+                color=color,
             )
 
-        # sort theo tổng quỹ giảm dần
+        # sort theo tổng điểm quỹ giảm dần
         rows.sort(key=lambda r: r["total_score"], reverse=True)
 
-        lines = []
         if filter_role is None:
             title = "📊 BẢNG ĐIỂM DANH CÁC TEAM KIM LAN (7 ngày)"
         else:
             title = "📊 BẢNG ĐIỂM DANH TEAM KIM LAN (7 ngày)"
 
+        lines = []
         lines.append(f"{week_emoji} **{title_suffix}: {week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**")
         if filter_role is None:
             lines.append("Dùng nút bên dưới để chuyển **tuần này / tuần trước**.")
@@ -1816,7 +1819,7 @@ class BXHKimLanView(discord.ui.View):
 
             lines.append(f"**{rank}. {role.name}**")
 
-            # 🔥 hiển thị quỹ theo ngày đủ / có điểm danh
+            # 🔥 hiển thị ngày có điểm danh dạng: T2: 24.2 | T3: 30.3 | ...
             if r["days_ok"]:
                 parts = [
                     f"{fmt_day_label(d)}: {day_quy:.1f}"
@@ -1827,10 +1830,11 @@ class BXHKimLanView(discord.ui.View):
             else:
                 lines.append("🔥 —")
 
+            # ngày thiếu
             if r["days_miss"]:
                 miss = ", ".join(
                     f"{fmt_day_label(d)} {c}/{t}"
-                    for (d, c, t, _, _) in r["days_miss"]
+                    for (d, c, t, _boost, _day_quy) in r["days_miss"]
                 )
                 lines.append(f"Ngày thiếu: {miss}")
             else:
@@ -1850,7 +1854,7 @@ class BXHKimLanView(discord.ui.View):
         embed = discord.Embed(
             title=title,
             description=desc,
-            color=color
+            color=color,
         )
         return embed
 
@@ -1858,7 +1862,7 @@ class BXHKimLanView(discord.ui.View):
         if interaction.user.id != self.ctx.author.id:
             await interaction.response.send_message(
                 "⛔ Chỉ người dùng lệnh mới bấm được nút này.",
-                ephemeral=True
+                ephemeral=True,
             )
             return False
         return True
@@ -1897,6 +1901,7 @@ class BXHKimLanTeamView(discord.ui.View):
         self.detail_per_page = 12
 
     def _get_week_range(self):
+        # luôn là tuần hiện tại, vì /bxhkimlan @role chỉ xem tuần này
         return get_week_range_gmt7(offset_weeks=0)
 
     def _fmt_day_label(self, d):
@@ -1908,7 +1913,7 @@ class BXHKimLanTeamView(discord.ui.View):
         if interaction.user.id != self.ctx.author.id:
             await interaction.response.send_message(
                 "⛔ Chỉ người dùng lệnh mới bấm được nút này.",
-                ephemeral=True
+                ephemeral=True,
             )
             return False
         return True
@@ -1922,7 +1927,7 @@ class BXHKimLanTeamView(discord.ui.View):
             return discord.Embed(
                 title="📊 TỔNG KẾT TEAM KIM LAN",
                 description="📭 Role team không tồn tại nữa.",
-                color=0x2ECC71
+                color=0x2ECC71,
             )
 
         g_att = self.att["guilds"].get(gid, {})
@@ -1965,6 +1970,7 @@ class BXHKimLanTeamView(discord.ui.View):
                     except Exception:
                         continue
             else:
+                # dữ liệu cũ dạng số
                 try:
                     voice_quy = float(raw_day_score or 0.0)
                 except Exception:
@@ -2000,15 +2006,15 @@ class BXHKimLanTeamView(discord.ui.View):
 
             boost_str = " (x2)" if boost else ""
             lines.append(
-                f"**{self._fmt_day_label(cur)}** — {status} | "
-                f"Điểm danh: {rate_str}{boost_str} | 🔥 Quỹ: **{day_total_quy:.1f}**"
+                f"**{self._fmt_day_label(cur)}** — {status} | Điểm danh: {rate_str}{boost_str} | "
+                f"🔥 Quỹ: **{day_total_quy:.1f}**"
             )
             cur += timedelta(days=1)
 
         # ===== thưởng tuần: chỉ khi full & đã tới thứ 7 =====
         week_bonus = 0.0
         if total_att_days > 0 and full_days == total_att_days:
-            now_gmt7 = datetime.utcnow() + timedelta(hours=7)
+            now_gmt7 = gmt7_now()
             if now_gmt7.weekday() >= 5:  # từ thứ 7 trở đi
                 week_bonus = 10.0
                 total_score_week += week_bonus
@@ -2026,7 +2032,7 @@ class BXHKimLanTeamView(discord.ui.View):
         embed = discord.Embed(
             title=f"📜 TỔNG KẾT TEAM {role.name}",
             description=desc,
-            color=0x2ECC71
+            color=0x2ECC71,
         )
         return embed
 
@@ -2046,16 +2052,16 @@ class BXHKimLanTeamView(discord.ui.View):
         team_score_by_day = g_score_all.get(rid_str, {})
 
         # cộng dồn quỹ theo member TRONG TUẦN NÀY (bỏ CN)
-        member_quy_total: dict[str, float] = {}
-
+        member_quy_total = {}
         for ds, raw in team_score_by_day.items():
             try:
-                d = datetime.fromisoformat(ds).date()
+                d = datetime.fromisoformat(ds)
             except Exception:
                 continue
 
-            # lọc theo range tuần hiện tại
-            if d < week_start or d > week_end:
+            d_date = d.date()
+            # lọc đúng range tuần hiện tại
+            if d_date < week_start or d_date > week_end:
                 continue
             if d.weekday() == 6:  # CN nghỉ
                 continue
@@ -2078,7 +2084,7 @@ class BXHKimLanTeamView(discord.ui.View):
             member_quy = float(member_quy_total.get(str(m.id), 0.0))
             rows.append((m, chat_exp, voice_exp, heat, member_quy))
 
-        # sort: ưu tiên quỹ cao → nhiệt cao
+        # sort theo quỹ team (giảm dần), nếu bằng thì theo nhiệt
         rows.sort(key=lambda r: (r[4], r[3]), reverse=True)
         return rows, role, week_start, week_end
 
@@ -2089,7 +2095,7 @@ class BXHKimLanTeamView(discord.ui.View):
             return discord.Embed(
                 title="📊 CHI TIẾT TEAM KIM LAN",
                 description="📭 Role team không tồn tại nữa.",
-                color=0x2ECC71
+                color=0x2ECC71,
             )
 
         lines = []
@@ -2113,10 +2119,8 @@ class BXHKimLanTeamView(discord.ui.View):
 
             for idx, (m, chat_exp, voice_exp, heat, member_quy) in enumerate(chunk, start=start + 1):
                 lines.append(
-                    f"**{idx}. {m.display_name}** — "
-                    f"Chat: **{chat_exp}** exp, "
-                    f"Thoại: **{voice_exp}** exp, "
-                    f"Nhiệt: **{heat:.1f}/10**"
+                    f"**{idx}. {m.display_name}** — Chat: **{chat_exp}** exp, "
+                    f"Thoại: **{voice_exp}** exp, Nhiệt: **{heat:.1f}/10**"
                 )
                 lines.append(f"🔥 Điểm quỹ team từ thành viên (tuần này): **{member_quy:.1f}**")
                 lines.append("")
@@ -2128,7 +2132,7 @@ class BXHKimLanTeamView(discord.ui.View):
         embed = discord.Embed(
             title=f"📜 CHI TIẾT TEAM {role.name}",
             description=desc,
-            color=0x2ECC71
+            color=0x2ECC71,
         )
         return embed
 
@@ -2215,8 +2219,6 @@ async def cmd_bxhkimlan(ctx, role: discord.Role = None):
 # ================== /bxhkimlan ==================
 
 
-
-# ================== /bxhkimlan ==================
 # ================== DM NHẮC ĐIỂM DANH ==================
 @tasks.loop(minutes=10)
 async def auto_diemdanh_dm():
