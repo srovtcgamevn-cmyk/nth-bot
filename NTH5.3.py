@@ -1559,13 +1559,13 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
             level, to_next, spent = calc_level_from_total_exp(total)
             exp_in_level = total - spent
 
-            # 🚀 KHÔNG GIỚI HẠN 10 ĐIỂM NỮA
+            # Nhiệt KHÔNG giới hạn 10 nữa
             heat = float(info.get("heat", 0))
 
             rows.append(
                 (
                     m,
-                    heat,   # giữ nguyên heat không giới hạn
+                    heat,
                     level,
                     exp_in_level,
                     exp_in_level + to_next,
@@ -1573,6 +1573,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
                 )
             )
 
+        # sort theo nhiệt
         rows.sort(key=lambda x: x[1], reverse=True)
         if not rows:
             return []
@@ -1582,7 +1583,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
             title_suf = f"{title_suf} — {role_filter.name}"
 
         pages = []
-        per = 25  # tối đa 25 người/1 embed (giới hạn field Discord)
+        per = 10  # ✅ 10 người / 1 trang
         for i in range(0, len(rows), per):
             chunk = rows[i:i + per]
             e = discord.Embed(
@@ -1591,17 +1592,15 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
                 color=0xFF8C00
             )
             for idx, (m, heat, lv, ein, eneed, vm) in enumerate(chunk, start=i + 1):
-
-                # ⭐ HIỂN THỊ NHIỆT KHÔNG CÒN /10
                 e.add_field(
                     name=f"{idx}. {m.display_name}",
                     value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}",
                     inline=False
                 )
-
             pages.append(e)
         return pages
 
+    # build 2 bộ page: tuần này + tuần trước (theo role nếu có)
     pages_tuan = build_pages(exp_data.get("users", {}), "", role)
     pages_tuantruoc = build_pages(exp_data.get("prev_week", {}), " (tuần trước)", role)
 
@@ -1614,7 +1613,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
     view = TopNhietView(ctx, pages_tuan, pages_tuantruoc)
 
-    # chọn bộ page khởi đầu: ưu tiên tuần này
+    # chọn bộ page khởi đầu: ưu tiên tuần này, nếu rỗng thì lấy tuần trước
     if pages_tuan:
         view.current_mode = "tuan"
         start_pages = pages_tuan
@@ -1627,6 +1626,7 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 
 
 # ================== /topnhiet ==================
+
 
 
 
