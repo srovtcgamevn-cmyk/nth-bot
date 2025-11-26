@@ -1341,7 +1341,7 @@ async def cmd_thongke(ctx, role: discord.Role = None):
             for idx, (m, total, lv, ein, eneed, vm, heat) in enumerate(chunk, start=i + 1):
                 e.add_field(
                     name=f"{idx}. {m.display_name}",
-                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
+                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}",
                     inline=False
                 )
             pages.append(e)
@@ -1400,7 +1400,7 @@ async def cmd_thongke(ctx, role: discord.Role = None):
             for idx, (m, total, lv, ein, eneed, vm, heat) in enumerate(chunk, start=i + 1):
                 e.add_field(
                     name=f"{idx}. {m.display_name}",
-                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}/10",
+                    value=f"Lv.{lv} • {ein}/{eneed} exp  |  Thoại: {vm}p  |  Nhiệt: {heat:.1f}",
                     inline=False
                 )
             pages.append(e)
@@ -2134,7 +2134,7 @@ class BXHKimLanTeamView(discord.ui.View):
             for idx, (m, chat_exp, voice_exp, heat, member_quy) in enumerate(chunk, start=start + 1):
                 lines.append(
                     f"**{idx}. {m.display_name}** — Chat: **{chat_exp}** exp, "
-                    f"Thoại: **{voice_exp}** exp, Nhiệt: **{heat:.1f}/10**"
+                    f"Thoại: **{voice_exp}** exp, Nhiệt: **{heat:.1f}**"
                 )
                 lines.append(f"🔥 Điểm quỹ team từ thành viên (tuần này): **{member_quy:.1f}**")
                 lines.append("")
@@ -2349,7 +2349,7 @@ class HoSoView(discord.ui.View):
             f"{week_title}\n"
             f"• Chat: **{u.get('exp_chat', 0)} exp**\n"
             f"• Thoại: **{u.get('exp_voice', 0)} exp** — {voice_min} phút\n"
-            f"• Nhiệt huyết: **{heat:.1f}/10**\n\n"
+            f"• Nhiệt huyết: **{heat:.1f}**\n\n"
             "👥 **Team Kim Lan**\n"
             f"{team_name}\n\n"
             "🔥 **Buff điểm danh**\n"
@@ -2773,17 +2773,20 @@ def ensure_user(exp_data, uid: str):
 
 
 def add_heat(user_obj: dict, amount: float):
-    """Cộng / trừ điểm nhiệt, giới hạn 0–10, có lưu mốc hoạt động cuối."""
+    """Cộng / trừ điểm nhiệt, không giới hạn trên; không âm, có lưu mốc hoạt động cuối."""
     if amount == 0:
         return
+
     cur = float(user_obj.get("heat", 0.0))
     cur += amount
+
+    # không cho âm, nhưng KHÔNG GIỚI HẠN MAX
     if cur < 0:
         cur = 0.0
-    if cur > 10.0:
-        cur = 10.0
+
     user_obj["heat"] = round(cur, 3)
     user_obj["last_heat_ts"] = now_utc().isoformat()
+
 
 
 def team_boost_today(gid: int, member: discord.Member):
