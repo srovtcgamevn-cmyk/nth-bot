@@ -1689,7 +1689,9 @@ class BXHKimLanTeamView(discord.ui.View):
 
         lines = []
         lines.append(f"📊 **TỔNG KẾT ĐIỂM DANH TEAM {role.name}**")
-        lines.append(f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**")
+        lines.append(
+            f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**"
+        )
         lines.append("")
 
         total_score_week = 0.0
@@ -1746,6 +1748,7 @@ class BXHKimLanTeamView(discord.ui.View):
 
             day_quy_att = 0.0
             if total > 0:
+                # có điểm danh là +1, đủ thì +1 nữa +5
                 day_quy_att += 1.0
                 if checked >= total:
                     day_quy_att += 1.0
@@ -1761,11 +1764,12 @@ class BXHKimLanTeamView(discord.ui.View):
             )
             cur += timedelta(days=1)
 
-        # ===== thưởng tuần: chỉ khi full & đã tới thứ 7 =====
+        # ===== thưởng tuần: chỉ khi full & ĐÃ TỚI THỨ 7 (T7) =====
         week_bonus = 0.0
         if total_att_days > 0 and full_days == total_att_days:
             now_gmt7 = gmt7_now()
-            if now_gmt7.weekday() >= 5:  # từ thứ 7 trở đi
+            # từ 00:00 thứ 7 trở đi coi như tổng kết tuần
+            if now_gmt7.weekday() >= 5:
                 week_bonus = 10.0
                 total_score_week += week_bonus
 
@@ -1817,7 +1821,7 @@ class BXHKimLanTeamView(discord.ui.View):
             except Exception:
                 continue
 
-            # d_date kiểu date
+            # d_date luôn là date
             if isinstance(d, datetime):
                 d_date = d.date()
             else:
@@ -1851,7 +1855,6 @@ class BXHKimLanTeamView(discord.ui.View):
         rows.sort(key=lambda r: (r[4], r[3]), reverse=True)
         return rows, role, week_start, week_end
 
-    # ===== EMBED CHI TIẾT TỪNG THÀNH VIÊN =====
     def build_detail_embed(self) -> discord.Embed:
         rows, role, week_start, week_end = self._collect_member_rows()
 
@@ -1864,7 +1867,9 @@ class BXHKimLanTeamView(discord.ui.View):
 
         lines = []
         lines.append(f"📊 **CHI TIẾT THÀNH VIÊN TEAM {role.name}**")
-        lines.append(f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**")
+        lines.append(
+            f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**"
+        )
         lines.append("")
 
         if not rows:
@@ -1881,12 +1886,16 @@ class BXHKimLanTeamView(discord.ui.View):
 
             lines.append(f"Trang **{self.detail_page + 1}/{total_pages}**\n")
 
-            for idx, (m, chat_exp, voice_exp, heat, member_quy) in enumerate(chunk, start=start + 1):
+            for idx, (m, chat_exp, voice_exp, heat, member_quy) in enumerate(
+                chunk, start=start + 1
+            ):
                 lines.append(
                     f"**{idx}. {m.display_name}** — Chat: **{chat_exp}** exp, "
                     f"Thoại: **{voice_exp}** exp, Nhiệt: **{heat:.1f}/10**"
                 )
-                lines.append(f"🔥 Điểm quỹ team từ thành viên (tuần này): **{member_quy:.1f}**")
+                lines.append(
+                    f"🔥 Điểm quỹ team từ thành viên (tuần này): **{member_quy:.1f}**"
+                )
                 lines.append("")
 
         desc = "\n".join(lines)
@@ -1900,7 +1909,6 @@ class BXHKimLanTeamView(discord.ui.View):
         )
         return embed
 
-    # ===== CÁC NÚT UI =====
     @discord.ui.button(label="Tổng kết", style=discord.ButtonStyle.primary)
     async def btn_tongket(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._ensure_author(interaction):
@@ -1923,12 +1931,16 @@ class BXHKimLanTeamView(discord.ui.View):
         if not await self._ensure_author(interaction):
             return
         if self.current_tab != "chitiet":
-            await interaction.response.send_message("📎 Nút này dùng ở tab **Chi tiết**.", ephemeral=True)
+            await interaction.response.send_message(
+                "📎 Nút này dùng ở tab **Chi tiết**.", ephemeral=True
+            )
             return
 
         rows, _, _, _ = self._collect_member_rows()
         if not rows:
-            await interaction.response.send_message("📭 Không có dữ liệu để chuyển trang.", ephemeral=True)
+            await interaction.response.send_message(
+                "📭 Không có dữ liệu để chuyển trang.", ephemeral=True
+            )
             return
 
         per = self.detail_per_page
@@ -1943,12 +1955,16 @@ class BXHKimLanTeamView(discord.ui.View):
         if not await self._ensure_author(interaction):
             return
         if self.current_tab != "chitiet":
-            await interaction.response.send_message("📎 Nút này dùng ở tab **Chi tiết**.", ephemeral=True)
+            await interaction.response.send_message(
+                "📎 Nút này dùng ở tab **Chi tiết**.", ephemeral=True
+            )
             return
 
         rows, _, _, _ = self._collect_member_rows()
         if not rows:
-            await interaction.response.send_message("📭 Không có dữ liệu để chuyển trang.", ephemeral=True)
+            await interaction.response.send_message(
+                "📭 Không có dữ liệu để chuyển trang.", ephemeral=True
+            )
             return
 
         per = self.detail_per_page
@@ -1957,6 +1973,7 @@ class BXHKimLanTeamView(discord.ui.View):
 
         embed = self.build_detail_embed()
         await interaction.response.edit_message(embed=embed, view=self)
+
 
 
 
