@@ -1628,356 +1628,476 @@ async def cmd_topnhiet(ctx, role: discord.Role = None):
 # ================== /topnhiet ==================
 
 
-# ===== VIEW RIÊNG CHO /bxhkimlan @role =====
+# ================== /bxhkimlan ==================
+
+# ===== HÀM GET TUẦN GMT+7 =====
+def gmt7_now():
+    return datetime.utcnow() + timedelta(hours=7)
+
+def get_week_range_gmt7(offset_weeks=0):
+    now = gmt7_now().date()
+    monday = now - timedelta(days=now.weekday())
+    monday = monday + timedelta(weeks=offset_weeks)
+    sunday = monday + timedelta(days=6)
+    return monday, sunday
+
+
+# ============================================================
+# =============== VIEW XEM TẤT CẢ TEAM =======================
+# ============================================================
+
+class BXHKimLanView(discord.ui.View):
+    def __init__(self, ctx, guild, teamconf, att, score_data):
+        super().__init__(timeout=180)
+        self.ctx = ctx
+        self.guild = guild
+        self.teamconf = teamconf
+        self.att = att
+        self.score_data = score_data
+        self.current_mode = "tuan"  # tuan hoặc tuantruoc
+
+    def build_week_embed(self, mode="tuan"):
+
+        gid = str(self.guild.id)
+
+        mode = mode.lower()
+        if mode == "tuantruoc":
+            week_start, week_end = get_week_range_gmt7(offset_weeks=-1)
+            title_suffix = "TUẦN TRƯỚC"
+            color = 0x95A5A6
+            emoji = "📘"
+        else:
+            week_start, week_end = get_week_range_gmt7(offset_weeks=0)
+            title_suffix = "TUẦN NÀY"
+            color = 0x2ECC71
+            emoji = "📗"
+
+        teams_conf = self.teamconf["guilds"].get(gid, {}).get("teams", {})
+        att_g = self.att["guilds"].get(gid, {})
+        score_g = self.score_data["guilds"].get(gid, {})
+
+        if not teams_conf:
+            return discord.Embed(
+                title="📊 BẢNG TEAM KIM LAN",
+                description="📭 Chưa có team nào được cấu hình.",
+                color=color
+            )
+
+        rows = []
+
+        # T2–T7 (bỏ CN)
+        def day_label(d):
+            return ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][d.weekday()]
+
+        for rid, conf in teams_conf.items():
+            role = self.guild.get_role(int(rid))
+            if not role:
+                continue
+
+            team_att = att_g.get(rid, {})
+            team_score_by_day = score_g.get(rid, {})
+
+            total_score = 0.0
+            ok_days = []
+            miss_days = []
+
+            total_att_days = 0
+            full_days = 0
+
+            cur = week_start
+            while cur <= week_end:
+
+                if cur.weekday() == 6:
+                    cur += timedelta(days=1)
+                    continue
+
+                ds = cur.isoformat()
+                day_rec = team_att.get(ds, {})
+                raw = team_score_by_day.get(ds, 0)
+
+                # QUỸ THOẠI = tổng từng member
+                voice_quy = 0.0
+                if isinstance(raw, dict):
+                    for val in raw.get("members", {}).values():
+                        try:
+                            voice_quy += float(val or 0.0)
+                        except:
+                            pass
+                else:
+                    try:
+                        voice_quy = float(raw)
+                    except:
+                        voice_quy = 0.0
+
+                checked = len(day_rec.get("checked", [])) if day_rec else 0
+                total = day_rec.get("total_at_day", 0) if day_rec else 0
+
+                day_att = 0.0
+                if total > 0:
+                    total_att_days += 1
+                    if checked >= total:
+                        # đủ ngày
+                        day_att = 1 + 1 + 5
+                        full_days += 1
+                        ok_days.append((cur, checked, total, day_att + voice_quy))
+                    else:
+                        day_att = 1
+                        miss_days.append((cur, checked, total, day_att + voice_quy))
+
+                total_score += (day_att + voice_quy)
+                cur += timedelta(days=1)
+
+            # thưởng tuần
+            week_bonus = 0.0
+            now = gmt7_now()
+            if full_days == total_att_days and total_att_days > 0:
+                if now.weekday() >= 5:  # T7–CN
+                    week_bonus = 10.0
+                    total_score += 10.0
+
+            avg = 0
+            if (ok_days + miss_days):
+                sm = 0
+                cnt = 0
+                for d, c, t, _ in (ok_days + miss_days):
+                    if t > 0:
+                        sm += c / t
+                        cnt += 1
+                if cnt > 0:
+                    avg = int(sm / cnt * 100)
+
+            rows.append({
+                "role": role,
+                "total": round(total_score, 1),
+                "ok_days": ok_days,
+                "miss_days": miss_days,
+                "bonus": week_bonus,
+                "avg": avg
+            })
+
+        rows.sort(key=lambda x: x["total"], reverse=True)
+
+        lines = []
+        lines.append(f"{emoji} **{title_suffix}: {week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**\n")
+
+        rank = 1
+        for r in rows:
+            role = r["role"]
+            lines.append(f"**{rank}. {role.name}**")
+
+            if r["ok_days"]:
+                parts = [f"{day_label(d)}: {q:.1f}" for (d, c, t, q) in r["ok_days"]]
+                lines.append("🔥 " + " | ".join(parts))
+            else:
+                lines.append("🔥 —")
+
+            if r["miss_days"]:
+                parts = [f"{day_label(d)} {c}/{t}" for (d, c, t, q) in r["miss_days"]]
+                lines.append("Ngày thiếu: " + ", ".join(parts))
+            else:
+                lines.append("Ngày thiếu: —")
+
+            if r["bonus"] > 0:
+                lines.append(f"🎁 Thưởng tuần: **+{r['bonus']}**")
+
+            lines.append(f"Tổng quỹ tuần: **{r['total']}** | Tỷ lệ TB: **{r['avg']}%**")
+            lines.append("")
+            rank += 1
+
+        embed = discord.Embed(
+            title="📊 BẢNG ĐIỂM DANH TEAM KIM LAN",
+            description="\n".join(lines)[:4000],
+            color=color
+        )
+        return embed
+
+
+    @discord.ui.button(label="Tuần này", style=discord.ButtonStyle.primary)
+    async def btn_tuan(self, interaction, button):
+        if interaction.user.id != self.ctx.author.id:
+            return await interaction.response.send_message("⛔ Không phải người dùng lệnh.", ephemeral=True)
+        await interaction.response.edit_message(embed=self.build_week_embed("tuan"), view=self)
+
+    @discord.ui.button(label="Tuần trước", style=discord.ButtonStyle.secondary)
+    async def btn_tuantruoc(self, interaction, button):
+        if interaction.user.id != self.ctx.author.id:
+            return await interaction.response.send_message("⛔ Không phải người dùng lệnh.", ephemeral=True)
+        await interaction.response.edit_message(embed=self.build_week_embed("tuantruoc"), view=self)
+
+
+
+# ============================================================
+# =============== VIEW XEM RIÊNG 1 TEAM @role ================
+# ============================================================
 
 class BXHKimLanTeamView(discord.ui.View):
-    def __init__(self, ctx, guild, teamconf, att, score_data, role_id: int):
-        super().__init__(timeout=120)
+    def __init__(self, ctx, guild, teamconf, att, score_data, role_id):
+        super().__init__(timeout=180)
         self.ctx = ctx
         self.guild = guild
         self.teamconf = teamconf
         self.att = att
         self.score_data = score_data
         self.role_id = role_id
-        self.current_tab = "tongket"  # "tongket" hoặc "chitiet"
+
+        self.current_tab = "tongket"
         self.detail_page = 0
         self.detail_per_page = 12
 
-    def _get_week_range(self):
-        # luôn là tuần hiện tại, vì /bxhkimlan @role chỉ xem tuần này
-        return get_week_range_gmt7(offset_weeks=0)
+    def _get_range(self):
+        ws, we = get_week_range_gmt7(0)
+        return ws, we
 
-    def _fmt_day_label(self, d):
-        thu = d.weekday()
-        thu_map = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
-        return thu_map[thu]
+    def _label(self, d):
+        return ["T2","T3","T4","T5","T6","T7","CN"][d.weekday()]
 
-    async def _ensure_author(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.ctx.author.id:
-            await interaction.response.send_message(
-                "⛔ Chỉ người dùng lệnh mới bấm được nút này.",
-                ephemeral=True,
-            )
+    async def _lock(self, it):
+        if it.user.id != self.ctx.author.id:
+            await it.response.send_message("⛔ Chỉ người dùng lệnh.", ephemeral=True)
             return False
         return True
 
-    # ===== TỔNG KẾT THEO NGÀY (1 TEAM) =====
-    def build_summary_embed(self) -> discord.Embed:
-        gid = str(self.guild.id)
-        week_start, week_end = self._get_week_range()
+    # ---------------- TỔNG KẾT ------------------
+    def build_summary_embed(self):
 
-        # đảm bảo là date
-        if isinstance(week_start, datetime):
-            week_start = week_start.date()
-        if isinstance(week_end, datetime):
-            week_end = week_end.date()
+        gid = str(self.guild.id)
+        ws, we = self._get_range()
 
         role = self.guild.get_role(self.role_id)
-        if role is None:
-            return discord.Embed(
-                title="📊 TỔNG KẾT TEAM KIM LAN",
-                description="📭 Role team không tồn tại nữa.",
-                color=0x2ECC71,
-            )
+        if not role:
+            return discord.Embed(title="Lỗi", description="Role không tồn tại.", color=0x2ECC71)
 
-        g_att = self.att["guilds"].get(gid, {})
-        g_score_all = self.score_data["guilds"].get(gid, {})
-        rid_str = str(self.role_id)
+        att_g = self.att["guilds"].get(gid, {})
+        score_g = self.score_data["guilds"].get(gid, {})
+        rid = str(self.role_id)
 
-        team_att = g_att.get(rid_str, {})
-        team_score_by_day = g_score_all.get(rid_str, {})
+        team_att = att_g.get(rid, {})
+        team_score_by_day = score_g.get(rid, {})
 
         lines = []
-        lines.append(f"📊 **TỔNG KẾT ĐIỂM DANH TEAM {role.name}**")
-        lines.append(
-            f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**"
-        )
-        lines.append("")
+        lines.append(f"📊 **TỔNG KẾT TEAM {role.name}**")
+        lines.append(f"🗓 {ws.strftime('%d/%m')} → {we.strftime('%d/%m')}\n")
 
-        total_score_week = 0.0
-        total_day_ok = 0
-        total_day_miss = 0
-        full_days = 0
         total_att_days = 0
+        full_days = 0
+        total_score = 0.0
 
-        cur = week_start
-        while cur <= week_end:
-            # BỎ CN (chủ nhật) khỏi thống kê
+        cur = ws
+        while cur <= we:
+
             if cur.weekday() == 6:
                 cur += timedelta(days=1)
                 continue
 
             ds = cur.isoformat()
-            day_rec = team_att.get(ds, {})
+            rec = team_att.get(ds, {})
+            raw = team_score_by_day.get(ds, 0)
 
-            raw_day_score = team_score_by_day.get(ds, 0)
-
-            # QUỸ TEAM NGÀY = TỔNG QUỸ TỪNG MEMBER
-            voice_quy = 0.0
-            if isinstance(raw_day_score, dict):
-                members = raw_day_score.get("members", {})
-                for val in members.values():
-                    try:
-                        voice_quy += float(val or 0.0)
-                    except Exception:
-                        continue
+            # thoại
+            voice = 0.0
+            if isinstance(raw, dict):
+                for v in raw.get("members", {}).values():
+                    try: voice += float(v)
+                    except: pass
             else:
-                # dữ liệu cũ dạng số
-                try:
-                    voice_quy = float(raw_day_score or 0.0)
-                except Exception:
-                    voice_quy = 0.0
+                try: voice = float(raw)
+                except: pass
 
-            checked = len(day_rec.get("checked", [])) if day_rec else 0
-            total = day_rec.get("total_at_day", 0) if day_rec else 0
-            boost = day_rec.get("boost", False) if day_rec else False
+            checked = len(rec.get("checked", [])) if rec else 0
+            total = rec.get("total_at_day", 0) if rec else 0
 
+            # điểm danh
+            day_att = 0.0
             if total > 0:
                 total_att_days += 1
-                rate_str = f"{checked}/{total}"
                 if checked >= total:
-                    status = "✅ Đủ"
-                    total_day_ok += 1
+                    day_att = 1 + 1 + 5
                     full_days += 1
+                    status = "✅ Đủ"
                 else:
+                    day_att = 1
                     status = "⚠️ Thiếu"
-                    total_day_miss += 1
             else:
-                rate_str = "—"
                 status = "—"
 
-            day_quy_att = 0.0
-            if total > 0:
-                # có điểm danh là +1, đủ thì +1 nữa +5
-                day_quy_att += 1.0
-                if checked >= total:
-                    day_quy_att += 1.0
-                    day_quy_att += 5.0
+            day_total = day_att + voice
+            total_score += day_total
 
-            day_total_quy = day_quy_att + voice_quy
-            total_score_week += day_total_quy
-
-            boost_str = " (x2)" if boost else ""
-            lines.append(
-                f"**{self._fmt_day_label(cur)}** — {status} | Điểm danh: {rate_str}{boost_str} | "
-                f"🔥 Quỹ: **{day_total_quy:.1f}**"
-            )
+            lines.append(f"**{self._label(cur)}** — {status} | 🔥 **{day_total:.1f}**")
             cur += timedelta(days=1)
 
-        # ===== thưởng tuần: chỉ khi full & ĐÃ TỚI THỨ 7 (T7) =====
-        week_bonus = 0.0
+        week_bonus = 0
         if total_att_days > 0 and full_days == total_att_days:
-            now_gmt7 = gmt7_now()
-            # từ 00:00 thứ 7 trở đi coi như tổng kết tuần
-            if now_gmt7.weekday() >= 5:
-                week_bonus = 10.0
-                total_score_week += week_bonus
+            if gmt7_now().weekday() >= 5:
+                week_bonus = 10
+                total_score += 10
 
         lines.append("")
-        lines.append(f"🔸 Ngày đủ: **{total_day_ok}**  |  Ngày thiếu: **{total_day_miss}**")
-        if week_bonus > 0:
-            lines.append(f"🎁 Thưởng tuần đủ 100%: **+{week_bonus:.1f}** quỹ")
-        lines.append(f"🔥 **Tổng quỹ cả tuần:** {total_score_week:.1f}")
+        lines.append(f"Ngày đủ: **{full_days}** / {total_att_days}")
+        if week_bonus:
+            lines.append(f"🎁 Thưởng tuần: **+{week_bonus}**")
+        lines.append(f"🔥 Tổng quỹ tuần: **{total_score:.1f}**")
 
-        desc = "\n".join(lines)
-        if len(desc) > 4000:
-            desc = desc[:4000] + "\n...(rút gọn bớt vì quá dài)"
-
-        embed = discord.Embed(
-            title=f"📜 TỔNG KẾT TEAM {role.name}",
-            description=desc,
-            color=0x2ECC71,
+        return discord.Embed(
+            title=f"📜 TỔNG KẾT {role.name}",
+            description="\n".join(lines)[:4000],
+            color=0x2ECC71
         )
-        return embed
 
-    # ===== TÍNH QUỸ TỪNG THÀNH VIÊN TRONG TUẦN =====
-    def _collect_member_rows(self):
+    # ----------------- CHI TIẾT MEMBER ------------------
+    def get_member_rows(self):
+
         gid = str(self.guild.id)
-        week_start, week_end = self._get_week_range()
-
-        # đảm bảo là date
-        if isinstance(week_start, datetime):
-            week_start = week_start.date()
-        if isinstance(week_end, datetime):
-            week_end = week_end.date()
-
+        ws, we = self._get_range()
         role = self.guild.get_role(self.role_id)
-        if role is None:
-            return [], role, week_start, week_end
 
-        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
-        users = exp_data.get("users", {})
+        score_g = self.score_data["guilds"].get(gid, {})
+        rid = str(self.role_id)
+        score_by_day = score_g.get(rid, {})
 
-        g_score_all = self.score_data["guilds"].get(gid, {})
-        rid_str = str(self.role_id)
-        team_score_by_day = g_score_all.get(rid_str, {})
+        member_quy = {}
 
-        # cộng dồn quỹ theo member TRONG TUẦN NÀY (bỏ CN)
-        member_quy_total = {}
-
-        for ds, raw in team_score_by_day.items():
+        for ds, raw in score_by_day.items():
             try:
-                d = datetime.fromisoformat(ds)
-            except Exception:
+                d = datetime.fromisoformat(ds).date()
+            except:
                 continue
 
-            # d_date luôn là date
-            if isinstance(d, datetime):
-                d_date = d.date()
-            else:
-                d_date = d
-
-            # chỉ lấy ngày trong tuần này + bỏ CN
-            if d_date < week_start or d_date > week_end:
-                continue
-            if d_date.weekday() == 6:  # CN
-                continue
+            if d < ws or d > we: continue
+            if d.weekday() == 6: continue
 
             if isinstance(raw, dict):
-                members = raw.get("members", {})
-                for uid, val in members.items():
+                for uid, val in raw.get("members", {}).items():
                     try:
-                        member_quy_total[uid] = float(member_quy_total.get(uid, 0.0)) + float(val or 0.0)
-                    except Exception:
-                        continue
+                        member_quy[uid] = member_quy.get(uid, 0) + float(val)
+                    except:
+                        pass
 
-        members = [m for m in self.guild.members if role in m.roles]
+        # exp + heat
+        exp_data = load_json(EXP_FILE, {"users": {}, "prev_week": {}})
+        users = exp_data["users"]
+
         rows = []
-        for m in members:
+        for m in self.guild.members:
+            if role not in m.roles: continue
             u = users.get(str(m.id), {})
-            chat_exp = u.get("exp_chat", 0)
-            voice_exp = u.get("exp_voice", 0)
-            heat = u.get("heat", 0.0)
-            member_quy = float(member_quy_total.get(str(m.id), 0.0))
-            rows.append((m, chat_exp, voice_exp, heat, member_quy))
+            rows.append((
+                m,
+                u.get("exp_chat",0),
+                u.get("exp_voice",0),
+                u.get("heat",0.0),
+                float(member_quy.get(str(m.id), 0))
+            ))
 
-        # sort theo quỹ team (giảm dần), nếu bằng thì theo nhiệt
         rows.sort(key=lambda r: (r[4], r[3]), reverse=True)
-        return rows, role, week_start, week_end
+        return rows
 
-    def build_detail_embed(self) -> discord.Embed:
-        rows, role, week_start, week_end = self._collect_member_rows()
+    def build_detail_embed(self):
 
-        if role is None:
-            return discord.Embed(
-                title="📊 CHI TIẾT TEAM KIM LAN",
-                description="📭 Role team không tồn tại nữa.",
-                color=0x2ECC71,
-            )
+        rows = self.get_member_rows()
+        role = self.guild.get_role(self.role_id)
+        ws,we = self._get_range()
 
         lines = []
-        lines.append(f"📊 **CHI TIẾT THÀNH VIÊN TEAM {role.name}**")
-        lines.append(
-            f"🗓 Tuần này: **{week_start.strftime('%d/%m')} → {week_end.strftime('%d/%m')}**"
-        )
-        lines.append("")
+        lines.append(f"📊 **CHI TIẾT {role.name}**")
+        lines.append(f"🗓 {ws.strftime('%d/%m')} → {we.strftime('%d/%m')}\n")
 
         if not rows:
-            lines.append("📭 Không có thành viên nào trong team này.")
-        else:
-            per = self.detail_per_page
-            total_pages = max(1, (len(rows) + per - 1) // per)
-            if self.detail_page >= total_pages:
-                self.detail_page = total_pages - 1
+            lines.append("📭 Không có thành viên.")
+            return discord.Embed(
+                title=f"📜 CHI TIẾT {role.name}",
+                description="\n".join(lines),
+                color=0x2ECC71
+            )
 
-            start = self.detail_page * per
-            end = start + per
-            chunk = rows[start:end]
+        per = self.detail_per_page
+        total_pages = max(1, (len(rows)+per-1)//per)
+        if self.detail_page >= total_pages: self.detail_page = total_pages-1
 
-            lines.append(f"Trang **{self.detail_page + 1}/{total_pages}**\n")
+        start = self.detail_page * per
+        page = rows[start:start+per]
 
-            for idx, (m, chat_exp, voice_exp, heat, member_quy) in enumerate(
-                chunk, start=start + 1
-            ):
-                lines.append(
-                    f"**{idx}. {m.display_name}** — Chat: **{chat_exp}** exp, "
-                    f"Thoại: **{voice_exp}** exp, Nhiệt: **{heat:.1f}/10**"
-                )
-                lines.append(
-                    f"🔥 Điểm quỹ team từ thành viên (tuần này): **{member_quy:.1f}**"
-                )
-                lines.append("")
+        lines.append(f"Trang {self.detail_page+1}/{total_pages}\n")
 
-        desc = "\n".join(lines)
-        if len(desc) > 4000:
-            desc = desc[:4000] + "\n...(rút gọn bớt vì quá dài)"
+        idx = start+1
+        for m,ce,vv,h,q in page:
+            lines.append(f"**{idx}. {m.display_name}** — Chat {ce}, Voice {vv}, Nhiệt {h:.1f}/10")
+            lines.append(f"🔥 Quỹ: **{q:.1f}**\n")
+            idx+=1
 
-        embed = discord.Embed(
+        return discord.Embed(
             title=f"📜 CHI TIẾT TEAM {role.name}",
-            description=desc,
-            color=0x2ECC71,
+            description="\n".join(lines)[:4000],
+            color=0x2ECC71
         )
-        return embed
+
+    # ---------------- BUTTON UI ----------------
 
     @discord.ui.button(label="Tổng kết", style=discord.ButtonStyle.primary)
-    async def btn_tongket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._ensure_author(interaction):
-            return
+    async def ui_tongket(self, it, bt):
+        if not await self._lock(it): return
         self.current_tab = "tongket"
-        embed = self.build_summary_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
+        await it.response.edit_message(embed=self.build_summary_embed(), view=self)
 
     @discord.ui.button(label="Chi tiết", style=discord.ButtonStyle.secondary)
-    async def btn_chitiet(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._ensure_author(interaction):
-            return
+    async def ui_chitiet(self, it, bt):
+        if not await self._lock(it): return
         self.current_tab = "chitiet"
         self.detail_page = 0
-        embed = self.build_detail_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
+        await it.response.edit_message(embed=self.build_detail_embed(), view=self)
 
-    @discord.ui.button(label="⟵ Trang", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._ensure_author(interaction):
-            return
+    @discord.ui.button(label="⟵", style=discord.ButtonStyle.secondary, row=1)
+    async def ui_prev(self, it, bt):
+        if not await self._lock(it): return
         if self.current_tab != "chitiet":
-            await interaction.response.send_message(
-                "📎 Nút này dùng ở tab **Chi tiết**.", ephemeral=True
-            )
-            return
-
-        rows, _, _, _ = self._collect_member_rows()
-        if not rows:
-            await interaction.response.send_message(
-                "📭 Không có dữ liệu để chuyển trang.", ephemeral=True
-            )
-            return
-
-        per = self.detail_per_page
-        total_pages = max(1, (len(rows) + per - 1) // per)
+            return await it.response.send_message("📎 Chỉ dùng khi xem chi tiết.", ephemeral=True)
+        rows = self.get_member_rows()
+        total_pages = max(1, (len(rows)+self.detail_per_page-1)//self.detail_per_page)
         self.detail_page = (self.detail_page - 1) % total_pages
+        await it.response.edit_message(embed=self.build_detail_embed(), view=self)
 
-        embed = self.build_detail_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="Trang ⟶", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._ensure_author(interaction):
-            return
+    @discord.ui.button(label="⟶", style=discord.ButtonStyle.secondary, row=1)
+    async def ui_next(self, it, bt):
+        if not await self._lock(it): return
         if self.current_tab != "chitiet":
-            await interaction.response.send_message(
-                "📎 Nút này dùng ở tab **Chi tiết**.", ephemeral=True
-            )
-            return
-
-        rows, _, _, _ = self._collect_member_rows()
-        if not rows:
-            await interaction.response.send_message(
-                "📭 Không có dữ liệu để chuyển trang.", ephemeral=True
-            )
-            return
-
-        per = self.detail_per_page
-        total_pages = max(1, (len(rows) + per - 1) // per)
+            return await it.response.send_message("📎 Chỉ dùng khi xem chi tiết.", ephemeral=True)
+        rows = self.get_member_rows()
+        total_pages = max(1, (len(rows)+self.detail_per_page-1)//self.detail_per_page)
         self.detail_page = (self.detail_page + 1) % total_pages
-
-        embed = self.build_detail_embed()
-        await interaction.response.edit_message(embed=embed, view=self)
+        await it.response.edit_message(embed=self.build_detail_embed(), view=self)
 
 
 
+# ============================================================
+# =============== LỆNH /bxhkimlan MAIN =======================
+# ============================================================
+
+@bot.command(name="bxhkimlan")
+async def cmd_bxhkimlan(ctx, role: discord.Role=None):
+
+    teamconf = load_json(TEAMCONF_FILE, {"guilds": {}})
+    att = load_json(ATTEND_FILE, {"guilds": {}})
+    score_data = load_json(TEAMSCORE_FILE, {"guilds": {}})
+
+    # xem riêng 1 team
+    if role:
+        view = BXHKimLanTeamView(ctx, ctx.guild, teamconf, att, score_data, role.id)
+        embed = view.build_summary_embed()
+        return await ctx.reply(embed=embed, view=view)
+
+    # xem tất cả team
+    view = BXHKimLanView(ctx, ctx.guild, teamconf, att, score_data)
+    embed = view.build_week_embed("tuan")
+    await ctx.reply(embed=embed, view=view)
 
 # ================== /bxhkimlan ==================
+
+
+
+
+
+
+
 
 
 # ================== DM NHẮC ĐIỂM DANH ==================
