@@ -4608,40 +4608,82 @@ async def cmd_boctham(ctx: commands.Context):
             inline=False
         )
 
-    # ===== RANDOM LỜI CHÚC MAY MẮN =====
-    wish_list = [
-        "<a:thienthuong:1434625295897333811> Bạn đã chạm vào khí vận **Đại Cát**, hôm nay mọi sự đều hanh thông!",
-        "<a:thienthuong:1434625295897333811> Vận may bùng nổ! Lá thẻ **Đại Cát** mang đến một ngày cực kỳ thuận lợi.",
-        "<a:thienthuong:1434625295897333811> Khí vận thăng hoa! **Đại Cát** xuất hiện báo hiệu điều tốt lành kéo đến.",
-        "<a:thienthuong:1434625295897333811> Chúc mừng! Bạn vừa nhận được thẻ **Đại Cát**, cả ngày rực rỡ như ý.",
-        "<a:thienthuong:1434625295897333811> May mắn ngập tràn — Thẻ **Đại Cát** soi sáng cho bạn hôm nay!",
-        "<a:thienthuong:1434625295897333811> Thẻ **Đại Cát** ứng nghiệm, hôm nay bạn chắc chắn gặp chuyện vui bất ngờ!",
-        "<a:thienthuong:1434625295897333811> Cát khí tụ hội! **Đại Cát** mang đến phúc lành và tài lộc.",
-        "<a:thienthuong:1434625295897333811> Thiên mệnh mỉm cười! Thẻ **Đại Cát** chọn bạn hôm nay.",
-        "<a:thienthuong:1434625295897333811> Bạn đã trúng thưởng một viên **Thiên Thưởng**, vui lòng liên hệ Mod để nhận một tràng pháo tay.",
-        "<a:thienthuong:1434625295897333811> Hôm nay khí vận bao phủ bạn, dấu hiệu của một ngày đại hỷ.",
-        "<a:thienthuong:1434625295897333811> Thiên uy mở lối, cát khí theo bạn cả ngày.",
-        "<a:thienthuong:1434625295897333811> Vận sáng như ngọc, mọi việc đều hanh thông.",
-        "<a:thienthuong:1434625295897333811> Cát tinh soi chiếu, điều tốt lành đang đến rất gần.",
-        "<a:thienthuong:1434625295897333811> Khai vận cát tường, chúc bạn một ngày đầy thuận lợi.",
-        "<a:thienthuong:1434625295897333811> Đại phúc giáng lâm, hôm nay bạn sẽ gặp điều bất ngờ tuyệt đẹp.",
-        "<a:thienthuong:1434625295897333811> Năng lượng may mắn hội tụ, trời ban phúc khí cho bạn.",
-        "<a:thienthuong:1434625295897333811> Niềm vui tự tìm đến, bạn cứ chuẩn bị nhận nhé.",
-        "<a:thienthuong:1434625295897333811> Một ngày tuyệt đẹp đang mở ra trước mắt bạn.",
-        "<a:thienthuong:1434625295897333811> Trong hôm nay, bạn bước đi đâu cũng thấy thuận.",
-        "<a:thienthuong:1434625295897333811> Linh vận nở rộ, thần may mắn đồng hành cùng bạn.",
-        "<a:thienthuong:1434625295897333811> Trời đất mở lòng, cát duyên sẽ ghé thăm bạn hôm nay.",
-        "<a:thienthuong:1434625295897333811> Hôm nay bạn có ánh sáng riêng, ai nhìn cũng thấy phúc khí.",
-        "<a:thienthuong:1434625295897333811> Vận đỏ như son, chỉ cần bước nhẹ đã gặp điều vui.",
-        "<a:thienthuong:1434625295897333811> Hôm nay, mọi chuyện bạn chạm vào đều mang màu may mắn.",
-        "<a:thienthuong:1434625295897333811> Thiên thời địa lợi nhân hòa đều hướng về phía bạn.",
-        "<a:thienthuong:1434625295897333811> Bạn đã vào đúng luồng cát khí, hôm nay cực kỳ hanh thông.",
-        "<a:thienthuong:1434625295897333811> Phúc tinh nhập mệnh, hãy tận hưởng một ngày trọn vẹn.",
-        "<a:thienthuong:1434625295897333811> May mắn lớn đang ở ngay trước cửa, bạn chỉ cần bước tới.",
-        "<a:thienthuong:1434625295897333811> Lộc trời ban đến đúng lúc, hôm nay là ngày của bạn."
+        # ===== RANDOM LỜI CHÚC MAY MẮN THEO MỨC ĐIỂM =====
+    wishes_dai_cat = [  # >= 900
+        "<a:thienthuong:1434625295897333811> Bạn đã bốc trúng **Đại Cát**, khí vận thăng hoa tột đỉnh hôm nay!",
+        "<a:thienthuong:1434625295897333811> Thiên mệnh mở lối, lá thẻ **Đại Cát** báo hiệu một ngày đại hỷ.",
+        "<a:thienthuong:1434625295897333811> Cát tinh chiếu rọi, vận **Đại Cát** đang bao phủ quanh bạn.",
+        "<a:thienthuong:1434625295897333811> Vạn phúc tụ hội, **Đại Cát** xuất hiện không phải là trùng hợp.",
+        "<a:thienthuong:1434625295897333811> Khí vận cực thịnh, thẻ **Đại Cát** giúp mọi chuyện hanh thông.",
+        "<a:thienthuong:1434625295897333811> Hôm nay bạn đứng trong vùng **Đại Cát**, đi đâu cũng có quý nhân.",
+        "<a:thienthuong:1434625295897333811> Lời chúc từ trời: bạn nhận được vận **Đại Cát**, cứ tự tin làm mọi thứ.",
+        "<a:thienthuong:1434625295897333811> **Đại Cát** giáng lâm, nụ cười hôm nay của bạn sẽ rất rực rỡ.",
+        "<a:thienthuong:1434625295897333811> Phúc khí dày như núi, thẻ **Đại Cát** đã chọn đúng người.",
+        "<a:thienthuong:1434625295897333811> Vận thế bùng nổ, **Đại Cát** mở ra một ngày đầy điều tốt lành."
     ]
 
-    wish_text = random.choice(wish_list)
+    wishes_cat = [  # 600–899
+        "<a:thienthuong:1434625295897333811> Hôm nay bạn gặp vận **Cát**, mọi chuyện đều thuận lợi và dễ chịu.",
+        "<a:thienthuong:1434625295897333811> Một ngày **Cát** lành đang chờ, cứ bình tĩnh rồi niềm vui sẽ đến.",
+        "<a:thienthuong:1434625295897333811> Bạn đã vào vùng khí **Cát**, tin vui nhỏ có thể ghé qua bất cứ lúc nào.",
+        "<a:thienthuong:1434625295897333811> Cát vận lan tỏa, chúc bạn hoàn thành trọn vẹn những điều đã dự định.",
+        "<a:thienthuong:1434625295897333811> Dấu hiệu **Cát** lành, hôm nay làm gì cũng dễ hơn bình thường.",
+        "<a:thienthuong:1434625295897333811> Bạn được bao quanh bởi khí **Cát**, cứ mạnh dạn bước tiếp.",
+        "<a:thienthuong:1434625295897333811> Một ngày **Cát** khí nhẹ nhàng, đủ để lòng bạn thấy an vui.",
+        "<a:thienthuong:1434625295897333811> Cát tinh soi lối, những chuyện khó có thể trở nên đơn giản hơn.",
+        "<a:thienthuong:1434625295897333811> Hôm nay là ngày **Cát**, không quá ồn ào nhưng rất êm đềm.",
+        "<a:thienthuong:1434625295897333811> Bạn có được vận **Cát** ổn định, thích hợp để bắt đầu điều gì đó.",
+        "<a:thienthuong:1434625295897333811> **Cát** khí ghé thăm, mong rằng bạn sẽ nhận được vài điều bất ngờ dễ thương.",
+        "<a:thienthuong:1434625295897333811> Vận trình hôm nay mang màu **Cát**, không sóng gió, chỉ toàn êm dịu.",
+        "<a:thienthuong:1434625295897333811> Bạn đang ở trong ngày **Cát** lành, hãy tranh thủ làm việc quan trọng.",
+        "<a:thienthuong:1434625295897333811> Cát vận nâng bước, mọi việc nếu cố gắng một chút sẽ có kết quả tốt.",
+        "<a:thienthuong:1434625295897333811> Ngày **Cát** không quá rực rỡ nhưng đủ làm bạn mỉm cười.",
+        "<a:thienthuong:1434625295897333811> Khí **Cát** ổn định, tâm an thì chuyện gì cũng dễ xử lý.",
+        "<a:thienthuong:1434625295897333811> Bạn vừa chạm vào luồng **Cát** khí, cứ yên tâm tiến về phía trước.",
+        "<a:thienthuong:1434625295897333811> Vận **Cát** đã đến, hãy tin rằng hôm nay sẽ có chuyện vui nho nhỏ.",
+        "<a:thienthuong:1434625295897333811> Ngày mới mở ra với điềm **Cát**, mong bạn gặp toàn người tốt.",
+        "<a:thienthuong:1434625295897333811> Bạn đang ở giữa vùng **Cát** lành, mọi thứ sẽ diễn ra trôi chảy hơn mong đợi."
+    ]
+
+    wishes_thuong = [  # < 600
+        "<a:thienthuong:1434625295897333811> Chúc bạn một ngày thật nhẹ nhàng và dễ thở.",
+        "<a:thienthuong:1434625295897333811> Không cần quá may mắn, chỉ cần hôm nay bình an là được.",
+        "<a:thienthuong:1434625295897333811> Một ngày giản dị nhưng vẫn có thể đầy niềm vui nhỏ.",
+        "<a:thienthuong:1434625295897333811> Cứ sống chậm lại một chút, hôm nay mọi việc sẽ dần ổn.",
+        "<a:thienthuong:1434625295897333811> Chúc bạn gặp đúng người, đúng việc và đúng thời điểm.",
+        "<a:thienthuong:1434625295897333811> Hôm nay có thể không quá đặc biệt, nhưng bạn thì vẫn rất đặc biệt.",
+        "<a:thienthuong:1434625295897333811> Hãy coi đây là một ngày để nghỉ, nạp lại năng lượng cho những lần bùng nổ sau.",
+        "<a:thienthuong:1434625295897333811> Dù số không quá cao, nhưng tinh thần thoải mái mới là điều quan trọng.",
+        "<a:thienthuong:1434625295897333811> Chúc bạn cười nhiều hơn một chút so với hôm qua.",
+        "<a:thienthuong:1434625295897333811> Một tách trà, vài câu chuyện vui là đủ cho hôm nay rồi.",
+        "<a:thienthuong:1434625295897333811> Ngày hôm nay có thể bình thường, nhưng biết đâu tối lại có bất ngờ.",
+        "<a:thienthuong:1434625295897333811> Cứ điềm tĩnh, mọi chuyện rồi cũng sẽ vào đúng vị trí của nó.",
+        "<a:thienthuong:1434625295897333811> Không quá đỏ nhưng cũng chẳng xui, thoải mái tận hưởng ngày của mình nhé.",
+        "<a:thienthuong:1434625295897333811> Chúc bạn giữ được nụ cười, dù số hôm nay không quá ấn tượng.",
+        "<a:thienthuong:1434625295897333811> Đôi khi bình yên mới là dạng may mắn khó có nhất.",
+        "<a:thienthuong:1434625295897333811> Hôm nay hãy ưu tiên những điều khiến bạn thấy dễ chịu và an lòng.",
+        "<a:thienthuong:1434625295897333811> Có thể số chưa đẹp, nhưng tâm trạng thì vẫn có thể rất đẹp.",
+        "<a:thienthuong:1434625295897333811> Hãy coi đây là màn khởi động, lần sau vận may sẽ bùng nổ hơn.",
+        "<a:thienthuong:1434625295897333811> Chúc bạn gặp thêm vài chuyện vui nho nhỏ trong ngày hôm nay.",
+        "<a:thienthuong:1434625295897333811> Số không cao nhưng tinh thần không được thấp, nha?",
+        "<a:thienthuong:1434625295897333811> Cứ sống đúng với mình, may mắn rồi sẽ tự tìm đến.",
+        "<a:thienthuong:1434625295897333811> Một ngày bình thường nhưng vẫn có thể rất ấm áp.",
+        "<a:thienthuong:1434625295897333811> Hãy dành thời gian cho những người làm bạn cảm thấy thoải mái.",
+        "<a:thienthuong:1434625295897333811> Hôm nay có thể không phải ngày rực rỡ, nhưng vẫn là một ngày đáng nhớ.",
+        "<a:thienthuong:1434625295897333811> Mong bạn gặp được vài điều tử tế giữa những bận rộn.",
+        "<a:thienthuong:1434625295897333811> Chúc bạn giữ được sự bình an trong lòng suốt cả ngày.",
+        "<a:thienthuong:1434625295897333811> Đôi khi may mắn nhất là không phải lo nghĩ quá nhiều.",
+        "<a:thienthuong:1434625295897333811> Hãy tự thưởng cho mình một điều nho nhỏ dễ thương hôm nay.",
+        "<a:thienthuong:1434625295897333811> Chúc bạn có đủ sức khỏe và năng lượng để làm điều mình muốn.",
+        "<a:thienthuong:1434625295897333811> Số chỉ là con số, còn bạn mới là nhân vật chính của ngày hôm nay."
+    ]
+
+    if lucky_raw >= 900:
+        wish_text = random.choice(wishes_dai_cat)
+    elif lucky_raw >= 600:
+        wish_text = random.choice(wishes_cat)
+    else:
+        wish_text = random.choice(wishes_thuong)
 
     embed.add_field(
         name="",
