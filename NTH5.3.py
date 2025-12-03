@@ -4282,7 +4282,7 @@ async def cmd_boctham(ctx: commands.Context):
 
     khung = (
         "╔════ SỐ MAY MẮN ════╗\n"
-        f"      {lucky_emoji}\n"
+        f"        {lucky_emoji}\n"
         "╚════════════════════╝"
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
