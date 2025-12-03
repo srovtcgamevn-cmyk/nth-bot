@@ -4583,17 +4583,15 @@ async def cmd_boctham(ctx: commands.Context):
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
 
-
-# ===== HIỂN THỊ SỐ CAO NHẤT =====
+    # ===== HIỂN THỊ SỐ CAO NHẤT =====
     if session["top_number"] is not None:
         if session_type == "event":
             # Phiên SỰ KIỆN: che 1 số đầu, chỉ show 2 số cuối + emoji nhiễu
             num_str = f"{session['top_number']:03d}"
             last_two = num_str[1:]        # 2 số cuối
             masked = f"<a:moanh:1445814825698721894> **{last_two}**"
-            top_value = (
-                f"Một người nào đó: — {masked}\n"
-            )
+
+            top_value = f"Một người nào đó đã che số đầu: {masked}"
         else:
             # Phiên thường: show đầy đủ như cũ
             top_value = f"{session['top_user']} — **{session['top_number']:03d}**"
@@ -4610,10 +4608,6 @@ async def cmd_boctham(ctx: commands.Context):
         inline=False
     )
 
-
-
-    
-
     # ===== ANIMATION: SỐ DEMO NHỎ HƠN SỐ THẬT (nếu có thể) =====
     if lucky_raw > 1:
         demo_raw = random.randint(1, lucky_raw - 1)
@@ -4622,17 +4616,18 @@ async def cmd_boctham(ctx: commands.Context):
     demo_str = f"{demo_raw:03d}"
     demo_emoji = format_number_emoji(demo_str)
 
-    msg = await ctx.reply("🎲 Đang quay số...\n 0️⃣0️⃣0️⃣", mention_author=False)
+    msg = await ctx.reply("🎲 Đang quay số...\n🔄 0️⃣0️⃣0️⃣", mention_author=False)
 
     try:
         await asyncio.sleep(0.7)
-        await msg.edit(content=f"🎲 Đang quay số...\n {demo_emoji}")
+        await msg.edit(content=f"🎲 Đang quay số...\n🔄 {demo_emoji}")
         await asyncio.sleep(0.7)
         await msg.edit(content=None, embed=embed)
     except discord.HTTPException:
         await ctx.send(embed=embed)
 
 # =============== HẾT PHẦN BỐC THĂM MAY MẮN ==================
+
 
 
 
