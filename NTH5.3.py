@@ -4562,10 +4562,10 @@ async def cmd_boctham(ctx: commands.Context):
 
     # ===== EMBED KẾT QUẢ =====
     if session_type == "event":
-        title = "🎲 BỐC THĂM MAY MẮN SỰ KIỆN"
+        title = "🎄 BỐC THĂM MAY MẮN SỰ KIỆN"
         color = 0xFFD700
     else:
-        title = "🎲 BỐC THĂM MAY MẮN"
+        title = "🎲 BỐC THĂM MAY MẮN THƯỜNG"
         color = 0x4CC9F0
 
     embed = discord.Embed(title=title, color=color)
