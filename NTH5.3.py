@@ -4309,17 +4309,21 @@ async def cmd_boctham(ctx: commands.Context):
         inline=False
     )
 
-    # --- 8. Animation quay số: gửi text tạm rồi edit thành embed ---
-    msg = await ctx.reply("🎲 Đang quay số...\n🔄 0️⃣0️⃣0️⃣", mention_author=False)
+      # --- 8. Animation quay số: random số demo nhỏ hơn số thật ---
+    demo_raw = random.randint(1, max(lucky_raw - 1, 1))
+    demo_str = f"{demo_raw:03d}"
+    demo_emoji = format_number_emoji(demo_str)
+
+    msg = await ctx.reply("🎲 Đang quay số...\n🎰 0️⃣0️⃣0️⃣", mention_author=False)
 
     try:
         await asyncio.sleep(0.7)
-        await msg.edit(content="🎲 Đang quay số...\n🔄 4️⃣8️⃣0️⃣")
+        await msg.edit(content=f"🎲 Đang quay số...\n🎰 {demo_emoji}")
         await asyncio.sleep(0.7)
         await msg.edit(content=None, embed=embed)
     except discord.HTTPException:
-        # nếu edit fail thì gửi thẳng embed mới
         await ctx.send(embed=embed)
+
 
 
 
