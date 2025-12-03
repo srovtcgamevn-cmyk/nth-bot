@@ -4103,7 +4103,6 @@ BOCTHAM_SESSIONS = {}
 
 SESSION_DURATION = 300      # 5 phút
 COOLDOWN_SECONDS = 5
-# cooldown theo (guild_id, channel_id, user_id)
 USER_COOLDOWN = {}          # {(gid, cid, uid_int): last_time(float)}
 
 
@@ -4133,20 +4132,13 @@ def need_reset_session(session):
     return (now - session["start_time"]) > SESSION_DURATION
 
 
-def reset_session(session, owner_name=None):
-    """Reset session; nếu có owner_name thì mở phiên mới với owner đó."""
-    if owner_name is None:
-        session["start_time"] = None
-        session["owner_name"] = None
-        session["top_user"] = None
-        session["top_number"] = None
-        session["user_numbers"] = {}
-    else:
-        session["start_time"] = time.time()
-        session["owner_name"] = owner_name
-        session["top_user"] = None
-        session["top_number"] = None
-        session["user_numbers"] = {}
+def reset_session(session, owner_name):
+    """Reset và MỞ phiên mới với owner_name truyền vào."""
+    session["start_time"] = time.time()
+    session["owner_name"] = owner_name
+    session["top_user"] = None
+    session["top_number"] = None
+    session["user_numbers"] = {}
 
 
 def format_number_emoji(num_str):
@@ -4167,10 +4159,7 @@ def format_number_emoji(num_str):
 
 
 def check_user_cooldown(guild_id, channel_id, user_id):
-    """
-    Trả về 0 nếu không cooldown.
-    Trả về số giây còn lại nếu vẫn còn cooldown.
-    """
+    """Trả về 0 nếu không cooldown, >0 là số giây còn lại."""
     now = time.time()
     key = (guild_id, channel_id, user_id)
     last = USER_COOLDOWN.get(key)
@@ -4197,6 +4186,7 @@ async def cmd_moboctham(ctx: commands.Context):
     cid = ctx.channel.id
     session = get_session(gid, cid)
 
+    # luôn reset & mở phiên mới, owner = admin
     reset_session(session, owner_name=ctx.author.display_name)
 
     embed = discord.Embed(
@@ -4237,15 +4227,11 @@ async def cmd_boctham(ctx: commands.Context):
     # Lấy session riêng cho GUILD + CHANNEL hiện tại
     session = get_session(gid, cid)
 
-    # --- 1. Reset phiên nếu quá 5 phút ---
+    # --- 1. Nếu chưa có phiên hoặc đã hết 5 phút -> mở phiên mới với owner = người này ---
     if need_reset_session(session):
-        reset_session(session, owner_name=None)
-
-    # --- 2. Nếu chưa có phiên, người dùng hiện tại trở thành người mở phiên ---
-    if session["start_time"] is None:
         reset_session(session, owner_name=user.display_name)
 
-    # --- 3. Nếu user đã có số trong phiên này -> trả lại số ---
+    # --- 2. Nếu user đã có số trong phiên này -> trả lại số, không quay lại ---
     if uid_str in session["user_numbers"]:
         old_num = session["user_numbers"][uid_str]
         text = (
@@ -4256,7 +4242,7 @@ async def cmd_boctham(ctx: commands.Context):
         await ctx.reply(text, mention_author=False)
         return
 
-    # --- 4. Cooldown 5 giây chống spam (theo từng kênh) ---
+    # --- 3. Cooldown 5 giây chống spam (theo từng kênh) ---
     remain = check_user_cooldown(gid, cid, user.id)
     if remain > 0:
         await ctx.reply(
@@ -4267,7 +4253,7 @@ async def cmd_boctham(ctx: commands.Context):
 
     touch_user_cooldown(gid, cid, user.id)
 
-    # --- 5. Random số may mắn lần đầu trong phiên ---
+    # --- 4. Random số may mắn lần đầu trong phiên ---
     lucky_raw = random.randint(1, 999)
     lucky_str = f"{lucky_raw:03d}"         # '001'..'999'
     lucky_emoji = format_number_emoji(lucky_str)
@@ -4275,19 +4261,23 @@ async def cmd_boctham(ctx: commands.Context):
     # lưu số của user trong phiên (theo kênh)
     session["user_numbers"][uid_str] = lucky_raw
 
-    # --- 6. Cập nhật TOP phiên ---
+    # --- 5. Cập nhật TOP phiên ---
     if session["top_number"] is None or lucky_raw > session["top_number"]:
         session["top_number"] = lucky_raw
         session["top_user"] = user.display_name
 
-    # --- 7. Tạo embed kết quả cuối ---
+    # --- 6. Tạo embed kết quả cuối ---
     embed = discord.Embed(
         title="🎲 BỐC THĂM MAY MẮN",
         color=0xFFD700
     )
 
-    embed.add_field(name="👤 Người chơi", value=user.mention, inline=False)
-    embed.add_field(name="🕒 Phiên mở", value=session["owner_name"], inline=False)
+    embed.add_field(
+    name="👤 Người chơi / 🕒 Phiên mở",
+    value=f"{user.mention}  —  **{session['owner_name']}**",
+    inline=False
+)
+
 
     khung = (
         "╔════ SỐ MAY MẮN ════╗\n"
@@ -4309,7 +4299,7 @@ async def cmd_boctham(ctx: commands.Context):
         inline=False
     )
 
-      # --- 8. Animation quay số: random số demo nhỏ hơn số thật ---
+    # --- 7. Animation quay số: random số demo nhỏ hơn số thật ---
     demo_raw = random.randint(1, max(lucky_raw - 1, 1))
     demo_str = f"{demo_raw:03d}"
     demo_emoji = format_number_emoji(demo_str)
@@ -4323,6 +4313,7 @@ async def cmd_boctham(ctx: commands.Context):
         await msg.edit(content=None, embed=embed)
     except discord.HTTPException:
         await ctx.send(embed=embed)
+
 
 
 
