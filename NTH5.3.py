@@ -4583,15 +4583,16 @@ async def cmd_boctham(ctx: commands.Context):
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
 
-    # ===== HIỂN THỊ SỐ CAO NHẤT =====
+        # ===== HIỂN THỊ SỐ CAO NHẤT =====
     if session["top_number"] is not None:
         if session_type == "event":
-            # Phiên SỰ KIỆN: che 1 số đầu, chỉ show 2 số cuối + emoji nhiễu
+            # Phiên SỰ KIỆN: ẩn tên, chỉ show 2 số cuối + emoji nhiễu
             num_str = f"{session['top_number']:03d}"
-            last_two = num_str[1:]        # 2 số cuối
-            masked = f"<a:anhmo:1445818974691655711> **{last_two}**"
+            last_two = num_str[1:]  # 2 số cuối
+            masked = f"<a:moanh:1445814825698721894> **{last_two}**"
+
             top_value = (
-                f"{session['top_user']} — {masked}\n"
+                f"Một người nào đó đã che số đầu: {masked}\n"
             )
         else:
             # Phiên thường: show đầy đủ như cũ
@@ -4602,6 +4603,7 @@ async def cmd_boctham(ctx: commands.Context):
             value=top_value,
             inline=False
         )
+
 
     embed.add_field(
         name="",
