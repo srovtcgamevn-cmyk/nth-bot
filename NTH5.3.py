@@ -4332,6 +4332,21 @@ async def slash_boctham(interaction: discord.Interaction):
         # nếu vì lý do nào đó edit fail thì gửi thẳng embed
         await interaction.followup.send(embed=embed)
 
+
+# ========== PREFIX FALLBACK (CHỈ ĐỂ HƯỚNG DẪN) ==========
+@bot.command(name="boctham")
+async def boctham_prefix_fallback(ctx):
+    """
+    Dùng khi người ta gõ /boctham như lệnh prefix.
+    Chỉ để nhắc họ dùng slash command thực sự.
+    """
+    await ctx.reply(
+        "⚠ Lệnh **/boctham** bây giờ là **slash command**.\n"
+        "Hãy gõ `/` rồi chọn **boctham** trong menu lệnh (không gửi text `/boctham` thường).",
+        mention_author=False
+    )
+
+
 # ================== /boctham & /moboctham (SLASH, THEO KÊNH) ==================
 
 
