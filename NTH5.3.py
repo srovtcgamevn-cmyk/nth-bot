@@ -4602,11 +4602,48 @@ async def cmd_boctham(ctx: commands.Context):
             inline=False
         )
 
-    embed.add_field(
-        name="",
-        value="<a:thienthuong:1434625295897333811> Bạn đã quay trúng thẻ **Đại Cát** chắc chắn gặp nhiều may mắn trong hôm nay!",
-        inline=False
-    )
+    # ===== RANDOM LỜI CHÚC MAY MẮN =====
+wish_list = [
+    "<a:thienthuong:1434625295897333811> Bạn đã chạm vào khí vận **Đại Cát**, hôm nay mọi sự đều hanh thông!",
+    "<a:thienthuong:1434625295897333811> Vận may bùng nổ! Lá thẻ **Đại Cát** mang đến một ngày cực kỳ thuận lợi.",
+    "<a:thienthuong:1434625295897333811> Khí vận thăng hoa! **Đại Cát** xuất hiện báo hiệu điều tốt lành kéo đến.",
+    "<a:thienthuong:1434625295897333811> Chúc mừng! Bạn vừa nhận được thẻ **Đại Cát**, cả ngày rực rỡ như ý.",
+    "<a:thienthuong:1434625295897333811> May mắn ngập tràn — Thẻ **Đại Cát** soi sáng cho bạn hôm nay!",
+    "<a:thienthuong:1434625295897333811> Thẻ **Đại Cát** ứng nghiệm, hôm nay bạn chắc chắn gặp chuyện vui bất ngờ!",
+    "<a:thienthuong:1434625295897333811> Cát khí tụ hội! **Đại Cát** mang đến phúc lành và tài lộc.",
+    "<a:thienthuong:1434625295897333811> Thiên mệnh mỉm cười! Thẻ **Đại Cát** chọn bạn hôm nay."
+    "<a:thienthuong:1434625295897333811> Bạn đã trúng thưởng một viên **Thiên Thưởng** vui lòng liên hệ Mod để nhận một tràng pháo tay."
+    "<a:thienthuong:1434625295897333811> Hôm nay khí vận bao phủ bạn, dấu hiệu của một ngày đại hỷ.",
+    "<a:thienthuong:1434625295897333811> Thiên uy mở lối, cát khí theo bạn cả ngày.",
+    "<a:thienthuong:1434625295897333811> Vận sáng như ngọc, mọi việc đều hanh thông.",
+    "<a:thienthuong:1434625295897333811> Cát tinh soi chiếu, điều tốt lành đang đến rất gần.",
+    "<a:thienthuong:1434625295897333811> Khai vận cát tường, chúc bạn một ngày đầy thuận lợi.",
+    "<a:thienthuong:1434625295897333811> Đại phúc giáng lâm, hôm nay bạn sẽ gặp điều bất ngờ tuyệt đẹp.",
+    "<a:thienthuong:1434625295897333811> Năng lượng may mắn hội tụ, trời ban phúc khí cho bạn.",
+    "<a:thienthuong:1434625295897333811> Niềm vui tự tìm đến, bạn cứ chuẩn bị nhận nhé.",
+    "<a:thienthuong:1434625295897333811> Một ngày tuyệt đẹp đang mở ra trước mắt bạn.",
+    "<a:thienthuong:1434625295897333811> Trong hôm nay, bạn bước đi đâu cũng thấy thuận.",
+    "<a:thienthuong:1434625295897333811> Linh vận nở rộ, thần may mắn đồng hành cùng bạn.",
+    "<a:thienthuong:1434625295897333811> Trời đất mở lòng, cát duyên sẽ ghé thăm bạn hôm nay.",
+    "<a:thienthuong:1434625295897333811> Hôm nay bạn có ánh sáng riêng, ai nhìn cũng thấy phúc khí.",
+    "<a:thienthuong:1434625295897333811> Vận đỏ như son, chỉ cần bước nhẹ đã gặp điều vui.",
+    "<a:thienthuong:1434625295897333811> Hôm nay, mọi chuyện bạn chạm vào đều mang màu may mắn.",
+    "<a:thienthuong:1434625295897333811> Thiên thời địa lợi nhân hòa đều hướng về phía bạn.",
+    "<a:thienthuong:1434625295897333811> Bạn đã vào đúng luồng cát khí, hôm nay cực kỳ hanh thông.",
+    "<a:thienthuong:1434625295897333811> Phúc tinh nhập mệnh, hãy tận hưởng một ngày trọn vẹn.",
+    "<a:thienthuong:1434625295897333811> May mắn lớn đang ở ngay trước cửa, bạn chỉ cần bước tới.",
+    "<a:thienthuong:1434625295897333811> Lộc trời ban đến đúng lúc, hôm nay là ngày của bạn."
+
+]
+
+wish_text = random.choice(wish_list)
+
+embed.add_field(
+    name="",
+    value=wish_text,
+    inline=False
+)
+
 
     # ===== ANIMATION: SỐ DEMO NHỎ HƠN SỐ THẬT (nếu có thể) =====
     if lucky_raw > 1:
