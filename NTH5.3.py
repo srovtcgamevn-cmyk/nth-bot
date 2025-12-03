@@ -4088,11 +4088,28 @@ async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, max_per_c
 import random
 import time
 import asyncio
-import discord
-from discord.ext import commands
+# discord, commands đã import ở trên rồi thì KHÔNG cần import lại
+# import discord
+# from discord.ext import commands
 
-# ====== FILE QUYỀN QUẢN LÝ BỐC THĂM ======
+# ====== FILE QUYỀN /setboctham ======
 BOCTHAM_CONF_FILE = "boctham_conf.json"
+
+def load_boctham_conf():
+    return load_json(BOCTHAM_CONF_FILE, {"guilds": {}})
+
+def save_boctham_conf(data):
+    save_json(BOCTHAM_CONF_FILE, data)
+
+def has_boctham_permission(member: discord.Member) -> bool:
+    """Admin hoặc người được set quyền boctham."""
+    if member.guild_permissions.administrator:
+        return True
+    data = load_boctham_conf()
+    gid = str(member.guild.id)
+    g = data["guilds"].get(gid, {})
+    managers = g.get("managers", [])
+    return member.id in managers
 
 # ====== PHIÊN THƯỜNG (5 PHÚT) & COOLDOWN ======
 BOCTHAM_SESSIONS = {}      # key: (guild_id, channel_id) -> session dict
@@ -4167,50 +4184,6 @@ def format_number_emoji(num_str):
     return "".join(mapping[d] for d in num_str)
 
 
-# ================== QUẢN LÝ QUYỀN BỐC THĂM ==================
-
-def load_boctham_conf():
-    return load_json(BOCTHAM_CONF_FILE, {"guilds": {}})
-
-
-def save_boctham_conf(data):
-    save_json(BOCTHAM_CONF_FILE, data)
-
-
-def get_boctham_manager_ids(guild_id: int):
-    data = load_boctham_conf()
-    g = data["guilds"].get(str(guild_id), {})
-    lst = g.get("managers", [])
-    return set(lst)
-
-
-def add_boctham_manager(guild_id: int, user_id: int):
-    data = load_boctham_conf()
-    g = data["guilds"].setdefault(str(guild_id), {})
-    lst = set(g.get("managers", []))
-    lst.add(int(user_id))
-    g["managers"] = list(lst)
-    save_boctham_conf(data)
-
-
-def remove_boctham_manager(guild_id: int, user_id: int):
-    data = load_boctham_conf()
-    g = data["guilds"].setdefault(str(guild_id), {})
-    lst = set(g.get("managers", []))
-    if int(user_id) in lst:
-        lst.remove(int(user_id))
-    g["managers"] = list(lst)
-    save_boctham_conf(data)
-
-
-def has_boctham_permission(member: discord.Member) -> bool:
-    """Cho dùng /moboctham, /tatboctham nếu là admin HOẶC nằm trong danh sách managers."""
-    if member.guild_permissions.administrator:
-        return True
-    managers = get_boctham_manager_ids(member.guild.id)
-    return member.id in managers
-
-
 # ================== VIEW NÚT TỔNG KẾT /tatboctham ==================
 
 class BocthamSummaryView(discord.ui.View):
@@ -4253,7 +4226,6 @@ class BocthamSummaryView(discord.ui.View):
         for rank, (uid_str, num) in enumerate(sorted_items, start=1):
             member = interaction.guild.get_member(int(uid_str)) if interaction.guild else None
             name = member.display_name if member else f"<@{uid_str}>"
-            # 1 dòng, số in đậm
             lines.append(f"**{rank}. {name}** — **{num:03d}**")
 
         desc = "\n".join(lines)
@@ -4274,8 +4246,7 @@ class BocthamSummaryView(discord.ui.View):
                 ephemeral=True
             )
         embed = self._build_top_embed(interaction, archive, 5)
-        # Sửa: edit chính message đang có, giữ nguyên 3 nút UI
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
 
     @discord.ui.button(label="Top 10", style=discord.ButtonStyle.secondary)
     async def btn_top10(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -4288,7 +4259,7 @@ class BocthamSummaryView(discord.ui.View):
                 ephemeral=True
             )
         embed = self._build_top_embed(interaction, archive, 10)
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
 
     @discord.ui.button(label="Ngẫu nhiên tất cả", style=discord.ButtonStyle.success)
     async def btn_random_all(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -4317,109 +4288,103 @@ class BocthamSummaryView(discord.ui.View):
             description=f"Người may mắn ngẫu nhiên trong phiên:\n👉 {name} — **{num:03d}**",
             color=0x2ECC71
         )
-        # Cũng edit lại message, vẫn giữ 3 nút
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
-
-# ================== LỆNH QUẢN LÝ QUYỀN ==================
+# ================== LỆNH QUYỀN: /setboctham /xoaboctham /xemboctham ==================
 
 @bot.command(name="setboctham")
 @commands.has_permissions(administrator=True)
 async def cmd_setboctham(ctx: commands.Context, member: discord.Member):
-    """Cho phép 1 người được dùng /moboctham và /tatboctham."""
-    if ctx.guild is None:
-        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+    """Admin cấp quyền mở/tắt phiên bốc thăm sự kiện cho 1 người."""
+    data = load_boctham_conf()
+    gid = str(ctx.guild.id)
+    g = data["guilds"].setdefault(gid, {})
+    managers = g.setdefault("managers", [])
 
-    add_boctham_manager(ctx.guild.id, member.id)
+    if member.id in managers:
+        return await ctx.reply(
+            f"✅ {member.mention} đã có quyền quản lý bốc thăm sự kiện rồi.",
+            mention_author=False
+        )
+
+    managers.append(member.id)
+    save_boctham_conf(data)
+
     await ctx.reply(
-        f"✅ Đã thêm **{member.mention}** vào danh sách **quản lý bốc thăm**.\n"
-        f"Người này có thể dùng lệnh `/moboctham` và `/tatboctham`.",
+        f"✅ Đã cấp quyền **mở / tắt** bốc thăm sự kiện cho {member.mention}.",
         mention_author=False
     )
-
-
-@cmd_setboctham.error
-async def cmd_setboctham_error(ctx: commands.Context, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
 
 
 @bot.command(name="xoaboctham")
 @commands.has_permissions(administrator=True)
 async def cmd_xoaboctham(ctx: commands.Context, member: discord.Member):
-    """Xoá quyền quản lý bốc thăm của 1 người (ngoài admin)."""
-    if ctx.guild is None:
-        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+    """Admin xoá quyền mở/tắt phiên bốc thăm sự kiện của 1 người."""
+    data = load_boctham_conf()
+    gid = str(ctx.guild.id)
+    g = data["guilds"].setdefault(gid, {})
+    managers = g.setdefault("managers", [])
 
-    managers = get_boctham_manager_ids(ctx.guild.id)
     if member.id not in managers:
         return await ctx.reply(
-            f"📭 **{member.mention}** hiện không nằm trong danh sách quản lý bốc thăm.",
+            f"ℹ {member.mention} hiện **không nằm** trong danh sách được cấp quyền.",
             mention_author=False
         )
 
-    remove_boctham_manager(ctx.guild.id, member.id)
+    managers.remove(member.id)
+    save_boctham_conf(data)
+
     await ctx.reply(
-        f"🗑 Đã xoá quyền quản lý bốc thăm của **{member.mention}**.\n"
-        f"Người này không còn dùng được `/moboctham` và `/tatboctham` (trừ khi là admin).",
+        f"✅ Đã xoá quyền quản lý bốc thăm sự kiện của {member.mention}.",
         mention_author=False
     )
-
-
-@cmd_xoaboctham.error
-async def cmd_xoaboctham_error(ctx: commands.Context, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
 
 
 @bot.command(name="xemboctham")
 @commands.has_permissions(administrator=True)
 async def cmd_xemboctham(ctx: commands.Context):
-    """Xem danh sách người được quyền dùng /moboctham & /tatboctham (ngoài admin)."""
-    if ctx.guild is None:
-        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+    """Admin xem danh sách những người có quyền mở/tắt bốc thăm sự kiện."""
+    data = load_boctham_conf()
+    gid = str(ctx.guild.id)
+    g = data["guilds"].get(gid, {})
+    managers = g.get("managers", [])
 
-    ids = get_boctham_manager_ids(ctx.guild.id)
-    if not ids:
+    if not managers:
         return await ctx.reply(
-            "📋 **Danh sách quản lý bốc thăm (ngoài Admin):**\n"
-            "📭 Hiện tại **chưa có ai** được cấp quyền.",
+            "📭 Hiện **chưa có ai** được cấp quyền quản lý bốc thăm sự kiện.",
             mention_author=False
         )
 
-    lines = []
-    for idx, uid in enumerate(ids, start=1):
+    names = []
+    for uid in managers:
         m = ctx.guild.get_member(uid)
         if m:
-            lines.append(f"{idx}. {m.mention}")
+            names.append(f"- {m.mention} (`{m.id}`)")
         else:
-            lines.append(f"{idx}. <@{uid}> (không còn trong server)")
+            names.append(f"- <@{uid}> (`{uid}`)")
 
     embed = discord.Embed(
-        title="📋 DANH SÁCH QUẢN LÝ BỐC THĂM (ngoài Admin)",
-        description="\n".join(lines),
+        title="🛠 DANH SÁCH QUẢN LÝ BỐC THĂM SỰ KIỆN",
+        description="\n".join(names),
         color=0x3498DB
     )
     await ctx.reply(embed=embed, mention_author=False)
 
 
-@cmd_xemboctham.error
-async def cmd_xemboctham_error(ctx: commands.Context, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
-
-
-# ================== LỆNH: /moboctham ==================
+# ================== LỆNH ADMIN: /moboctham ==================
 
 @bot.command(name="moboctham")
 async def cmd_moboctham(ctx: commands.Context):
-    """Mở PHIÊN BỐC THĂM MAY MẮN SỰ KIỆN cho kênh hiện tại (không giới hạn thời gian)."""
+    """Mở phiên BỐC THĂM MAY MẮN SỰ KIỆN cho kênh hiện tại (không giới hạn thời gian)."""
     if ctx.guild is None:
         return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
 
     if not has_boctham_permission(ctx.author):
-        return await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
+        return await ctx.reply(
+            "⛔ Bạn không đủ quyền dùng lệnh này.",
+            mention_author=False
+        )
 
     gid = ctx.guild.id
     cid = ctx.channel.id
@@ -4437,26 +4402,30 @@ async def cmd_moboctham(ctx: commands.Context):
         description=(
             f"👑 Phiên **SỰ KIỆN** đã được mở tại kênh này bởi **{ctx.author.display_name}**.\n"
             f"➡ Từ bây giờ, mọi người dùng **/boctham** sẽ tham gia phiên **sự kiện** này.\n"
-            f"⛔ Phiên này **không giới hạn thời gian**, chỉ kết thúc khi Mod dùng `/tatboctham`."
+            f"⛔ Phiên này **không giới hạn thời gian**, chỉ kết thúc khi dùng `/tatboctham`."
         ),
         color=0xFFD700
     )
     await ctx.reply(embed=embed, mention_author=False)
 
 
-# ================== LỆNH: /tatboctham ==================
+# ================== LỆNH ADMIN: /tatboctham ==================
 
 @bot.command(name="tatboctham")
 async def cmd_tatboctham(ctx: commands.Context):
     """
-    Kết thúc PHIÊN SỰ KIỆN (nếu đang mở) hoặc xem lại kết quả
-    phiên sự kiện gần nhất của kênh này (có nút Top 5 / Top 10 / Ngẫu nhiên).
+    Kết thúc PHIÊN SỰ KIỆN (nếu đang mở)
+    hoặc xem lại kết quả phiên sự kiện gần nhất của kênh này
+    (kèm nút Top 5 / Top 10 / Ngẫu nhiên).
     """
     if ctx.guild is None:
         return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
 
     if not has_boctham_permission(ctx.author):
-        return await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
+        return await ctx.reply(
+            "⛔ Bạn không đủ quyền dùng lệnh này.",
+            mention_author=False
+        )
 
     gid = ctx.guild.id
     cid = ctx.channel.id
@@ -4491,7 +4460,8 @@ async def cmd_tatboctham(ctx: commands.Context):
 
     if not archive:
         return await ctx.reply(
-            "📭 Không có phiên bốc thăm sự kiện nào để tổng kết hoặc xem lại.",
+            "📭 Hiện không có **phiên bốc thăm sự kiện** nào đang mở, "
+            "và cũng không có kết quả phiên gần nhất để hiển thị.",
             mention_author=False
         )
 
@@ -4509,11 +4479,10 @@ async def cmd_tatboctham(ctx: commands.Context):
             f"👥 Tổng số người tham gia: **{total}**"
         )
 
-    title = (
-        "📑 KẾT THÚC BỐC THĂM MAY MẮN SỰ KIỆN"
-        if from_active else
-        "📜 KẾT QUẢ PHIÊN BỐC THĂM SỰ KIỆN GẦN NHẤT"
-    )
+    if from_active:
+        title = "📑 KẾT THÚC BỐC THĂM MAY MẮN SỰ KIỆN"
+    else:
+        title = "📜 KẾT QUẢ PHIÊN BỐC THĂM SỰ KIỆN GẦN NHẤT"
 
     embed = discord.Embed(
         title=title,
@@ -4549,8 +4518,11 @@ async def cmd_boctham(ctx: commands.Context):
         session = EVENT_SESSIONS[key]
         session_type = "event"
     else:
+        # phiên thường
         session = get_normal_session(gid, cid)
         session_type = "normal"
+
+        # CHỈ reset phiên thường khi KHÔNG có phiên sự kiện
         if need_reset_normal_session(session):
             reset_normal_session(session, owner_name=user.display_name)
 
@@ -4570,7 +4542,7 @@ async def cmd_boctham(ctx: commands.Context):
             "⏳ Bạn đã tham gia bốc thăm trong phiên này rồi.\n"
             f"Số may mắn của bạn là **{old_num:03d}**.\n"
             "⏰ Nếu muốn tham gia phiên mới hãy đợi phiên hiện tại kết thúc "
-            "(5 phút với phiên thường, hoặc dùng `/tatboctham` với phiên sự kiện).",
+            "(5 phút với phiên thường, hoặc admin dùng `/tatboctham` với phiên sự kiện).",
             mention_author=False
         )
 
@@ -4622,20 +4594,26 @@ async def cmd_boctham(ctx: commands.Context):
         inline=False
     )
 
-    # ===== ANIMATION: SỐ DEMO NHỎ HƠN SỐ THẬT =====
-    demo_raw = random.randint(1, max(lucky_raw - 1, 1))
+    # ===== ANIMATION: SỐ DEMO NHỎ HƠN SỐ THẬT (nếu có thể) =====
+    if lucky_raw > 1:
+        demo_raw = random.randint(1, lucky_raw - 1)
+    else:
+        demo_raw = 1
     demo_str = f"{demo_raw:03d}"
     demo_emoji = format_number_emoji(demo_str)
 
-    msg = await ctx.reply("🎲 Đang quay số...\n 0️⃣0️⃣0️⃣", mention_author=False)
+    msg = await ctx.reply("🎲 Đang quay số...\n🔄 0️⃣0️⃣0️⃣", mention_author=False)
 
     try:
         await asyncio.sleep(0.7)
-        await msg.edit(content=f"🎲 Đang quay số...\n {demo_emoji}")
+        await msg.edit(content=f"🎲 Đang quay số...\n🔄 {demo_emoji}")
         await asyncio.sleep(0.7)
         await msg.edit(content=None, embed=embed)
     except discord.HTTPException:
         await ctx.send(embed=embed)
+
+# =============== HẾT PHẦN BỐC THĂM MAY MẮN ==================
+
 
 
 
