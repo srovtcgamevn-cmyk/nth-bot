@@ -4082,6 +4082,118 @@ async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, max_per_c
 
 
 
+# ================== /boctham ==================
+import random
+import time
+from discord.ext import commands
+
+# Lưu phiên vào global (tồn tại trong runtime bot)
+BOCTHAM_SESSION = {
+    "start_time": None,
+    "owner_name": None,
+    "top_user": None,
+    "top_number": None
+}
+
+SESSION_DURATION = 300  # 5 phút = 300 giây
+
+
+def format_number_emoji(num_str: str):
+    """Chuyển 3 số thành emoji 0️⃣1️⃣2️⃣..."""
+    mapping = {
+        "0": "0️⃣",
+        "1": "1️⃣",
+        "2": "2️⃣",
+        "3": "3️⃣",
+        "4": "4️⃣",
+        "5": "5️⃣",
+        "6": "6️⃣",
+        "7": "7️⃣",
+        "8": "8️⃣",
+        "9": "9️⃣",
+    }
+    return "".join(mapping[d] for d in num_str)
+
+
+def check_session_reset():
+    """Reset phiên nếu hết 5 phút"""
+    if BOCTHAM_SESSION["start_time"] is None:
+        return True
+
+    now = time.time()
+    if now - BOCTHAM_SESSION["start_time"] > SESSION_DURATION:
+        return True
+
+    return False
+
+
+@bot.command(name="boctham")
+@commands.cooldown(1, 5, commands.BucketType.user)
+async def cmd_boctham(ctx):
+
+    # ========== RESET phiên nếu quá 5 phút ==========
+    if check_session_reset():
+        BOCTHAM_SESSION["start_time"] = None
+        BOCTHAM_SESSION["owner_name"] = None
+        BOCTHAM_SESSION["top_user"] = None
+        BOCTHAM_SESSION["top_number"] = None
+
+    # ========== Nếu chưa có phiên thì tạo phiên mới ==========
+    if BOCTHAM_SESSION["start_time"] is None:
+        BOCTHAM_SESSION["start_time"] = time.time()
+        BOCTHAM_SESSION["owner_name"] = ctx.author.display_name
+        # top sẽ được gán sau khi random
+
+    # ========== Random số may mắn ==========
+    lucky_raw = random.randint(1, 999)
+    lucky_str = f"{lucky_raw:03d}"  # đảm bảo dạng 001–999
+    lucky_emoji = format_number_emoji(lucky_str)
+
+    # ========== Kiểm tra top ==========
+    if BOCTHAM_SESSION["top_number"] is None or lucky_raw > BOCTHAM_SESSION["top_number"]:
+        BOCTHAM_SESSION["top_number"] = lucky_raw
+        BOCTHAM_SESSION["top_user"] = ctx.author.display_name
+
+    # ========== Tạo embed ==========
+    embed = discord.Embed(
+        title="🎲 BỐC THĂM MAY MẮN",
+        color=0xFFD700
+    )
+
+    embed.add_field(name="👤 Người chơi", value=f"{ctx.author.mention}", inline=False)
+    embed.add_field(name="🕒 Phiên mở", value=f"{BOCTHAM_SESSION['owner_name']}", inline=False)
+
+    # Khung số may mắn
+    khung = (
+        "╔════ SỐ MAY MẮN ════╗\n"
+        f"      {lucky_emoji}\n"
+        "╚════════════════════╝"
+    )
+    embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
+
+    # ========== Dòng TOP (gọn nhất) ==========
+    if BOCTHAM_SESSION["top_number"] is not None:
+        embed.add_field(
+            name="🏆 Số cao nhất",
+            value=f"{BOCTHAM_SESSION['top_user']} — **{BOCTHAM_SESSION['top_number']:03d}**",
+            inline=False
+        )
+
+    # Lời chúc
+    embed.add_field(
+        name="",
+        value="<a:thienthuong:1434625295897333811> Chúc bạn gặp điều cát tường may mắn hôm nay!",
+        inline=False
+    )
+
+    await ctx.reply(embed=embed)
+
+
+# ========== Cooldown báo lỗi ==========
+@cmd_boctham.error
+async def cmd_boctham_error(ctx, error):
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.reply(f"⏳ Bạn vừa dùng rồi, thử lại sau **{error.retry_after:.1f} giây** nhé!")
 
 
 
