@@ -4231,7 +4231,7 @@ class BocthamSummaryView(discord.ui.View):
         if interaction.user.guild_permissions.administrator:
             return True
         await interaction.response.send_message(
-            "⛔ Bạn không đủ quyền dùng nút này.",
+            "⛔ Chỉ **admin** hoặc người dùng lệnh `/tatboctham` mới bấm được nút này.",
             ephemeral=True
         )
         return False
@@ -4253,6 +4253,7 @@ class BocthamSummaryView(discord.ui.View):
         for rank, (uid_str, num) in enumerate(sorted_items, start=1):
             member = interaction.guild.get_member(int(uid_str)) if interaction.guild else None
             name = member.display_name if member else f"<@{uid_str}>"
+            # 1 dòng, số in đậm
             lines.append(f"**{rank}. {name}** — **{num:03d}**")
 
         desc = "\n".join(lines)
@@ -4273,7 +4274,8 @@ class BocthamSummaryView(discord.ui.View):
                 ephemeral=True
             )
         embed = self._build_top_embed(interaction, archive, 5)
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        # Sửa: edit chính message đang có, giữ nguyên 3 nút UI
+        await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="Top 10", style=discord.ButtonStyle.secondary)
     async def btn_top10(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -4286,7 +4288,7 @@ class BocthamSummaryView(discord.ui.View):
                 ephemeral=True
             )
         embed = self._build_top_embed(interaction, archive, 10)
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="Ngẫu nhiên tất cả", style=discord.ButtonStyle.success)
     async def btn_random_all(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -4315,7 +4317,9 @@ class BocthamSummaryView(discord.ui.View):
             description=f"Người may mắn ngẫu nhiên trong phiên:\n👉 {name} — **{num:03d}**",
             color=0x2ECC71
         )
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        # Cũng edit lại message, vẫn giữ 3 nút
+        await interaction.response.edit_message(embed=embed, view=self)
+
 
 
 # ================== LỆNH QUẢN LÝ QUYỀN ==================
@@ -4600,7 +4604,7 @@ async def cmd_boctham(ctx: commands.Context):
 
     khung = (
         "╔════ SỐ MAY MẮN ════╗\n"
-        f"         {lucky_emoji}\n"
+        f"       {lucky_emoji}\n"
         "╚════════════════════╝"
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
