@@ -4604,7 +4604,7 @@ async def cmd_boctham(ctx: commands.Context):
 
     embed.add_field(
         name="",
-        value="<a:thienthuong:1434625295897333811> Chúc bạn gặp điều cát tường may mắn hôm nay!",
+        value="<a:thienthuong:1434625295897333811> Bạn đã quay trúng thẻ **Đại Cát** chắc chắn gặp nhiều may mắn trong hôm nay!",
         inline=False
     )
 
