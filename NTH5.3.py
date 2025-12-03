@@ -4082,13 +4082,13 @@ async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, max_per_c
 
 
 
-# ================== /boctham & /moboctham (SLASH, THEO KÊNH) ==================
-import discord
-from discord import app_commands
-from discord.ext import commands
+
+# ================== BỐC THĂM MAY MẮN (PREFIX /boctham) ==================
 import random
 import time
 import asyncio
+from discord.ext import commands
+import discord
 
 # ====== STATE PHIÊN BỐC THĂM THEO GUILD + CHANNEL ======
 # key: (guild_id, channel_id)
@@ -4186,62 +4186,53 @@ def touch_user_cooldown(guild_id, channel_id, user_id):
 
 
 # ====== LỆNH ADMIN: /moboctham ======
-@bot.tree.command(name="moboctham", description="Admin mở một phiên bốc thăm mới (5 phút) cho kênh hiện tại.")
-@app_commands.checks.has_permissions(administrator=True)
-async def slash_moboctham(interaction: discord.Interaction):
-    if interaction.guild is None or interaction.channel is None:
-        return await interaction.response.send_message(
-            "⛔ Lệnh này chỉ dùng được trong server.",
-            ephemeral=True
-        )
+@bot.command(name="moboctham")
+@commands.has_permissions(administrator=True)
+async def cmd_moboctham(ctx: commands.Context):
+    """Admin chủ động mở 1 phiên bốc thăm 5 phút cho kênh hiện tại."""
+    if ctx.guild is None:
+        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
 
-    gid = interaction.guild.id
-    cid = interaction.channel.id
+    gid = ctx.guild.id
+    cid = ctx.channel.id
     session = get_session(gid, cid)
 
-    reset_session(session, owner_name=interaction.user.display_name)
+    reset_session(session, owner_name=ctx.author.display_name)
 
     embed = discord.Embed(
         title="🔔 MỞ PHIÊN BỐC THĂM",
         description=(
-            f"🕒 Phiên mới đã được mở bởi **{interaction.user.display_name}** tại kênh này.\n"
+            f"🕒 Phiên mới đã được mở bởi **{ctx.author.display_name}** tại kênh này.\n"
             f"⏳ Thời lượng: **5 phút**.\n"
             f"Hãy dùng lệnh `/boctham` để tham gia bốc thăm may mắn!"
         ),
         color=0xFFD700
     )
 
-    await interaction.response.send_message(embed=embed)  # public trong kênh hiện tại
+    await ctx.reply(embed=embed, mention_author=False)
 
 
-@slash_moboctham.error
-async def slash_moboctham_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.errors.MissingPermissions):
-        if not interaction.response.is_done():
-            await interaction.response.send_message(
-                "⛔ Lệnh này chỉ dành cho **Admin** (quyền Administrator).",
-                ephemeral=True
-            )
-        else:
-            await interaction.followup.send(
-                "⛔ Lệnh này chỉ dành cho **Admin** (quyền Administrator).",
-                ephemeral=True
-            )
+@cmd_moboctham.error
+async def cmd_moboctham_error(ctx: commands.Context, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply(
+            "⛔ Lệnh này chỉ dành cho **Admin** (có quyền Administrator).",
+            mention_author=False
+        )
 
 
 # ====== LỆNH CHÍNH: /boctham ======
-@bot.tree.command(name="boctham", description="Bốc thăm may mắn 001–999 (theo từng kênh, từng server).")
-async def slash_boctham(interaction: discord.Interaction):
-    if interaction.guild is None or interaction.channel is None:
-        return await interaction.response.send_message(
-            "⛔ Lệnh này chỉ dùng được trong server.",
-            ephemeral=True
-        )
+@bot.command(name="boctham")
+async def cmd_boctham(ctx: commands.Context):
+    """Bốc thăm may mắn 001–999 (theo từng kênh, từng server)."""
 
-    user = interaction.user
+    if ctx.guild is None:
+        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+
+    user = ctx.author
     uid_str = str(user.id)
-    gid = interaction.guild.id
-    cid = interaction.channel.id
+    gid = ctx.guild.id
+    cid = ctx.channel.id
 
     # Lấy session riêng cho GUILD + CHANNEL hiện tại
     session = get_session(gid, cid)
@@ -4254,23 +4245,23 @@ async def slash_boctham(interaction: discord.Interaction):
     if session["start_time"] is None:
         reset_session(session, owner_name=user.display_name)
 
-    # --- 3. Nếu user đã có số trong phiên này -> trả lại số, EPHEMERAL ---
+    # --- 3. Nếu user đã có số trong phiên này -> trả lại số ---
     if uid_str in session["user_numbers"]:
         old_num = session["user_numbers"][uid_str]
         text = (
             f"⏳ Bạn đã tham gia bốc thăm may mắn phiên này rồi,\n"
             f"số may mắn của bạn là **{old_num:03d}**.\n"
-            f"Nếu bạn muốn tham gia phiên mới hãy quay trở lại sau 5 phút."
+            f"⏰ Nếu bạn muốn tham gia phiên mới hãy quay trở lại sau 5 phút."
         )
-        await interaction.response.send_message(text, ephemeral=True)
+        await ctx.reply(text, mention_author=False)
         return
 
     # --- 4. Cooldown 5 giây chống spam (theo từng kênh) ---
     remain = check_user_cooldown(gid, cid, user.id)
     if remain > 0:
-        await interaction.response.send_message(
+        await ctx.reply(
             f"⏳ Bạn đang dùng hơi nhanh, thử lại sau **{remain:.1f} giây** nhé!",
-            ephemeral=True
+            mention_author=False
         )
         return
 
@@ -4305,7 +4296,6 @@ async def slash_boctham(interaction: discord.Interaction):
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
 
-    # dòng "Số cao nhất"
     if session["top_number"] is not None:
         embed.add_field(
             name="🏆 Số cao nhất",
@@ -4320,8 +4310,7 @@ async def slash_boctham(interaction: discord.Interaction):
     )
 
     # --- 8. Animation quay số: gửi text tạm rồi edit thành embed ---
-    await interaction.response.send_message("🎲 Đang quay số...\n🔄 0️⃣0️⃣0️⃣")
-    msg = await interaction.original_response()
+    msg = await ctx.reply("🎲 Đang quay số...\n🔄 0️⃣0️⃣0️⃣", mention_author=False)
 
     try:
         await asyncio.sleep(0.7)
@@ -4329,25 +4318,8 @@ async def slash_boctham(interaction: discord.Interaction):
         await asyncio.sleep(0.7)
         await msg.edit(content=None, embed=embed)
     except discord.HTTPException:
-        # nếu vì lý do nào đó edit fail thì gửi thẳng embed
-        await interaction.followup.send(embed=embed)
-
-
-# ========== PREFIX FALLBACK (CHỈ ĐỂ HƯỚNG DẪN) ==========
-@bot.command(name="boctham")
-async def boctham_prefix_fallback(ctx):
-    """
-    Dùng khi người ta gõ /boctham như lệnh prefix.
-    Chỉ để nhắc họ dùng slash command thực sự.
-    """
-    await ctx.reply(
-        "⚠ Lệnh **/boctham** bây giờ là **slash command**.\n"
-        "Hãy gõ `/` rồi chọn **boctham** trong menu lệnh (không gửi text `/boctham` thường).",
-        mention_author=False
-    )
-
-
-# ================== /boctham & /moboctham (SLASH, THEO KÊNH) ==================
+        # nếu edit fail thì gửi thẳng embed mới
+        await ctx.send(embed=embed)
 
 
 
