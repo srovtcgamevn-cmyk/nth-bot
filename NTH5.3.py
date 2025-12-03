@@ -4082,24 +4082,75 @@ async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, max_per_c
 
 
 
-# ================== /boctham ==================
+# ================== /boctham & /moboctham (SLASH, THEO KÊNH) ==================
+import discord
+from discord import app_commands
+from discord.ext import commands
 import random
 import time
-from discord.ext import commands
+import asyncio
 
-# Lưu phiên vào global (tồn tại trong runtime bot)
-BOCTHAM_SESSION = {
-    "start_time": None,
-    "owner_name": None,
-    "top_user": None,
-    "top_number": None
-}
+# ====== STATE PHIÊN BỐC THĂM THEO GUILD + CHANNEL ======
+# key: (guild_id, channel_id)
+# value: {
+#   "start_time": float | None,
+#   "owner_name": str | None,
+#   "top_user": str | None,
+#   "top_number": int | None,
+#   "user_numbers": { user_id(str): lucky_number(int) }
+# }
+BOCTHAM_SESSIONS = {}
 
-SESSION_DURATION = 300  # 5 phút = 300 giây
+SESSION_DURATION = 300      # 5 phút
+COOLDOWN_SECONDS = 5
+# cooldown theo (guild_id, channel_id, user_id)
+USER_COOLDOWN = {}          # {(gid, cid, uid_int): last_time(float)}
 
 
-def format_number_emoji(num_str: str):
-    """Chuyển 3 số thành emoji 0️⃣1️⃣2️⃣..."""
+def _session_key(guild_id, channel_id):
+    return (guild_id, channel_id)
+
+
+def get_session(guild_id, channel_id):
+    """Lấy session cho 1 kênh trong 1 guild; nếu chưa có thì tạo trống."""
+    key = _session_key(guild_id, channel_id)
+    if key not in BOCTHAM_SESSIONS:
+        BOCTHAM_SESSIONS[key] = {
+            "start_time": None,
+            "owner_name": None,
+            "top_user": None,
+            "top_number": None,
+            "user_numbers": {}
+        }
+    return BOCTHAM_SESSIONS[key]
+
+
+def need_reset_session(session):
+    """True nếu chưa có phiên hoặc đã quá 5 phút."""
+    if session["start_time"] is None:
+        return True
+    now = time.time()
+    return (now - session["start_time"]) > SESSION_DURATION
+
+
+def reset_session(session, owner_name=None):
+    """Reset session; nếu có owner_name thì mở phiên mới với owner đó."""
+    if owner_name is None:
+        session["start_time"] = None
+        session["owner_name"] = None
+        session["top_user"] = None
+        session["top_number"] = None
+        session["user_numbers"] = {}
+    else:
+        session["start_time"] = time.time()
+        session["owner_name"] = owner_name
+        session["top_user"] = None
+        session["top_number"] = None
+        session["user_numbers"] = {}
+
+
+def format_number_emoji(num_str):
+    """Chuyển '072' -> '0️⃣7️⃣2️⃣'."""
     mapping = {
         "0": "0️⃣",
         "1": "1️⃣",
@@ -4115,55 +4166,138 @@ def format_number_emoji(num_str: str):
     return "".join(mapping[d] for d in num_str)
 
 
-def check_session_reset():
-    """Reset phiên nếu hết 5 phút"""
-    if BOCTHAM_SESSION["start_time"] is None:
-        return True
-
+def check_user_cooldown(guild_id, channel_id, user_id):
+    """
+    Trả về 0 nếu không cooldown.
+    Trả về số giây còn lại nếu vẫn còn cooldown.
+    """
     now = time.time()
-    if now - BOCTHAM_SESSION["start_time"] > SESSION_DURATION:
-        return True
+    key = (guild_id, channel_id, user_id)
+    last = USER_COOLDOWN.get(key)
+    if last is None:
+        return 0
+    remain = COOLDOWN_SECONDS - (now - last)
+    return remain if remain > 0 else 0
 
-    return False
+
+def touch_user_cooldown(guild_id, channel_id, user_id):
+    key = (guild_id, channel_id, user_id)
+    USER_COOLDOWN[key] = time.time()
 
 
-@bot.command(name="boctham")
-@commands.cooldown(1, 5, commands.BucketType.user)
-async def cmd_boctham(ctx):
+# ====== LỆNH ADMIN: /moboctham ======
+@bot.tree.command(name="moboctham", description="Admin mở một phiên bốc thăm mới (5 phút) cho kênh hiện tại.")
+@app_commands.checks.has_permissions(administrator=True)
+async def slash_moboctham(interaction: discord.Interaction):
+    if interaction.guild is None or interaction.channel is None:
+        return await interaction.response.send_message(
+            "⛔ Lệnh này chỉ dùng được trong server.",
+            ephemeral=True
+        )
 
-    # ========== RESET phiên nếu quá 5 phút ==========
-    if check_session_reset():
-        BOCTHAM_SESSION["start_time"] = None
-        BOCTHAM_SESSION["owner_name"] = None
-        BOCTHAM_SESSION["top_user"] = None
-        BOCTHAM_SESSION["top_number"] = None
+    gid = interaction.guild.id
+    cid = interaction.channel.id
+    session = get_session(gid, cid)
 
-    # ========== Nếu chưa có phiên thì tạo phiên mới ==========
-    if BOCTHAM_SESSION["start_time"] is None:
-        BOCTHAM_SESSION["start_time"] = time.time()
-        BOCTHAM_SESSION["owner_name"] = ctx.author.display_name
-        # top sẽ được gán sau khi random
+    reset_session(session, owner_name=interaction.user.display_name)
 
-    # ========== Random số may mắn ==========
+    embed = discord.Embed(
+        title="🔔 MỞ PHIÊN BỐC THĂM",
+        description=(
+            f"🕒 Phiên mới đã được mở bởi **{interaction.user.display_name}** tại kênh này.\n"
+            f"⏳ Thời lượng: **5 phút**.\n"
+            f"Hãy dùng lệnh `/boctham` để tham gia bốc thăm may mắn!"
+        ),
+        color=0xFFD700
+    )
+
+    await interaction.response.send_message(embed=embed)  # public trong kênh hiện tại
+
+
+@slash_moboctham.error
+async def slash_moboctham_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.errors.MissingPermissions):
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "⛔ Lệnh này chỉ dành cho **Admin** (quyền Administrator).",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "⛔ Lệnh này chỉ dành cho **Admin** (quyền Administrator).",
+                ephemeral=True
+            )
+
+
+# ====== LỆNH CHÍNH: /boctham ======
+@bot.tree.command(name="boctham", description="Bốc thăm may mắn 001–999 (theo từng kênh, từng server).")
+async def slash_boctham(interaction: discord.Interaction):
+    if interaction.guild is None or interaction.channel is None:
+        return await interaction.response.send_message(
+            "⛔ Lệnh này chỉ dùng được trong server.",
+            ephemeral=True
+        )
+
+    user = interaction.user
+    uid_str = str(user.id)
+    gid = interaction.guild.id
+    cid = interaction.channel.id
+
+    # Lấy session riêng cho GUILD + CHANNEL hiện tại
+    session = get_session(gid, cid)
+
+    # --- 1. Reset phiên nếu quá 5 phút ---
+    if need_reset_session(session):
+        reset_session(session, owner_name=None)
+
+    # --- 2. Nếu chưa có phiên, người dùng hiện tại trở thành người mở phiên ---
+    if session["start_time"] is None:
+        reset_session(session, owner_name=user.display_name)
+
+    # --- 3. Nếu user đã có số trong phiên này -> trả lại số, EPHEMERAL ---
+    if uid_str in session["user_numbers"]:
+        old_num = session["user_numbers"][uid_str]
+        text = (
+            f"⏳ Bạn đã tham gia bốc thăm may mắn phiên này rồi,\n"
+            f"số may mắn của bạn là **{old_num:03d}**.\n"
+            f"Nếu bạn muốn tham gia phiên mới hãy quay trở lại sau 5 phút."
+        )
+        await interaction.response.send_message(text, ephemeral=True)
+        return
+
+    # --- 4. Cooldown 5 giây chống spam (theo từng kênh) ---
+    remain = check_user_cooldown(gid, cid, user.id)
+    if remain > 0:
+        await interaction.response.send_message(
+            f"⏳ Bạn đang dùng hơi nhanh, thử lại sau **{remain:.1f} giây** nhé!",
+            ephemeral=True
+        )
+        return
+
+    touch_user_cooldown(gid, cid, user.id)
+
+    # --- 5. Random số may mắn lần đầu trong phiên ---
     lucky_raw = random.randint(1, 999)
-    lucky_str = f"{lucky_raw:03d}"  # đảm bảo dạng 001–999
+    lucky_str = f"{lucky_raw:03d}"         # '001'..'999'
     lucky_emoji = format_number_emoji(lucky_str)
 
-    # ========== Kiểm tra top ==========
-    if BOCTHAM_SESSION["top_number"] is None or lucky_raw > BOCTHAM_SESSION["top_number"]:
-        BOCTHAM_SESSION["top_number"] = lucky_raw
-        BOCTHAM_SESSION["top_user"] = ctx.author.display_name
+    # lưu số của user trong phiên (theo kênh)
+    session["user_numbers"][uid_str] = lucky_raw
 
-    # ========== Tạo embed ==========
+    # --- 6. Cập nhật TOP phiên ---
+    if session["top_number"] is None or lucky_raw > session["top_number"]:
+        session["top_number"] = lucky_raw
+        session["top_user"] = user.display_name
+
+    # --- 7. Tạo embed kết quả cuối ---
     embed = discord.Embed(
         title="🎲 BỐC THĂM MAY MẮN",
         color=0xFFD700
     )
 
-    embed.add_field(name="👤 Người chơi", value=f"{ctx.author.mention}", inline=False)
-    embed.add_field(name="🕒 Phiên mở", value=f"{BOCTHAM_SESSION['owner_name']}", inline=False)
+    embed.add_field(name="👤 Người chơi", value=user.mention, inline=False)
+    embed.add_field(name="🕒 Phiên mở", value=session["owner_name"], inline=False)
 
-    # Khung số may mắn
     khung = (
         "╔════ SỐ MAY MẮN ════╗\n"
         f"      {lucky_emoji}\n"
@@ -4171,29 +4305,35 @@ async def cmd_boctham(ctx):
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
 
-    # ========== Dòng TOP (gọn nhất) ==========
-    if BOCTHAM_SESSION["top_number"] is not None:
+    # dòng "Số cao nhất"
+    if session["top_number"] is not None:
         embed.add_field(
             name="🏆 Số cao nhất",
-            value=f"{BOCTHAM_SESSION['top_user']} — **{BOCTHAM_SESSION['top_number']:03d}**",
+            value=f"{session['top_user']} — **{session['top_number']:03d}**",
             inline=False
         )
 
-    # Lời chúc
     embed.add_field(
         name="",
         value="<a:thienthuong:1434625295897333811> Chúc bạn gặp điều cát tường may mắn hôm nay!",
         inline=False
     )
 
-    await ctx.reply(embed=embed)
+    # --- 8. Animation quay số: gửi text tạm rồi edit thành embed ---
+    await interaction.response.send_message("🎲 Đang quay số...\n🔄 0️⃣0️⃣0️⃣")
+    msg = await interaction.original_response()
 
+    try:
+        await asyncio.sleep(0.7)
+        await msg.edit(content="🎲 Đang quay số...\n🔄 4️⃣8️⃣0️⃣")
+        await asyncio.sleep(0.7)
+        await msg.edit(content=None, embed=embed)
+    except discord.HTTPException:
+        # nếu vì lý do nào đó edit fail thì gửi thẳng embed
+        await interaction.followup.send(embed=embed)
 
-# ========== Cooldown báo lỗi ==========
-@cmd_boctham.error
-async def cmd_boctham_error(ctx, error):
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.reply(f"⏳ Bạn vừa dùng rồi, thử lại sau **{error.retry_after:.1f} giây** nhé!")
+# ================== /boctham & /moboctham (SLASH, THEO KÊNH) ==================
+
 
 
 
