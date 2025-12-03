@@ -4083,57 +4083,52 @@ async def cmd_xoalichsu(ctx: commands.Context, member: discord.Member, max_per_c
 
 
 
-# ================== BỐC THĂM MAY MẮN (PREFIX /boctham) ==================
+
+# ================== BỐC THĂM MAY MẮN ==================
 import random
 import time
 import asyncio
-from discord.ext import commands
 import discord
+from discord.ext import commands
 
-# ====== STATE PHIÊN BỐC THĂM THEO GUILD + CHANNEL ======
-# key: (guild_id, channel_id)
-# value: {
-#   "start_time": float | None,
-#   "owner_name": str | None,
-#   "top_user": str | None,
-#   "top_number": int | None,
-#   "user_numbers": { user_id(str): lucky_number(int) }
-# }
-BOCTHAM_SESSIONS = {}
+# ====== FILE QUYỀN QUẢN LÝ BỐC THĂM ======
+BOCTHAM_CONF_FILE = "boctham_conf.json"
 
-SESSION_DURATION = 300      # 5 phút
+# ====== PHIÊN THƯỜNG (5 PHÚT) & COOLDOWN ======
+BOCTHAM_SESSIONS = {}      # key: (guild_id, channel_id) -> session dict
+SESSION_DURATION = 300     # 5 phút
 COOLDOWN_SECONDS = 5
-USER_COOLDOWN = {}          # {(gid, cid, uid_int): last_time(float)}
+USER_COOLDOWN = {}         # key: (gid, cid, uid) -> last_time(float)
+
+# ====== PHIÊN SỰ KIỆN (KHÔNG GIỚI HẠN) ======
+EVENT_SESSIONS = {}        # key: (guild_id, channel_id) -> session dict
+EVENT_ARCHIVE = {}         # key: (guild_id, channel_id) -> archive dict (kết quả phiên gần nhất)
 
 
-def _session_key(guild_id, channel_id):
-    return (guild_id, channel_id)
+def _key(gid, cid):
+    return (gid, cid)
 
 
-def get_session(guild_id, channel_id):
-    """Lấy session cho 1 kênh trong 1 guild; nếu chưa có thì tạo trống."""
-    key = _session_key(guild_id, channel_id)
+def _new_empty_session(owner_name=None):
+    """Tạo khung session chung cho cả thường & event."""
+    return {
+        "start_time": time.time(),
+        "owner_name": owner_name,
+        "top_user": None,
+        "top_number": None,      # None hoặc int
+        "user_numbers": {}       # uid(str) -> number(int)
+    }
+
+
+def get_normal_session(gid, cid):
+    key = _key(gid, cid)
     if key not in BOCTHAM_SESSIONS:
-        BOCTHAM_SESSIONS[key] = {
-            "start_time": None,
-            "owner_name": None,
-            "top_user": None,
-            "top_number": None,
-            "user_numbers": {}
-        }
+        BOCTHAM_SESSIONS[key] = _new_empty_session(owner_name=None)
+        BOCTHAM_SESSIONS[key]["start_time"] = None  # chưa bắt đầu
     return BOCTHAM_SESSIONS[key]
 
 
-def need_reset_session(session):
-    """True nếu chưa có phiên hoặc đã quá 5 phút."""
-    if session["start_time"] is None:
-        return True
-    now = time.time()
-    return (now - session["start_time"]) > SESSION_DURATION
-
-
-def reset_session(session, owner_name):
-    """Reset và MỞ phiên mới với owner_name truyền vào."""
+def reset_normal_session(session, owner_name):
     session["start_time"] = time.time()
     session["owner_name"] = owner_name
     session["top_user"] = None
@@ -4141,27 +4136,17 @@ def reset_session(session, owner_name):
     session["user_numbers"] = {}
 
 
-def format_number_emoji(num_str):
-    """Chuyển '072' -> '0️⃣7️⃣2️⃣'."""
-    mapping = {
-        "0": "0️⃣",
-        "1": "1️⃣",
-        "2": "2️⃣",
-        "3": "3️⃣",
-        "4": "4️⃣",
-        "5": "5️⃣",
-        "6": "6️⃣",
-        "7": "7️⃣",
-        "8": "8️⃣",
-        "9": "9️⃣",
-    }
-    return "".join(mapping[d] for d in num_str)
-
-
-def check_user_cooldown(guild_id, channel_id, user_id):
-    """Trả về 0 nếu không cooldown, >0 là số giây còn lại."""
+def need_reset_normal_session(session):
+    """Phiên thường cần reset nếu chưa start hoặc quá 5 phút."""
+    if session["start_time"] is None:
+        return True
     now = time.time()
-    key = (guild_id, channel_id, user_id)
+    return (now - session["start_time"]) > SESSION_DURATION
+
+
+def check_user_cooldown(gid, cid, uid):
+    now = time.time()
+    key = (gid, cid, uid)
     last = USER_COOLDOWN.get(key)
     if last is None:
         return 0
@@ -4169,120 +4154,453 @@ def check_user_cooldown(guild_id, channel_id, user_id):
     return remain if remain > 0 else 0
 
 
-def touch_user_cooldown(guild_id, channel_id, user_id):
-    key = (guild_id, channel_id, user_id)
-    USER_COOLDOWN[key] = time.time()
+def touch_user_cooldown(gid, cid, uid):
+    USER_COOLDOWN[(gid, cid, uid)] = time.time()
 
 
-# ====== LỆNH ADMIN: /moboctham ======
-@bot.command(name="moboctham")
+def format_number_emoji(num_str):
+    """'072' -> '0️⃣7️⃣2️⃣'."""
+    mapping = {
+        "0": "0️⃣", "1": "1️⃣", "2": "2️⃣", "3": "3️⃣", "4": "4️⃣",
+        "5": "5️⃣", "6": "6️⃣", "7": "7️⃣", "8": "8️⃣", "9": "9️⃣"
+    }
+    return "".join(mapping[d] for d in num_str)
+
+
+# ================== QUẢN LÝ QUYỀN BỐC THĂM ==================
+
+def load_boctham_conf():
+    return load_json(BOCTHAM_CONF_FILE, {"guilds": {}})
+
+
+def save_boctham_conf(data):
+    save_json(BOCTHAM_CONF_FILE, data)
+
+
+def get_boctham_manager_ids(guild_id: int):
+    data = load_boctham_conf()
+    g = data["guilds"].get(str(guild_id), {})
+    lst = g.get("managers", [])
+    return set(lst)
+
+
+def add_boctham_manager(guild_id: int, user_id: int):
+    data = load_boctham_conf()
+    g = data["guilds"].setdefault(str(guild_id), {})
+    lst = set(g.get("managers", []))
+    lst.add(int(user_id))
+    g["managers"] = list(lst)
+    save_boctham_conf(data)
+
+
+def remove_boctham_manager(guild_id: int, user_id: int):
+    data = load_boctham_conf()
+    g = data["guilds"].setdefault(str(guild_id), {})
+    lst = set(g.get("managers", []))
+    if int(user_id) in lst:
+        lst.remove(int(user_id))
+    g["managers"] = list(lst)
+    save_boctham_conf(data)
+
+
+def has_boctham_permission(member: discord.Member) -> bool:
+    """Cho dùng /moboctham, /tatboctham nếu là admin HOẶC nằm trong danh sách managers."""
+    if member.guild_permissions.administrator:
+        return True
+    managers = get_boctham_manager_ids(member.guild.id)
+    return member.id in managers
+
+
+# ================== VIEW NÚT TỔNG KẾT /tatboctham ==================
+
+class BocthamSummaryView(discord.ui.View):
+    def __init__(self, guild_id, channel_id, invoker_id):
+        super().__init__(timeout=600)  # 10 phút
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.invoker_id = invoker_id
+
+    def _get_archive(self):
+        key = (self.guild_id, self.channel_id)
+        return EVENT_ARCHIVE.get(key)
+
+    async def _ensure_permission(self, interaction: discord.Interaction):
+        # Chỉ người gọi /tatboctham hoặc admin mới dùng nút
+        if interaction.user.id == self.invoker_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        await interaction.response.send_message(
+            "⛔ Bạn không đủ quyền dùng nút này.",
+            ephemeral=True
+        )
+        return False
+
+    def _build_top_embed(self, interaction: discord.Interaction, archive, top_n: int):
+        nums = archive.get("user_numbers", {})
+        if not nums:
+            return discord.Embed(
+                title=f"🏆 TOP {top_n} MAY MẮN (PHIÊN SỰ KIỆN)",
+                description="📭 Phiên này chưa có ai tham gia.",
+                color=0xE67E22
+            )
+
+        # sort desc by number
+        sorted_items = sorted(nums.items(), key=lambda kv: kv[1], reverse=True)
+        sorted_items = sorted_items[:top_n]
+
+        lines = []
+        for rank, (uid_str, num) in enumerate(sorted_items, start=1):
+            member = interaction.guild.get_member(int(uid_str)) if interaction.guild else None
+            name = member.display_name if member else f"<@{uid_str}>"
+            lines.append(f"**{rank}. {name}** — **{num:03d}**")
+
+        desc = "\n".join(lines)
+        return discord.Embed(
+            title=f"🏆 TOP {top_n} MAY MẮN (PHIÊN SỰ KIỆN)",
+            description=desc,
+            color=0xE67E22
+        )
+
+    @discord.ui.button(label="Top 5", style=discord.ButtonStyle.primary)
+    async def btn_top5(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_permission(interaction):
+            return
+        archive = self._get_archive()
+        if not archive:
+            return await interaction.response.send_message(
+                "📭 Không tìm thấy dữ liệu **phiên bốc thăm sự kiện gần nhất** tại kênh này.",
+                ephemeral=True
+            )
+        embed = self._build_top_embed(interaction, archive, 5)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+
+    @discord.ui.button(label="Top 10", style=discord.ButtonStyle.secondary)
+    async def btn_top10(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_permission(interaction):
+            return
+        archive = self._get_archive()
+        if not archive:
+            return await interaction.response.send_message(
+                "📭 Không tìm thấy dữ liệu **phiên bốc thăm sự kiện gần nhất** tại kênh này.",
+                ephemeral=True
+            )
+        embed = self._build_top_embed(interaction, archive, 10)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+
+    @discord.ui.button(label="Ngẫu nhiên tất cả", style=discord.ButtonStyle.success)
+    async def btn_random_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_permission(interaction):
+            return
+        archive = self._get_archive()
+        if not archive:
+            return await interaction.response.send_message(
+                "📭 Không tìm thấy dữ liệu **phiên bốc thăm sự kiện gần nhất** tại kênh này.",
+                ephemeral=True
+            )
+
+        nums = archive.get("user_numbers", {})
+        if not nums:
+            return await interaction.response.send_message(
+                "📭 Phiên này chưa có ai tham gia bốc thăm.",
+                ephemeral=True
+            )
+
+        uid_str, num = random.choice(list(nums.items()))
+        member = interaction.guild.get_member(int(uid_str)) if interaction.guild else None
+        name = member.mention if member else f"<@{uid_str}>"
+
+        embed = discord.Embed(
+            title="🎯 NGẪU NHIÊN MỘT NGƯỜI TRONG PHIÊN",
+            description=f"Người may mắn ngẫu nhiên trong phiên:\n👉 {name} — **{num:03d}**",
+            color=0x2ECC71
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+
+
+# ================== LỆNH QUẢN LÝ QUYỀN ==================
+
+@bot.command(name="setboctham")
 @commands.has_permissions(administrator=True)
-async def cmd_moboctham(ctx: commands.Context):
-    """Admin chủ động mở 1 phiên bốc thăm 5 phút cho kênh hiện tại."""
+async def cmd_setboctham(ctx: commands.Context, member: discord.Member):
+    """Cho phép 1 người được dùng /moboctham và /tatboctham."""
     if ctx.guild is None:
         return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
 
-    gid = ctx.guild.id
-    cid = ctx.channel.id
-    session = get_session(gid, cid)
-
-    # luôn reset & mở phiên mới, owner = admin
-    reset_session(session, owner_name=ctx.author.display_name)
-
-    embed = discord.Embed(
-        title="🔔 MỞ PHIÊN BỐC THĂM",
-        description=(
-            f"🕒 Phiên mới đã được mở bởi **{ctx.author.display_name}** tại kênh này.\n"
-            f"⏳ Thời lượng: **5 phút**.\n"
-            f"Hãy dùng lệnh `/boctham` để tham gia bốc thăm may mắn!"
-        ),
-        color=0xFFD700
+    add_boctham_manager(ctx.guild.id, member.id)
+    await ctx.reply(
+        f"✅ Đã thêm **{member.mention}** vào danh sách **quản lý bốc thăm**.\n"
+        f"Người này có thể dùng lệnh `/moboctham` và `/tatboctham`.",
+        mention_author=False
     )
 
-    await ctx.reply(embed=embed, mention_author=False)
 
-
-@cmd_moboctham.error
-async def cmd_moboctham_error(ctx: commands.Context, error):
+@cmd_setboctham.error
+async def cmd_setboctham_error(ctx: commands.Context, error):
     if isinstance(error, commands.MissingPermissions):
-        await ctx.reply(
-            "⛔ Lệnh này chỉ dành cho **Admin** (có quyền Administrator).",
+        await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
+
+
+@bot.command(name="xoaboctham")
+@commands.has_permissions(administrator=True)
+async def cmd_xoaboctham(ctx: commands.Context, member: discord.Member):
+    """Xoá quyền quản lý bốc thăm của 1 người (ngoài admin)."""
+    if ctx.guild is None:
+        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+
+    managers = get_boctham_manager_ids(ctx.guild.id)
+    if member.id not in managers:
+        return await ctx.reply(
+            f"📭 **{member.mention}** hiện không nằm trong danh sách quản lý bốc thăm.",
             mention_author=False
         )
 
+    remove_boctham_manager(ctx.guild.id, member.id)
+    await ctx.reply(
+        f"🗑 Đã xoá quyền quản lý bốc thăm của **{member.mention}**.\n"
+        f"Người này không còn dùng được `/moboctham` và `/tatboctham` (trừ khi là admin).",
+        mention_author=False
+    )
 
-# ====== LỆNH CHÍNH: /boctham ======
+
+@cmd_xoaboctham.error
+async def cmd_xoaboctham_error(ctx: commands.Context, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
+
+
+@bot.command(name="xemboctham")
+@commands.has_permissions(administrator=True)
+async def cmd_xemboctham(ctx: commands.Context):
+    """Xem danh sách người được quyền dùng /moboctham & /tatboctham (ngoài admin)."""
+    if ctx.guild is None:
+        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+
+    ids = get_boctham_manager_ids(ctx.guild.id)
+    if not ids:
+        return await ctx.reply(
+            "📋 **Danh sách quản lý bốc thăm (ngoài Admin):**\n"
+            "📭 Hiện tại **chưa có ai** được cấp quyền.",
+            mention_author=False
+        )
+
+    lines = []
+    for idx, uid in enumerate(ids, start=1):
+        m = ctx.guild.get_member(uid)
+        if m:
+            lines.append(f"{idx}. {m.mention}")
+        else:
+            lines.append(f"{idx}. <@{uid}> (không còn trong server)")
+
+    embed = discord.Embed(
+        title="📋 DANH SÁCH QUẢN LÝ BỐC THĂM (ngoài Admin)",
+        description="\n".join(lines),
+        color=0x3498DB
+    )
+    await ctx.reply(embed=embed, mention_author=False)
+
+
+@cmd_xemboctham.error
+async def cmd_xemboctham_error(ctx: commands.Context, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
+
+
+# ================== LỆNH: /moboctham ==================
+
+@bot.command(name="moboctham")
+async def cmd_moboctham(ctx: commands.Context):
+    """Mở PHIÊN BỐC THĂM MAY MẮN SỰ KIỆN cho kênh hiện tại (không giới hạn thời gian)."""
+    if ctx.guild is None:
+        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+
+    if not has_boctham_permission(ctx.author):
+        return await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
+
+    gid = ctx.guild.id
+    cid = ctx.channel.id
+    key = _key(gid, cid)
+
+    # tạo / ghi đè phiên sự kiện
+    EVENT_SESSIONS[key] = _new_empty_session(owner_name=ctx.author.display_name)
+
+    # xóa luôn phiên thường cũ (nếu có) để không bị lẫn
+    if key in BOCTHAM_SESSIONS:
+        del BOCTHAM_SESSIONS[key]
+
+    embed = discord.Embed(
+        title="🎉 MỞ PHIÊN BỐC THĂM MAY MẮN SỰ KIỆN",
+        description=(
+            f"👑 Phiên **SỰ KIỆN** đã được mở tại kênh này bởi **{ctx.author.display_name}**.\n"
+            f"➡ Từ bây giờ, mọi người dùng **/boctham** sẽ tham gia phiên **sự kiện** này.\n"
+            f"⛔ Phiên này **không giới hạn thời gian**, chỉ kết thúc khi dùng `/tatboctham`."
+        ),
+        color=0xFFD700
+    )
+    await ctx.reply(embed=embed, mention_author=False)
+
+
+# ================== LỆNH: /tatboctham ==================
+
+@bot.command(name="tatboctham")
+async def cmd_tatboctham(ctx: commands.Context):
+    """
+    Kết thúc PHIÊN SỰ KIỆN (nếu đang mở) hoặc xem lại kết quả
+    phiên sự kiện gần nhất của kênh này (có nút Top 5 / Top 10 / Ngẫu nhiên).
+    """
+    if ctx.guild is None:
+        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+
+    if not has_boctham_permission(ctx.author):
+        return await ctx.reply("⛔ Bạn không đủ quyền dùng lệnh này.", mention_author=False)
+
+    gid = ctx.guild.id
+    cid = ctx.channel.id
+    key = _key(gid, cid)
+
+    # 1) Nếu đang có phiên sự kiện ACTIVE -> chốt & archive
+    session = EVENT_SESSIONS.get(key)
+    if session:
+        nums = session["user_numbers"]
+        top_user = session["top_user"]
+        top_number = session["top_number"]
+        owner_name = session["owner_name"] or "Không rõ"
+
+        # lưu archive
+        EVENT_ARCHIVE[key] = {
+            "owner_name": owner_name,
+            "top_user": top_user,
+            "top_number": top_number,
+            "user_numbers": dict(nums),
+            "ended_at": time.time()
+        }
+
+        # xóa phiên active -> /boctham trở về phiên thường 5 phút
+        del EVENT_SESSIONS[key]
+
+        archive = EVENT_ARCHIVE[key]
+        from_active = True
+    else:
+        # 2) Không còn phiên active -> xem archive gần nhất
+        archive = EVENT_ARCHIVE.get(key)
+        from_active = False
+
+    if not archive:
+        return await ctx.reply(
+            "📭 Không có phiên bốc thăm sự kiện nào để tổng kết hoặc xem lại.",
+            mention_author=False
+        )
+
+    nums = archive.get("user_numbers", {})
+    owner_name = archive.get("owner_name", "Không rõ")
+    top_user = archive.get("top_user")
+    top_number = archive.get("top_number")
+    total = len(nums)
+
+    if not nums or top_number is None:
+        desc = "📭 Phiên sự kiện này chưa có ai tham gia bốc thăm."
+    else:
+        desc = (
+            f"👑 **Số cao nhất:** {top_user} — **{top_number:03d}**\n"
+            f"👥 Tổng số người tham gia: **{total}**"
+        )
+
+    title = (
+        "📑 KẾT THÚC BỐC THĂM MAY MẮN SỰ KIỆN"
+        if from_active else
+        "📜 KẾT QUẢ PHIÊN BỐC THĂM SỰ KIỆN GẦN NHẤT"
+    )
+
+    embed = discord.Embed(
+        title=title,
+        description=desc,
+        color=0xE67E22
+    )
+    embed.add_field(
+        name="🕒 Phiên mở bởi",
+        value=owner_name,
+        inline=False
+    )
+
+    view = BocthamSummaryView(guild_id=gid, channel_id=cid, invoker_id=ctx.author.id)
+    await ctx.reply(embed=embed, view=view, mention_author=False)
+
+
+# ================== LỆNH CHÍNH: /boctham ==================
+
 @bot.command(name="boctham")
 async def cmd_boctham(ctx: commands.Context):
-    """Bốc thăm may mắn 001–999 (theo từng kênh, từng server)."""
-
+    """Bốc thăm may mắn 001–999. Nếu đang có SỰ KIỆN thì ưu tiên phiên sự kiện."""
     if ctx.guild is None:
         return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
 
     user = ctx.author
-    uid_str = str(user.id)
     gid = ctx.guild.id
     cid = ctx.channel.id
+    key = _key(gid, cid)
+    uid_str = str(user.id)
 
-    # Lấy session riêng cho GUILD + CHANNEL hiện tại
-    session = get_session(gid, cid)
+    # ===== ƯU TIÊN PHIÊN SỰ KIỆN NẾU ĐANG MỞ =====
+    if key in EVENT_SESSIONS:
+        session = EVENT_SESSIONS[key]
+        session_type = "event"
+    else:
+        session = get_normal_session(gid, cid)
+        session_type = "normal"
+        if need_reset_normal_session(session):
+            reset_normal_session(session, owner_name=user.display_name)
 
-    # --- 1. Nếu chưa có phiên hoặc đã hết 5 phút -> mở phiên mới với owner = người này ---
-    if need_reset_session(session):
-        reset_session(session, owner_name=user.display_name)
-
-    # --- 2. Nếu user đã có số trong phiên này -> trả lại số, không quay lại ---
-    if uid_str in session["user_numbers"]:
-        old_num = session["user_numbers"][uid_str]
-        text = (
-            f"⏳ Bạn đã tham gia bốc thăm may mắn phiên này rồi,\n"
-            f"số may mắn của bạn là **{old_num:03d}**.\n"
-            f"⏰ Nếu bạn muốn tham gia phiên mới hãy quay trở lại sau 5 phút."
-        )
-        await ctx.reply(text, mention_author=False)
-        return
-
-    # --- 3. Cooldown 5 giây chống spam (theo từng kênh) ---
+    # ===== CHỐNG SPAM 5 GIÂY =====
     remain = check_user_cooldown(gid, cid, user.id)
     if remain > 0:
-        await ctx.reply(
+        return await ctx.reply(
             f"⏳ Bạn đang dùng hơi nhanh, thử lại sau **{remain:.1f} giây** nhé!",
             mention_author=False
         )
-        return
-
     touch_user_cooldown(gid, cid, user.id)
 
-    # --- 4. Random số may mắn lần đầu trong phiên ---
+    # ===== NẾU ĐÃ CÓ SỐ TRONG PHIÊN NÀY =====
+    if uid_str in session["user_numbers"]:
+        old_num = session["user_numbers"][uid_str]
+        return await ctx.reply(
+            "⏳ Bạn đã tham gia bốc thăm trong phiên này rồi.\n"
+            f"Số may mắn của bạn là **{old_num:03d}**.\n"
+            "⏰ Nếu muốn tham gia phiên mới hãy đợi phiên hiện tại kết thúc "
+            "(5 phút với phiên thường, hoặc dùng `/tatboctham` với phiên sự kiện).",
+            mention_author=False
+        )
+
+    # ===== RANDOM SỐ =====
     lucky_raw = random.randint(1, 999)
-    lucky_str = f"{lucky_raw:03d}"         # '001'..'999'
+    lucky_str = f"{lucky_raw:03d}"
     lucky_emoji = format_number_emoji(lucky_str)
 
-    # lưu số của user trong phiên (theo kênh)
     session["user_numbers"][uid_str] = lucky_raw
 
-    # --- 5. Cập nhật TOP phiên ---
+    # cập nhật top
     if session["top_number"] is None or lucky_raw > session["top_number"]:
         session["top_number"] = lucky_raw
         session["top_user"] = user.display_name
 
-    # --- 6. Tạo embed kết quả cuối ---
-    embed = discord.Embed(
-        title="🎲 BỐC THĂM MAY MẮN",
-        color=0xFFD700
-    )
+    # ===== EMBED KẾT QUẢ =====
+    if session_type == "event":
+        title = "🎲 BỐC THĂM MAY MẮN SỰ KIỆN"
+        color = 0xFFD700
+    else:
+        title = "🎲 BỐC THĂM MAY MẮN"
+        color = 0x4CC9F0
 
+    embed = discord.Embed(title=title, color=color)
     embed.add_field(
-    name="",
-    value=f"👤 **Người chơi:** {user.mention}\n🕒 **Phiên mở:** {session['owner_name']}",
-    inline=False
-)
-
-
+        name="",
+        value=f"👤 **Người chơi:** {user.mention}\n"
+              f"🕒 **Phiên mở:** {session['owner_name']}",
+        inline=False
+    )
 
     khung = (
         "╔════ SỐ MAY MẮN ════╗\n"
-        f"        {lucky_emoji}\n"
+        f"         {lucky_emoji}\n"
         "╚════════════════════╝"
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
@@ -4300,7 +4618,7 @@ async def cmd_boctham(ctx: commands.Context):
         inline=False
     )
 
-    # --- 7. Animation quay số: random số demo nhỏ hơn số thật ---
+    # ===== ANIMATION: SỐ DEMO NHỎ HƠN SỐ THẬT =====
     demo_raw = random.randint(1, max(lucky_raw - 1, 1))
     demo_str = f"{demo_raw:03d}"
     demo_emoji = format_number_emoji(demo_str)
