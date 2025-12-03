@@ -4598,7 +4598,7 @@ async def cmd_boctham(ctx: commands.Context):
             top_value = f"{session['top_user']} — **{session['top_number']:03d}**"
 
         embed.add_field(
-            name="🏆 Số cao nhất",
+            name="🎄 Số cao nhất",
             value=top_value,
             inline=False
         )
