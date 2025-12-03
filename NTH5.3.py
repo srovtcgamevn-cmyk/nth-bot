@@ -4111,6 +4111,7 @@ def has_boctham_permission(member: discord.Member) -> bool:
     managers = g.get("managers", [])
     return member.id in managers
 
+
 # ====== PHIÊN THƯỜNG (5 PHÚT) & COOLDOWN ======
 BOCTHAM_SESSIONS = {}      # key: (guild_id, channel_id) -> session dict
 SESSION_DURATION = 300     # 5 phút
@@ -4226,7 +4227,6 @@ class BocthamSummaryView(discord.ui.View):
         for rank, (uid_str, num) in enumerate(sorted_items, start=1):
             member = interaction.guild.get_member(int(uid_str)) if interaction.guild else None
             name = member.display_name if member else f"<@{uid_str}>"
-            # 1 dòng, số in đậm
             lines.append(f"**{rank}. {name}** — **{num:03d}**")
 
         desc = "\n".join(lines)
@@ -4247,7 +4247,6 @@ class BocthamSummaryView(discord.ui.View):
                 ephemeral=True
             )
         embed = self._build_top_embed(interaction, archive, 5)
-        # Sửa: edit chính message đang có, giữ nguyên 3 nút UI
         await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="Top 10", style=discord.ButtonStyle.secondary)
@@ -4290,7 +4289,6 @@ class BocthamSummaryView(discord.ui.View):
             description=f"Người may mắn ngẫu nhiên trong phiên:\n👉 {name} — **{num:03d}**",
             color=0x2ECC71
         )
-        # Cũng edit lại message, vẫn giữ 3 nút
         await interaction.response.edit_message(embed=embed, view=self)
 
 
@@ -4585,10 +4583,24 @@ async def cmd_boctham(ctx: commands.Context):
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
 
+    # ===== HIỂN THỊ SỐ CAO NHẤT =====
     if session["top_number"] is not None:
+        if session_type == "event":
+            # Phiên SỰ KIỆN: che 1 số đầu, chỉ show 2 số cuối + emoji nhiễu
+            num_str = f"{session['top_number']:03d}"
+            last_two = num_str[1:]        # 2 số cuối
+            masked = f"<a:moanh:1445814825698721894> **{last_two}**"
+            top_value = (
+                f"{session['top_user']} — {masked}\n"
+                "🔒 Số cao nhất sẽ được mở khi admin dùng `/tatboctham`."
+            )
+        else:
+            # Phiên thường: show đầy đủ như cũ
+            top_value = f"{session['top_user']} — **{session['top_number']:03d}**"
+
         embed.add_field(
             name="🏆 Số cao nhất",
-            value=f"{session['top_user']} — **{session['top_number']:03d}**",
+            value=top_value,
             inline=False
         )
 
@@ -4606,17 +4618,18 @@ async def cmd_boctham(ctx: commands.Context):
     demo_str = f"{demo_raw:03d}"
     demo_emoji = format_number_emoji(demo_str)
 
-    msg = await ctx.reply("🎲 Đang quay số...\n🔄 0️⃣0️⃣0️⃣", mention_author=False)
+    msg = await ctx.reply("🎲 Đang quay số...\n 0️⃣0️⃣0️⃣", mention_author=False)
 
     try:
         await asyncio.sleep(0.7)
-        await msg.edit(content=f"🎲 Đang quay số...\n🔄 {demo_emoji}")
+        await msg.edit(content=f"🎲 Đang quay số...\n {demo_emoji}")
         await asyncio.sleep(0.7)
         await msg.edit(content=None, embed=embed)
     except discord.HTTPException:
         await ctx.send(embed=embed)
 
 # =============== HẾT PHẦN BỐC THĂM MAY MẮN ==================
+
 
 
 
