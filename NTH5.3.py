@@ -4314,11 +4314,11 @@ async def cmd_boctham(ctx: commands.Context):
     demo_str = f"{demo_raw:03d}"
     demo_emoji = format_number_emoji(demo_str)
 
-    msg = await ctx.reply("🎲 Đang quay số...\n🎰 0️⃣0️⃣0️⃣", mention_author=False)
+    msg = await ctx.reply("🎲 Đang quay số...\n 0️⃣0️⃣0️⃣", mention_author=False)
 
     try:
         await asyncio.sleep(0.7)
-        await msg.edit(content=f"🎲 Đang quay số...\n🎰 {demo_emoji}")
+        await msg.edit(content=f"🎲 Đang quay số...\n {demo_emoji}")
         await asyncio.sleep(0.7)
         await msg.edit(content=None, embed=embed)
     except discord.HTTPException:
