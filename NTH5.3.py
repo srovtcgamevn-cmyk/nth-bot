@@ -4589,10 +4589,9 @@ async def cmd_boctham(ctx: commands.Context):
             # Phiên SỰ KIỆN: che 1 số đầu, chỉ show 2 số cuối + emoji nhiễu
             num_str = f"{session['top_number']:03d}"
             last_two = num_str[1:]        # 2 số cuối
-            masked = f"<a:moanh:1445814825698721894> **{last_two}**"
+            masked = f"<a:anhmo:1445818974691655711> **{last_two}**"
             top_value = (
                 f"{session['top_user']} — {masked}\n"
-                "🔒 Số cao nhất sẽ được mở khi admin dùng `/tatboctham`."
             )
         else:
             # Phiên thường: show đầy đủ như cũ
