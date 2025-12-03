@@ -4437,7 +4437,7 @@ async def cmd_moboctham(ctx: commands.Context):
         description=(
             f"👑 Phiên **SỰ KIỆN** đã được mở tại kênh này bởi **{ctx.author.display_name}**.\n"
             f"➡ Từ bây giờ, mọi người dùng **/boctham** sẽ tham gia phiên **sự kiện** này.\n"
-            f"⛔ Phiên này **không giới hạn thời gian**, chỉ kết thúc khi dùng `/tatboctham`."
+            f"⛔ Phiên này **không giới hạn thời gian**, chỉ kết thúc khi Mod dùng `/tatboctham`."
         ),
         color=0xFFD700
     )
@@ -4604,7 +4604,7 @@ async def cmd_boctham(ctx: commands.Context):
 
     khung = (
         "╔════ SỐ MAY MẮN ════╗\n"
-        f"       {lucky_emoji}\n"
+        f"        {lucky_emoji}\n"
         "╚════════════════════╝"
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
