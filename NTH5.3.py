@@ -4583,13 +4583,14 @@ async def cmd_boctham(ctx: commands.Context):
     )
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
 
-       # ===== HIỂN THỊ SỐ CAO NHẤT =====
+
+# ===== HIỂN THỊ SỐ CAO NHẤT =====
 if session["top_number"] is not None:
 
     if session_type == "event":
-        # Phiên SỰ KIỆN: ẩn tên, che số đầu
+        # Phiên SỰ KIỆN: ẩn tên + che số đầu
         num_str = f"{session['top_number']:03d}"
-        last_two = num_str[1:]  # chỉ 2 số cuối
+        last_two = num_str[1:]  # lấy 2 số cuối
         masked = f"<a:moanh:1445814825698721894> **{last_two}**"
 
         top_value = (
@@ -4597,7 +4598,7 @@ if session["top_number"] is not None:
         )
 
     else:
-        # Phiên thường: hiển thị bình thường
+        # Phiên thường: hiện đầy đủ
         top_value = f"{session['top_user']} — **{session['top_number']:03d}**"
 
     embed.add_field(
@@ -4613,6 +4614,9 @@ embed.add_field(
     inline=False
 )
 
+
+
+    
 
     # ===== ANIMATION: SỐ DEMO NHỎ HƠN SỐ THẬT (nếu có thể) =====
     if lucky_raw > 1:
