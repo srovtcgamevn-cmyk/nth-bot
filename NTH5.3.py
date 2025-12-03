@@ -4273,10 +4273,11 @@ async def cmd_boctham(ctx: commands.Context):
     )
 
     embed.add_field(
-    name="👤 Người chơi / 🕒 Phiên mở",
-    value=f"{user.mention}  —  **{session['owner_name']}**",
+    name="",
+    value=f"👤 **Người chơi:** {user.mention}\n🕒 **Phiên mở:** {session['owner_name']}",
     inline=False
 )
+
 
 
     khung = (
