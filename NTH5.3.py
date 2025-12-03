@@ -4623,26 +4623,26 @@ async def cmd_boctham(ctx: commands.Context):
     ]
 
     wishes_cat = [  # 600–899
-        "<a:thienthuong:1434625295897333811> Hôm nay bạn gặp vận **Cát**, mọi chuyện đều thuận lợi và dễ chịu.",
-        "<a:thienthuong:1434625295897333811> Một ngày **Cát** lành đang chờ, cứ bình tĩnh rồi niềm vui sẽ đến.",
-        "<a:thienthuong:1434625295897333811> Bạn đã vào vùng khí **Cát**, tin vui nhỏ có thể ghé qua bất cứ lúc nào.",
+        "<a:thienthuong:1434625295897333811> Hôm nay bạn gặp vận **Cát Tường**, mọi chuyện đều thuận lợi và dễ chịu.",
+        "<a:thienthuong:1434625295897333811> Một ngày **Cát Tường** lành đang chờ, cứ bình tĩnh rồi niềm vui sẽ đến.",
+        "<a:thienthuong:1434625295897333811> Bạn đã vào vùng khí **Cát Tường**, tin vui nhỏ có thể ghé qua bất cứ lúc nào.",
         "<a:thienthuong:1434625295897333811> Cát vận lan tỏa, chúc bạn hoàn thành trọn vẹn những điều đã dự định.",
         "<a:thienthuong:1434625295897333811> Dấu hiệu **Cát** lành, hôm nay làm gì cũng dễ hơn bình thường.",
-        "<a:thienthuong:1434625295897333811> Bạn được bao quanh bởi khí **Cát**, cứ mạnh dạn bước tiếp.",
-        "<a:thienthuong:1434625295897333811> Một ngày **Cát** khí nhẹ nhàng, đủ để lòng bạn thấy an vui.",
+        "<a:thienthuong:1434625295897333811> Bạn được bao quanh bởi khí **Cát Tường**, cứ mạnh dạn bước tiếp.",
+        "<a:thienthuong:1434625295897333811> Một ngày **Cát Tường** khí nhẹ nhàng, đủ để lòng bạn thấy an vui.",
         "<a:thienthuong:1434625295897333811> Cát tinh soi lối, những chuyện khó có thể trở nên đơn giản hơn.",
-        "<a:thienthuong:1434625295897333811> Hôm nay là ngày **Cát**, không quá ồn ào nhưng rất êm đềm.",
-        "<a:thienthuong:1434625295897333811> Bạn có được vận **Cát** ổn định, thích hợp để bắt đầu điều gì đó.",
+        "<a:thienthuong:1434625295897333811> Hôm nay là ngày **Cát Tường**, không quá ồn ào nhưng rất êm đềm.",
+        "<a:thienthuong:1434625295897333811> Bạn có được vận **Cát Tường** ổn định, thích hợp để bắt đầu điều gì đó.",
         "<a:thienthuong:1434625295897333811> **Cát** khí ghé thăm, mong rằng bạn sẽ nhận được vài điều bất ngờ dễ thương.",
-        "<a:thienthuong:1434625295897333811> Vận trình hôm nay mang màu **Cát**, không sóng gió, chỉ toàn êm dịu.",
+        "<a:thienthuong:1434625295897333811> Vận trình hôm nay mang **Cát Tường**, không sóng gió, chỉ toàn êm dịu.",
         "<a:thienthuong:1434625295897333811> Bạn đang ở trong ngày **Cát** lành, hãy tranh thủ làm việc quan trọng.",
         "<a:thienthuong:1434625295897333811> Cát vận nâng bước, mọi việc nếu cố gắng một chút sẽ có kết quả tốt.",
-        "<a:thienthuong:1434625295897333811> Ngày **Cát** không quá rực rỡ nhưng đủ làm bạn mỉm cười.",
-        "<a:thienthuong:1434625295897333811> Khí **Cát** ổn định, tâm an thì chuyện gì cũng dễ xử lý.",
+        "<a:thienthuong:1434625295897333811> Ngày **Cát Tường** không quá rực rỡ nhưng đủ làm bạn mỉm cười.",
+        "<a:thienthuong:1434625295897333811> Khí **Cát Tường** ổn định, tâm an thì chuyện gì cũng dễ xử lý.",
         "<a:thienthuong:1434625295897333811> Bạn vừa chạm vào luồng **Cát** khí, cứ yên tâm tiến về phía trước.",
-        "<a:thienthuong:1434625295897333811> Vận **Cát** đã đến, hãy tin rằng hôm nay sẽ có chuyện vui nho nhỏ.",
-        "<a:thienthuong:1434625295897333811> Ngày mới mở ra với điềm **Cát**, mong bạn gặp toàn người tốt.",
-        "<a:thienthuong:1434625295897333811> Bạn đang ở giữa vùng **Cát** lành, mọi thứ sẽ diễn ra trôi chảy hơn mong đợi."
+        "<a:thienthuong:1434625295897333811> Vận **Cát Tường** đã đến, hãy tin rằng hôm nay sẽ có chuyện vui nho nhỏ.",
+        "<a:thienthuong:1434625295897333811> Ngày mới mở ra với điềm **Cát Tường**, mong bạn gặp toàn người tốt.",
+        "<a:thienthuong:1434625295897333811> Bạn đang ở giữa vùng **Cát Tường**, mọi thứ sẽ diễn ra trôi chảy hơn mong đợi."
     ]
 
     wishes_thuong = [  # < 600
