@@ -1044,6 +1044,11 @@ async def cmd_lenhadmin(ctx):
         "`/xemthuongcap` – Xem mốc thưởng\n"
         "`/thuhoithuong @r1 @r2` – Role bị thu thứ 2\n"
         "`/camkenhthoai`– <ID KÊNH> Cấm kênh thoại không có exp\n"
+        "`/moboctham`– Mở bốc tham sự kiện\n"
+        "`/tatboctham`– Kết thúc phiên bốc thăm sự kiện\n"
+        "`/setboctham`– Thêm người có quyền bốc thăm\n"
+        "`/xoaboctham /xemboctham – Xóa và xem\n"
+
 
 
 
@@ -1061,7 +1066,13 @@ async def cmd_lenhchubot(ctx):
         "`/xoalink <invite>` – Tắt 1 link\n"
         "`/batbuff` / `tatbuff` – Bật/tắt hệ buff\n"
         "`/setkenhbackup` – Kênh nhận file backup\n"
-        "`/backup` – Sao lưu thủ công"        
+        "`/backup` – Sao lưu thủ công"  
+        "`/buffmembot` – Sao lưu thủ công"  
+        "`/antiraid` – Antiraid"  
+
+
+
+        
     )
 
 # ================== /kenhchat ==================
