@@ -12,3 +12,5 @@ pytesseract
 aiohttp
 discord.py[voice]
 PyNaCl==1.5.0
+yt-dlp
+
