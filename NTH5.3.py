@@ -3315,22 +3315,7 @@ _msg_timestamps = defaultdict(list)                        # guild_id -> [ts]
 _suspicious_users = defaultdict(set)                       # guild_id -> set(user_id)
 _antiraid_slowmode_started = False
 
-# =============== DANH SÁCH BỎ QUA ANTI-RAID ===============
 
-ANTI_IGNORE_USERS: set[int] = set()   # ID user được bỏ qua
-ANTI_IGNORE_ROLES: set[int] = set()   # ID role được bỏ qua
-
-
-def antiraid_is_ignored(member: discord.Member) -> bool:
-    """User/role nằm trong danh sách bỏ qua Anti-Raid."""
-    try:
-        if member.id in ANTI_IGNORE_USERS:
-            return True
-        if any(r.id in ANTI_IGNORE_ROLES for r in member.roles):
-            return True
-    except Exception:
-        pass
-    return False
 
 
 # =============== TRẠNG THÁI & TIỆN ÍCH ===============
@@ -4020,6 +4005,54 @@ async def cmd_antiraid_bo(ctx: commands.Context, member: discord.Member):
     await ctx.reply(f"✅ Đã bỏ hạn chế {member.mention}.")
 
 
+
+
+# =============== DANH SÁCH BỎ QUA ANTI-RAID ===============
+
+# File lưu danh sách bỏ qua để không bị mất khi restart bot
+ANTIRAID_IGNORE_FILE = "data/antiraid_ignore.json"
+
+ANTI_IGNORE_USERS: set[int] = set()   # ID user được bỏ qua
+ANTI_IGNORE_ROLES: set[int] = set()   # ID role được bỏ qua
+
+
+def antiraid_load_ignore():
+    """Load danh sách user/role bỏ qua Anti-Raid từ file."""
+    data = load_json(ANTIRAID_IGNORE_FILE, {"users": [], "roles": []})
+    ANTI_IGNORE_USERS.clear()
+    ANTI_IGNORE_USERS.update(data.get("users", []))
+    ANTI_IGNORE_ROLES.clear()
+    ANTI_IGNORE_ROLES.update(data.get("roles", []))
+
+
+def antiraid_save_ignore():
+    """Lưu danh sách user/role bỏ qua Anti-Raid xuống file."""
+    data = {
+        "users": list(ANTI_IGNORE_USERS),
+        "roles": list(ANTI_IGNORE_ROLES),
+    }
+    save_json(ANTIRAID_IGNORE_FILE, data)
+
+
+# Khởi tạo: cố gắng load sẵn ignore khi bot khởi động file
+try:
+    antiraid_load_ignore()
+except Exception:
+    pass
+
+
+def antiraid_is_ignored(member: discord.Member) -> bool:
+    """User/role nằm trong danh sách bỏ qua Anti-Raid."""
+    try:
+        if member.id in ANTI_IGNORE_USERS:
+            return True
+        if any(r.id in ANTI_IGNORE_ROLES for r in member.roles):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 # =============== LỆNH BỎ QUA ANTI-RAID ===============
 
 @bot.command(name="boquaanti")
@@ -4028,12 +4061,15 @@ async def cmd_boquaanti(ctx: commands.Context, target: discord.Member | discord.
     """
     /boquaanti @user hoặc @role
     → Bỏ user/role này khỏi toàn bộ Anti-Raid (spam, link, hạn chế).
+    Sau khi set sẽ được LƯU LẠI, restart bot vẫn giữ.
     """
     if isinstance(target, discord.Member):
         ANTI_IGNORE_USERS.add(target.id)
+        antiraid_save_ignore()
         await ctx.reply(f"✅ Đã **bỏ qua Anti-Raid** cho {target.mention}")
     else:
         ANTI_IGNORE_ROLES.add(target.id)
+        antiraid_save_ignore()
         await ctx.reply(f"✅ Đã **bỏ qua Anti-Raid** cho role **{target.name}**")
 
 
@@ -4043,13 +4079,17 @@ async def cmd_xoaboqua(ctx: commands.Context, target: discord.Member | discord.R
     """
     /xoaboqua @user hoặc @role
     → Gỡ user/role khỏi danh sách bỏ qua Anti-Raid.
+    Cũng tự lưu vào file.
     """
     if isinstance(target, discord.Member):
         ANTI_IGNORE_USERS.discard(target.id)
+        antiraid_save_ignore()
         await ctx.reply(f"♻️ Đã gỡ {target.mention} khỏi danh sách bỏ qua Anti-Raid.")
     else:
         ANTI_IGNORE_ROLES.discard(target.id)
+        antiraid_save_ignore()
         await ctx.reply(f"♻️ Đã gỡ role **{target.name}** khỏi danh sách bỏ qua Anti-Raid.")
+
 
 
 # =============== /xoalichsu – XÓA LỊCH SỬ TIN NHẮN 1 THÀNH VIÊN ===============
