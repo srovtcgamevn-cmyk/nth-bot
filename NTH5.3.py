@@ -4575,18 +4575,25 @@ async def cmd_boctham(ctx: commands.Context):
     embed = discord.Embed(title=title, color=color)
     embed.add_field(
         name="",
-        value=(
-            f"👤 **Người chơi:** {user.mention}\n"
-            f"🕒 **Phiên mở:** {session['owner_name']}"
-        ),
+        value=f"👤 **Người chơi:** {user.mention}\n"
+              f"🕒 **Phiên mở:** {session['owner_name']}",
         inline=False
     )
 
-    khung = (
-        "╔════ SỐ MAY MẮN ════╗\n"
-        f"        {lucky_emoji}\n"
-        "╚════════════════════╝"
-    )
+    # ===== KHUNG HIỂN THỊ SỐ MAY MẮN =====
+    if lucky_raw == 999:
+        khung = (
+            "╔════ ✦ CỰC PHẨM 9️⃣9️⃣9️⃣ ✦ ════╗\n"
+            f"          {lucky_emoji}\n"
+            "╚══════ THIÊN VẬN GIÁNG LÂM ══════╝"
+        )
+    else:
+        khung = (
+            "╔════ SỐ MAY MẮN ════╗\n"
+            f"        {lucky_emoji}\n"
+            "╚════════════════════╝"
+        )
+
     embed.add_field(name="", value=f"```\n{khung}\n```", inline=False)
 
     # ===== HIỂN THỊ SỐ CAO NHẤT =====
@@ -4594,13 +4601,12 @@ async def cmd_boctham(ctx: commands.Context):
         if session_type == "event":
             # Phiên SỰ KIỆN: che 1 số đầu, chỉ show 2 số cuối + emoji nhiễu
             num_str = f"{session['top_number']:03d}"
-            last_two = num_str[1:]        # 2 số cuối
+            last_two = num_str[1:]  # 2 số cuối
             masked = f"<a:anhmo:1445818974691655711>**{last_two}**"
-
             top_value = f"Một người nào đó: {masked}"
         else:
-            # Phiên thường: show đầy đủ như cũ
-            top_value = f"{session['top_user']} — **{session['top_number']:03d}**"
+            # Phiên thường: show đầy đủ
+            top_value = f"{session['top_user']} **{session['top_number']:03d}**"
 
         embed.add_field(
             name="🎄 Số cao nhất",
@@ -4608,88 +4614,102 @@ async def cmd_boctham(ctx: commands.Context):
             inline=False
         )
 
-        # ===== RANDOM LỜI CHÚC MAY MẮN THEO MỨC ĐIỂM =====
-    wishes_dai_cat = [  # >= 900
-        "<a:thienthuong:1434625295897333811> Bạn đã bốc trúng **Đại Cát**, khí vận thăng hoa tột đỉnh hôm nay!",
-        "<a:thienthuong:1434625295897333811> Thiên mệnh mở lối, lá thẻ **Đại Cát** báo hiệu một ngày đại hỷ.",
-        "<a:thienthuong:1434625295897333811> Cát tinh chiếu rọi, vận **Đại Cát** đang bao phủ quanh bạn.",
-        "<a:thienthuong:1434625295897333811> Vạn phúc tụ hội, **Đại Cát** xuất hiện không phải là trùng hợp.",
-        "<a:thienthuong:1434625295897333811> Khí vận cực thịnh, thẻ **Đại Cát** giúp mọi chuyện hanh thông.",
-        "<a:thienthuong:1434625295897333811> Hôm nay bạn đứng trong vùng **Đại Cát**, đi đâu cũng có quý nhân.",
-        "<a:thienthuong:1434625295897333811> Lời chúc từ trời: bạn nhận được vận **Đại Cát**, cứ tự tin làm mọi thứ.",
-        "<a:thienthuong:1434625295897333811> **Đại Cát** giáng lâm, nụ cười hôm nay của bạn sẽ rất rực rỡ.",
-        "<a:thienthuong:1434625295897333811> Phúc khí dày như núi, thẻ **Đại Cát** đã chọn đúng người.",
-        "<a:thienthuong:1434625295897333811> Vận thế bùng nổ, **Đại Cát** mở ra một ngày đầy điều tốt lành."
+    # ===== DANH SÁCH LỜI CHÚC =====
+    wishes_999 = [
+        "<a:thienthuong:1434625295897333811> Bạn đã chạm tới cảnh giới **Cực Phẩm 9️⃣9️⃣9️⃣**, vận mệnh như được tái khởi động lại theo chiều hướng tốt nhất cho bạn.",
+        "<a:thienthuong:1434625295897333811> Một tia **Cực Phẩm 9️⃣9️⃣9️⃣** xé toạc bầu trời số mệnh, hôm nay mọi chuyện với bạn đều mang màu kỳ tích.",
+        "<a:thienthuong:1434625295897333811> Thiên cơ xoay chuyển, **Cực Phẩm 9️⃣9️⃣9️⃣** rơi vào tay bạn – đây là điềm lành hiếm thấy trong trăm lần bốc.",
+        "<a:thienthuong:1434625295897333811> Khí vận bùng nổ, **Cực Phẩm 9️⃣9️⃣9️⃣** giáng xuống như thiên lôi khai vận, hôm nay bạn chính là trung tâm của may mắn.",
+        "<a:thienthuong:1434625295897333811> Giữa vô số con số, **Cực Phẩm 9️⃣9️⃣9️⃣** chọn bạn – đây không còn là may mắn, mà là thiên mệnh an bài.",
+        "<a:thienthuong:1434625295897333811> Tinh tú đổi chiều, **Cực Phẩm 9️⃣9️⃣9️⃣** rơi xuống tay bạn, báo hiệu một chuỗi cơ duyên khó tin đang tới gần.",
+        "<a:thienthuong:1434625295897333811> Cả bầu trời khí vận như凝 lại – **Cực Phẩm 9️⃣9️⃣9️⃣** xuất hiện, hôm nay hãy mạnh dạn làm điều bạn mong muốn.",
+        "<a:thienthuong:1434625295897333811> Long khí trỗi dậy, **Cực Phẩm 9️⃣9️⃣9️⃣** là minh chứng bạn đang bước vào giai đoạn đại thăng tiến.",
+        "<a:thienthuong:1434625295897333811> Giữa biển người, **Cực Phẩm 9️⃣9️⃣9️⃣** chỉ định bạn – đây là lời chúc tối thượng từ cát tinh.",
+        "<a:thienthuong:1434625295897333811> Thiên tượng hiếm gặp, **Cực Phẩm 9️⃣9️⃣9️⃣** xuất hiện như điềm báo mọi chuyện thuận lợi ngoài mong đợi."
     ]
 
-    wishes_cat = [  # 600–899
-        "<a:thienthuong:1434625295897333811> Hôm nay bạn gặp vận **Cát Tường**, mọi chuyện đều thuận lợi và dễ chịu.",
-        "<a:thienthuong:1434625295897333811> Một ngày **Cát Tường** lành đang chờ, cứ bình tĩnh rồi niềm vui sẽ đến.",
-        "<a:thienthuong:1434625295897333811> Bạn đã vào vùng khí **Cát Tường**, tin vui nhỏ có thể ghé qua bất cứ lúc nào.",
-        "<a:thienthuong:1434625295897333811> Cát vận lan tỏa, chúc bạn hoàn thành trọn vẹn những điều đã dự định.",
-        "<a:thienthuong:1434625295897333811> Dấu hiệu **Cát** lành, hôm nay làm gì cũng dễ hơn bình thường.",
-        "<a:thienthuong:1434625295897333811> Bạn được bao quanh bởi khí **Cát Tường**, cứ mạnh dạn bước tiếp.",
-        "<a:thienthuong:1434625295897333811> Một ngày **Cát Tường** khí nhẹ nhàng, đủ để lòng bạn thấy an vui.",
-        "<a:thienthuong:1434625295897333811> Cát tinh soi lối, những chuyện khó có thể trở nên đơn giản hơn.",
-        "<a:thienthuong:1434625295897333811> Hôm nay là ngày **Cát Tường**, không quá ồn ào nhưng rất êm đềm.",
-        "<a:thienthuong:1434625295897333811> Bạn có được vận **Cát Tường** ổn định, thích hợp để bắt đầu điều gì đó.",
-        "<a:thienthuong:1434625295897333811> **Cát** khí ghé thăm, mong rằng bạn sẽ nhận được vài điều bất ngờ dễ thương.",
-        "<a:thienthuong:1434625295897333811> Vận trình hôm nay mang **Cát Tường**, không sóng gió, chỉ toàn êm dịu.",
-        "<a:thienthuong:1434625295897333811> Bạn đang ở trong ngày **Cát** lành, hãy tranh thủ làm việc quan trọng.",
-        "<a:thienthuong:1434625295897333811> Cát vận nâng bước, mọi việc nếu cố gắng một chút sẽ có kết quả tốt.",
-        "<a:thienthuong:1434625295897333811> Ngày **Cát Tường** không quá rực rỡ nhưng đủ làm bạn mỉm cười.",
-        "<a:thienthuong:1434625295897333811> Khí **Cát Tường** ổn định, tâm an thì chuyện gì cũng dễ xử lý.",
-        "<a:thienthuong:1434625295897333811> Bạn vừa chạm vào luồng **Cát** khí, cứ yên tâm tiến về phía trước.",
-        "<a:thienthuong:1434625295897333811> Vận **Cát Tường** đã đến, hãy tin rằng hôm nay sẽ có chuyện vui nho nhỏ.",
-        "<a:thienthuong:1434625295897333811> Ngày mới mở ra với điềm **Cát Tường**, mong bạn gặp toàn người tốt.",
-        "<a:thienthuong:1434625295897333811> Bạn đang ở giữa vùng **Cát Tường**, mọi thứ sẽ diễn ra trôi chảy hơn mong đợi."
+    wishes_dai_cat = [
+        "<a:thienthuong:1434625295897333811> Khí vận hội tụ, hôm nay bạn nhận được phúc khí **Đại Cát** bao phủ từ đầu tới cuối ngày.",
+        "<a:thienthuong:1434625295897333811> Một làn gió **Đại Cát** thổi qua vận mệnh của bạn, chuyện tốt sớm muộn cũng gõ cửa.",
+        "<a:thienthuong:1434625295897333811> Sao cát tinh chiếu rọi, bạn đang bước vào ngày mang vận khí **Đại Cát** rực rỡ.",
+        "<a:thienthuong:1434625295897333811> Từ sớm đến khuya, phúc lành **Đại Cát** luôn lặng lẽ đi theo sau lưng bạn.",
+        "<a:thienthuong:1434625295897333811> Vận trời ưu ái, hôm nay bạn được ghi tên trong sổ **Đại Cát**.",
+        "<a:thienthuong:1434625295897333811> Mọi điều bạn chạm vào hôm nay đều ngấm khí **Đại Cát**, dễ thành chuyện thuận lợi.",
+        "<a:thienthuong:1434625295897333811> Phúc duyên dày, vận trình mở lối – một ngày đậm màu **Đại Cát** đang đợi bạn phía trước.",
+        "<a:thienthuong:1434625295897333811> Cát tinh nhập mệnh, bạn đang ở trong vùng sáng **Đại Cát** hiếm hoi.",
+        "<a:thienthuong:1434625295897333811> Hôm nay là ngày trời đất mỉm cười với bạn, khí vận **Đại Cát** bao trùm.",
+        "<a:thienthuong:1434625295897333811> Một dấu ấn **Đại Cát** đã in lên vận trình của bạn, hãy yên tâm bước tiếp."
     ]
 
-    wishes_thuong = [  # < 600
-        "<a:thienthuong:1434625295897333811> Chúc bạn một ngày thật nhẹ nhàng và dễ thở.",
-        "<a:thienthuong:1434625295897333811> Không cần quá may mắn, chỉ cần hôm nay bình an là được.",
-        "<a:thienthuong:1434625295897333811> Một ngày giản dị nhưng vẫn có thể đầy niềm vui nhỏ.",
-        "<a:thienthuong:1434625295897333811> Cứ sống chậm lại một chút, hôm nay mọi việc sẽ dần ổn.",
-        "<a:thienthuong:1434625295897333811> Chúc bạn gặp đúng người, đúng việc và đúng thời điểm.",
-        "<a:thienthuong:1434625295897333811> Hôm nay có thể không quá đặc biệt, nhưng bạn thì vẫn rất đặc biệt.",
-        "<a:thienthuong:1434625295897333811> Hãy coi đây là một ngày để nghỉ, nạp lại năng lượng cho những lần bùng nổ sau.",
-        "<a:thienthuong:1434625295897333811> Dù số không quá cao, nhưng tinh thần thoải mái mới là điều quan trọng.",
-        "<a:thienthuong:1434625295897333811> Chúc bạn cười nhiều hơn một chút so với hôm qua.",
-        "<a:thienthuong:1434625295897333811> Một tách trà, vài câu chuyện vui là đủ cho hôm nay rồi.",
-        "<a:thienthuong:1434625295897333811> Ngày hôm nay có thể bình thường, nhưng biết đâu tối lại có bất ngờ.",
-        "<a:thienthuong:1434625295897333811> Cứ điềm tĩnh, mọi chuyện rồi cũng sẽ vào đúng vị trí của nó.",
-        "<a:thienthuong:1434625295897333811> Không quá đỏ nhưng cũng chẳng xui, thoải mái tận hưởng ngày của mình nhé.",
-        "<a:thienthuong:1434625295897333811> Chúc bạn giữ được nụ cười, dù số hôm nay không quá ấn tượng.",
-        "<a:thienthuong:1434625295897333811> Đôi khi bình yên mới là dạng may mắn khó có nhất.",
-        "<a:thienthuong:1434625295897333811> Hôm nay hãy ưu tiên những điều khiến bạn thấy dễ chịu và an lòng.",
-        "<a:thienthuong:1434625295897333811> Có thể số chưa đẹp, nhưng tâm trạng thì vẫn có thể rất đẹp.",
-        "<a:thienthuong:1434625295897333811> Hãy coi đây là màn khởi động, lần sau vận may sẽ bùng nổ hơn.",
-        "<a:thienthuong:1434625295897333811> Chúc bạn gặp thêm vài chuyện vui nho nhỏ trong ngày hôm nay.",
-        "<a:thienthuong:1434625295897333811> Số không cao nhưng tinh thần không được thấp, nha?",
-        "<a:thienthuong:1434625295897333811> Cứ sống đúng với mình, may mắn rồi sẽ tự tìm đến.",
-        "<a:thienthuong:1434625295897333811> Một ngày bình thường nhưng vẫn có thể rất ấm áp.",
-        "<a:thienthuong:1434625295897333811> Hãy dành thời gian cho những người làm bạn cảm thấy thoải mái.",
-        "<a:thienthuong:1434625295897333811> Hôm nay có thể không phải ngày rực rỡ, nhưng vẫn là một ngày đáng nhớ.",
-        "<a:thienthuong:1434625295897333811> Mong bạn gặp được vài điều tử tế giữa những bận rộn.",
-        "<a:thienthuong:1434625295897333811> Chúc bạn giữ được sự bình an trong lòng suốt cả ngày.",
-        "<a:thienthuong:1434625295897333811> Đôi khi may mắn nhất là không phải lo nghĩ quá nhiều.",
-        "<a:thienthuong:1434625295897333811> Hãy tự thưởng cho mình một điều nho nhỏ dễ thương hôm nay.",
-        "<a:thienthuong:1434625295897333811> Chúc bạn có đủ sức khỏe và năng lượng để làm điều mình muốn.",
-        "<a:thienthuong:1434625295897333811> Số chỉ là con số, còn bạn mới là nhân vật chính của ngày hôm nay."
+    wishes_cat_tuong = [
+        "<a:thienthuong:1434625295897333811> Hôm nay bạn được bao quanh bởi khí **Cát Tường**, chuyện nhỏ dễ thành chuyện vui.",
+        "<a:thienthuong:1434625295897333811> Cát khí dịu dàng phủ xuống, bạn sẽ gặp nhiều điều **Cát Tường** ngoài dự tính.",
+        "<a:thienthuong:1434625295897333811> Đường bạn đi hôm nay được trải nhẹ bởi mây **Cát Tường**, cứ bình thản mà bước.",
+        "<a:thienthuong:1434625295897333811> Một ngày **Cát Tường** đang mở ra, nụ cười của bạn sẽ là tín hiệu đón may.",
+        "<a:thienthuong:1434625295897333811> Gió lành mang đến cảm giác **Cát Tường**, chuyện tốt sẽ đến đúng lúc.",
+        "<a:thienthuong:1434625295897333811> Bạn đang đi trong vùng trời **Cát Tường**, cứ vững lòng là đủ.",
+        "<a:thienthuong:1434625295897333811> Hôm nay tuy không quá ồn ào, nhưng phúc vận **Cát Tường** luôn phiên bạn đứng về phía thuận lợi.",
+        "<a:thienthuong:1434625295897333811> Cát khí lên cao, cả ngày bạn dễ gặp người, gặp việc khiến tâm tình nhẹ nhõm.",
+        "<a:thienthuong:1434625295897333811> Một chút **Cát Tường** điểm xuyết, đủ để ngày hôm nay không còn bình thường nữa.",
+        "<a:thienthuong:1434625295897333811> Cát tinh ghé thăm, giúp bạn hóa giải bớt những điều phiền lòng.",
+        "<a:thienthuong:1434625295897333811> Hôm nay bạn có nền **Cát Tường** khá dày, làm việc gì cũng dễ khởi đầu thuận lợi.",
+        "<a:thienthuong:1434625295897333811> Bước chân bạn mang theo hơi thở **Cát Tường**, xung quanh sẽ xuất hiện vài niềm vui nhỏ.",
+        "<a:thienthuong:1434625295897333811> Vận trình hôm nay như mặt nước lặng, ẩn dưới là dòng chảy **Cát Tường** ấm áp.",
+        "<a:thienthuong:1434625295897333811> Ánh nhìn của bạn hôm nay có thêm chút sáng của **Cát Tường**, dễ được người khác quý mến.",
+        "<a:thienthuong:1434625295897333811> Trên đường đi, bạn sẽ nhận ra vài dấu hiệu nhỏ cho thấy **Cát Tường** đang ở cạnh mình.",
+        "<a:thienthuong:1434625295897333811> Ngày hôm nay, bạn ít khi bị cuốn vào chuyện xấu – đó là hiệu ứng của **Cát Tường**.",
+        "<a:thienthuong:1434625295897333811> Một vài chuyện tưởng khó lại trôi chảy nhẹ nhàng, nhờ vào khí **Cát Tường** hộ thân.",
+        "<a:thienthuong:1434625295897333811> Bạn đang được che chở bởi một lớp vận khí **Cát Tường**, cứ tự tin mà tận hưởng.",
+        "<a:thienthuong:1434625295897333811> Nếu để ý kỹ, bạn sẽ thấy hôm nay mọi thứ đều mềm hơn, đó là dấu hiệu **Cát Tường**.",
+        "<a:thienthuong:1434625295897333811> Một ngày êm, nhẹ nhưng đẹp – đúng chất của vận **Cát Tường**."
     ]
 
-    if lucky_raw >= 900:
+    wishes_binh_thuong = [
+        "<a:thienthuong:1434625295897333811> Hôm nay là một ngày yên ả, nhưng vẫn đủ chỗ cho vài niềm vui nhỏ bất chợt ghé qua.",
+        "<a:thienthuong:1434625295897333811> Dù con số chưa quá cao, nhưng nó vẫn mang theo một chút may mắn âm thầm dành cho bạn.",
+        "<a:thienthuong:1434625295897333811> Bình lặng cũng là một dạng phúc, hôm nay bạn có một lớp bảo hộ nhẹ nhàng quanh mình.",
+        "<a:thienthuong:1434625295897333811> Không cần pháo hoa rực rỡ, chỉ cần một ngày trôi qua bình an, đó đã là lộc nhỏ dành cho bạn.",
+        "<a:thienthuong:1434625295897333811> Vận khí hôm nay không bùng nổ, nhưng đủ ấm để bạn đi qua ngày dài một cách nhẹ nhõm.",
+        "<a:thienthuong:1434625295897333811> Đôi khi may mắn nằm ở chỗ không có chuyện xấu xảy ra – hôm nay của bạn là như thế.",
+        "<a:thienthuong:1434625295897333811> Một ngày vừa đủ, không quá chói lóa cũng không quá tối, đó là khoảng nghỉ dễ chịu cho bạn.",
+        "<a:thienthuong:1434625295897333811> Con số này nhắc bạn cứ bình tĩnh, đôi khi điều tốt đến chậm nhưng lại bền.",
+        "<a:thienthuong:1434625295897333811> Vận hôm nay ở mức ổn, bạn có thể yên tâm làm những việc mình đã lên kế hoạch.",
+        "<a:thienthuong:1434625295897333811> Không phải ngày đại hỷ, nhưng là ngày đủ an yên để bạn mỉm cười vài lần.",
+        "<a:thienthuong:1434625295897333811> Bình thường không nghĩa là vô vị – bạn có thể chủ động tạo thêm niềm vui cho chính mình hôm nay.",
+        "<a:thienthuong:1434625295897333811> Con số này như lời nhắc: giữ tâm an, vận may sẽ đến vào lúc thích hợp.",
+        "<a:thienthuong:1434625295897333811> Bạn đang đứng ở vùng trung hòa, rất ít sóng gió – đó cũng là một dạng ưu ái.",
+        "<a:thienthuong:1434625295897333811> Hôm nay hợp với những việc nhẹ nhàng, không quá mạo hiểm nhưng vẫn đem lại cảm giác hài lòng.",
+        "<a:thienthuong:1434625295897333811> Có thể không phải là ngày rực rỡ, nhưng chắc chắn không phải là ngày xui xẻo của bạn.",
+        "<a:thienthuong:1434625295897333811> Một ngày tròn trịa, không quá nhiều drama – đủ để bạn nghỉ ngơi tâm trí.",
+        "<a:thienthuong:1434625295897333811> Cứ bình tĩnh mà sống chậm hôm nay, vì nền vận khí của bạn đang ở trạng thái cân bằng.",
+        "<a:thienthuong:1434625295897333811> Vận thế hôm nay cho phép bạn tránh được vài rắc rối không cần thiết.",
+        "<a:thienthuong:1434625295897333811> Đôi khi, một ngày bình thường chính là món quà để chuẩn bị cho những ngày bùng nổ phía sau.",
+        "<a:thienthuong:1434625295897333811> Hôm nay thích hợp để sắp xếp lại mọi thứ, chờ đón một đợt vận may mới trong tương lai gần."
+    ]
+
+    # ===== CHỌN LỜI CHÚC PHÙ HỢP =====
+    if lucky_raw == 999:
+        wish_text = random.choice(wishes_999)
+    elif lucky_raw >= 900:
         wish_text = random.choice(wishes_dai_cat)
     elif lucky_raw >= 600:
-        wish_text = random.choice(wishes_cat)
+        wish_text = random.choice(wishes_cat_tuong)
     else:
-        wish_text = random.choice(wishes_thuong)
+        wish_text = random.choice(wishes_binh_thuong)
 
     embed.add_field(
         name="",
         value=wish_text,
         inline=False
     )
+
+    # ===== 999: THÊM THIÊN TƯỢNG =====
+    if lucky_raw == 999:
+        embed.add_field(
+            name="🌌 Thiên Tượng",
+            value="Một dị tượng hiếm thấy xuất hiện, thiên mệnh đang nghiêng về phía bạn.",
+            inline=False
+        )
 
     # ===== ANIMATION: SỐ DEMO NHỎ HƠN SỐ THẬT (nếu có thể) =====
     if lucky_raw > 1:
@@ -4704,12 +4724,22 @@ async def cmd_boctham(ctx: commands.Context):
     try:
         await asyncio.sleep(0.7)
         await msg.edit(content=f"🎲 Đang quay số...\n {demo_emoji}")
-        await asyncio.sleep(0.7)
+        await asyncio.sleep(0.9)
+
+        # Hiệu ứng riêng cho 999
+        if lucky_raw == 999:
+            await msg.edit(
+                content="🌌 Linh khí đang hội tụ...\nMột con số **cực phẩm** sắp xuất hiện..."
+            )
+            await asyncio.sleep(1.2)
+
         await msg.edit(content=None, embed=embed)
     except discord.HTTPException:
         await ctx.send(embed=embed)
 
 # =============== HẾT PHẦN BỐC THĂM MAY MẮN ==================
+
+
 
 
 
