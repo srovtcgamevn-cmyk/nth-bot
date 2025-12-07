@@ -4686,6 +4686,8 @@ async def cmd_boctham(ctx: commands.Context):
         "<a:thienthuong:1434625295897333811> Chúc hôm nay của bạn trôi qua thật nhẹ nhàng.",
         "<a:thienthuong:1434625295897333811> Hy vọng bạn nhận được thật nhiều niềm vui nhỏ trong hôm nay."
 
+    ]
+
     # ===== CHỌN LỜI CHÚC PHÙ HỢP =====
     if lucky_raw == 999:
         wish_text = random.choice(wishes_999)
