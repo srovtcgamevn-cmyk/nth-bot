@@ -4792,6 +4792,176 @@ async def cmd_boctham(ctx: commands.Context):
 # =============== HẾT PHẦN BỐC THĂM MAY MẮN ==================
 
 
+# ================== BẬT / TẮT NHẠC YOUTUBE ==================
+import yt_dlp
+import discord
+from discord.ext import commands
+
+YDL_OPTIONS = {
+    "format": "bestaudio/best",
+    "noplaylist": True,
+    "quiet": True,
+    "nocheckcertificate": True,
+}
+FFMPEG_OPTIONS = {
+    "options": "-vn"
+}
+
+MUSIC_STATE = {}  # key: guild_id -> {"url": str, "volume": float, "loop": True}
+
+
+async def _ensure_voice(ctx: commands.Context) -> discord.VoiceClient | None:
+    """Đảm bảo bot đã join voice channel của người dùng."""
+    if not ctx.author.voice or not ctx.author.voice.channel:
+        await ctx.reply("⛔ Bạn phải đang ở trong một kênh **voice** trước đã.", mention_author=False)
+        return None
+
+    voice = ctx.voice_client
+    if voice and voice.channel == ctx.author.voice.channel:
+        return voice
+
+    if voice and voice.channel != ctx.author.voice.channel:
+        await voice.move_to(ctx.author.voice.channel)
+        return voice
+
+    # chưa connect
+    return await ctx.author.voice.channel.connect()
+
+
+def _extract_yt_url(url: str) -> str:
+    """Lấy link stream audio từ YouTube bằng yt_dlp."""
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(url, download=False)
+        return info["url"]
+
+
+async def _start_music(bot: commands.Bot, guild_id: int):
+    """Phát / phát lại nhạc theo state của guild."""
+    state = MUSIC_STATE.get(guild_id)
+    if not state:
+        return
+
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        return
+
+    voice = guild.voice_client
+    if not voice:
+        return
+
+    # nếu đang chơi thì không phát chồng
+    if voice.is_playing() or voice.is_paused():
+        return
+
+    url = state["url"]
+    volume = state.get("volume", 0.3)
+
+    try:
+        stream_url = _extract_yt_url(url)
+    except Exception as e:
+        print("YT_DL error:", e)
+        return
+
+    source = discord.PCMVolumeTransformer(
+        discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS),
+        volume=volume
+    )
+
+    def _after_play(err):
+        if err:
+            print("Music error:", err)
+        # loop lại nếu còn state
+        st = MUSIC_STATE.get(guild_id)
+        if not st or not st.get("loop", True):
+            return
+        fut = _start_music(bot, guild_id)
+        bot.loop.create_task(fut)
+
+    voice.play(source, after=_after_play)
+
+
+# ================== /batnhac ==================
+
+@bot.command(name="batnhac")
+async def cmd_batnhac(ctx: commands.Context, volume: int, url: str = None):
+    """
+    /batnhac <volume> <link_youtube>
+    - volume: 0–100
+    - link_youtube: nếu bỏ trống và đang phát rồi -> chỉ đổi volume.
+    """
+    if ctx.guild is None:
+        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+
+    if volume < 0 or volume > 100:
+        return await ctx.reply("🔊 Âm lượng phải từ **0** đến **100**.", mention_author=False)
+
+    voice = await _ensure_voice(ctx)
+    if voice is None:
+        return
+
+    gid = ctx.guild.id
+    vol_f = volume / 100.0
+
+    state = MUSIC_STATE.get(gid)
+
+    # Nếu đã có state & không truyền url -> chỉ đổi volume
+    if url is None and state and "url" in state:
+        # đổi volume hiện tại
+        if voice.source and isinstance(voice.source, discord.PCMVolumeTransformer):
+            voice.source.volume = vol_f
+        state["volume"] = vol_f
+        return await ctx.reply(f"✅ Đã chỉnh âm lượng nhạc về **{volume}%**.", mention_author=False)
+
+    if url is None:
+        return await ctx.reply(
+            "🎵 Dùng đúng cú pháp: `/batnhac <âm_lượng> <link_youtube>`\n"
+            "Ví dụ: `/batnhac 30 https://youtube.com/...`",
+            mention_author=False
+        )
+
+    # Cập nhật state mới
+    MUSIC_STATE[gid] = {
+        "url": url,
+        "volume": vol_f,
+        "loop": True,
+    }
+
+    # Nếu đang play thì stop để phát cái mới
+    if voice.is_playing() or voice.is_paused():
+        voice.stop()
+
+    await ctx.reply(
+        f"▶️ Bắt đầu phát nhạc (loop) với âm lượng **{volume}%**.",
+        mention_author=False
+    )
+    await _start_music(bot, gid)
+
+
+# ================== /tatnhac ==================
+
+@bot.command(name="tatnhac")
+async def cmd_tatnhac(ctx: commands.Context):
+    """Dừng nhạc và rời kênh voice."""
+    if ctx.guild is None:
+        return await ctx.reply("⛔ Lệnh này chỉ dùng được trong server.", mention_author=False)
+
+    voice = ctx.voice_client
+    if not voice:
+        return await ctx.reply("🔇 Bot hiện không ở trong kênh voice.", mention_author=False)
+
+    gid = ctx.guild.id
+
+    # Tắt loop & stop
+    if gid in MUSIC_STATE:
+        MUSIC_STATE[gid]["loop"] = False
+
+    if voice.is_playing() or voice.is_paused():
+        voice.stop()
+
+    await voice.disconnect()
+    await ctx.reply("⏹ Đã tắt nhạc và rời kênh voice.", mention_author=False)
+
+# ============ HẾT PHẦN BẬT / TẮT NHẠC YOUTUBE ============
 
 
 
